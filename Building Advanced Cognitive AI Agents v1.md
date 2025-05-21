@@ -1,16 +1,3 @@
-Understood. I’ll prepare a step-by-step implementation guide for an MVP version of your Onion Individual Design, focusing on autonomy in the absence of user interaction.
-
-The guide will cover:
-
-* A LangGraph-based agent with short-term and long-term memory layers
-* Recency-biased memory consolidation during a 'sleep' phase
-* A tool-calling system using the provided MCP configuration
-* Integration (or simplification) of your existing UI from the GitHub repo
-* An intrinsic motivator mechanism to drive autonomous behavior when idle
-
-I'll ensure the scope remains manageable for a solo MVP build in \~1.5 weeks. I'll get started and follow up with the full guide shortly.
-
-
 # Building the Onion Individual MVP: Step-by-Step Implementation Guide
 
 ## Overview and Goals of the MVP
@@ -126,11 +113,54 @@ Here we pass the Zod schema’s shape to LangGraph so it knows the state structu
 
   Here we assume `openAiChat` is a LangChain `ChatOpenAI` instance. We store the response content in state (e.g., `aiResponse`). We might also update `state.messages` by appending the AI’s answer later.
 
-* **Tool Use Handling:** The agent might decide a tool is needed. If using a ReAct pattern agent, the LLM’s response might come in a format like a tool usage command (LangGraph’s ReAct agent handles this automatically if we use `createReactAgent`). For a custom graph, we can detect if the LLM output indicates a tool call (for example, if `response.content` matches a pattern or has a structured signal). If so, branch to a **Tool Execution Node**:
+* **Tool Use Handling and Execution Node:** The agent, after an LLM query, might determine that an external capability (a tool) is needed to fulfill the user's request. The LLM's response would indicate the desired tool and its parameters. This node is responsible for:
+    1.  Parsing the LLM's response to identify the `toolName` and `toolArgs`. (You will need to implement `parseLLMToolRequest` based on your LLM's output format).
+    2.  Acting as an **MCP Client** to call the specified tool. Tools like command-line access (e.g., via a `DesktopCommander` MCP server), file operations (e.g., via a `VSCode-Tools` MCP server), or browser automation (e.g., via a `PlaywrightBrowser` MCP server) are hosted on separate, dedicated MCP servers.
+    3.  Receiving the result from the MCP tool call and making it available in the agent's state (e.g., `state.toolResult`) for the next iteration of the LLM or for finalizing the response.
 
-  * This node will call the appropriate tool through MCP. For instance, if the LLM says `search("weather in SF")`, our tool node would invoke an MCP client or local function to perform the search and get results.
-  * The tool result is then put into state (e.g., `state.toolResult`) and we then loop back to the LLM Node to let the model incorporate the result (prompting it with the tool output).
-  * LangGraph allows branching logic via `workflow.addEdge()` conditions. Pseudocode: `workflow.addEdge({ from: llmNode, to: toolNode, condition: (state) => state.aiResponse.startsWith("[TOOL]") })`. This ensures if the AI requests a tool, we execute it, otherwise go to the next step.
+    The agent would be initialized with information about available MCP tool servers (see "Dynamic Tool Discovery" in Step 3.3).
+
+    Example for the `toolNode` function:
+    ```typescript
+    // (Assuming McpClient is initialized and configured elsewhere, 
+    // potentially through a manager class that handles connections to various tool servers)
+
+    const toolNode = async (state: AppState) => {
+      // 1. Parse LLM response for tool name and arguments
+      // This is a placeholder for actual parsing logic based on your LLM's output format
+      const { toolName, toolArgs } = parseLLMToolRequest(state.aiResponse); 
+
+      if (toolName) {
+        console.log(`Attempting to call MCP tool: ${toolName} with args:`, toolArgs);
+        try {
+          // Resolve the MCP server URL for the given toolName
+          // You'll need a robust way to map toolName to its server and manage MCP clients.
+          // This could involve a central McpClientManager.
+          const mcpClient = getMcpClientForTool(toolName); // Placeholder for getting a configured McpClient
+
+          if (!mcpClient) {
+            return { toolResult: `Error: MCP Client for tool '${toolName}' not found or configured.` };
+          }
+
+          const result = await mcpClient.callTool({ // Assumes client is already connected
+            name: toolName,
+            params: toolArgs,
+          });
+          return { toolResult: result };
+        } catch (error) {
+          console.error(`Error calling MCP tool ${toolName}:`, error);
+          return { toolResult: `Error executing tool ${toolName}: ${error.message}` };
+        }
+      }
+      // It's important to decide how to proceed if no tool is called or if parsing fails.
+      // Returning a specific value or structure can help conditional edges in LangGraph.
+      return { toolResult: null }; // Indicate no tool was called or an issue occurred before calling
+    };
+    workflow.addNode("toolNode", toolNode);
+    ```
+    Branching logic would direct the flow to this `toolNode` if the LLM indicates a tool call (e.g., based on `parseLLMToolRequest` finding a tool):
+    `workflow.addEdge({ from: "llmQueryNode", to: "toolNode", condition: (state) => !!parseLLMToolRequest(state.aiResponse)?.toolName });`
+    And another edge from `toolNode` back to `composePromptNode` or `llmQueryNode` to process the tool's output. An edge would also lead from `llmQueryNode` to `finalizeResponseNode` if no tool is called.
 
 * **Review/Interrupt Handling:** In the full design, the agent can **interrupt** for a review step (HITL or HISA). For the MVP, we will simplify this:
 
@@ -159,7 +189,31 @@ workflow.addNode(entryPointNode);
 
 workflow.addEdge({ from: entryPointNode, to: retrieveLTMNode });
 workflow.addEdge({ from: retrieveLTMNode, to: composePromptNode });
-// etc.
+workflow.addEdge({ from: composePromptNode, to: "llmQueryNode" }); // Assuming llmQueryNode is defined
+
+// Conditional edge from LLM to Tool Execution or Finalize Response
+workflow.addEdge({
+  from: "llmQueryNode",
+  to: "toolNode",
+  condition: (state: AppState) => {
+    const toolCall = parseLLMToolRequest(state.aiResponse); // Implement this function
+    return !!toolCall?.toolName; // Go to toolNode if a tool is requested
+  }
+});
+workflow.addEdge({
+  from: "llmQueryNode",
+  to: "finalizeResponseNode", // Assuming finalizeResponseNode is defined
+  condition: (state: AppState) => {
+    const toolCall = parseLLMToolRequest(state.aiResponse);
+    return !toolCall?.toolName; // Go to finalize if no tool is requested
+  }
+});
+
+// Edge from Tool Execution back to Compose Prompt (to process tool output)
+workflow.addEdge({ from: "toolNode", to: composePromptNode });
+
+// Edge from Finalize Response to end (or a special END node)
+// workflow.setFinishEntryPoint("finalizeResponseNode") // Or however LangGraph defines the end
 ```
 
 The result is a defined graph that can handle a single query cycle. We’ll compile this graph with a checkpointer next, to maintain state across cycles.
@@ -172,6 +226,108 @@ Short-term memory corresponds to the agent’s conversation state that persists 
 
 ```ts
 import { MemorySaver } from "@langchain/langgraph/checkpointers";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js"; // MCP Client
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"; // Example transport
+
+// MCP Tool Server Configuration (example)
+const availableMcpToolServers = [
+  { name: "DesktopCommander", url: "stdio:node path/to/desktop-commander-server.js", description: "Desktop command execution" },
+  { name: "PlaywrightBrowser", url: "http://localhost:8082", description: "Browser automation via Playwright" },
+  // Add other MCP tool servers here
+];
+
+// MCP Client Management (Simplified Example)
+// In a real app, this would be more robust, handling connections, errors, and client instances.
+const mcpClients: Record<string, McpClient> = {};
+
+async function initializeMcpClients() {
+  for (const serverConfig of availableMcpToolServers) {
+    let transport;
+    if (serverConfig.url.startsWith("stdio:")) {
+      const [_, command, ...args] = serverConfig.url.split(":");
+      transport = new StdioClientTransport({ command, args });
+    } else if (serverConfig.url.startsWith("http")) {
+      // transport = new StreamableHTTPClientTransport({ baseUrl: new URL(serverConfig.url) }); // Requires StreamableHTTPClientTransport
+      console.warn(`HTTP transport for ${serverConfig.name} not fully implemented in this example.`);
+      // For now, skip http clients if StreamableHTTPClientTransport is not readily available or set up
+      continue;
+    } else {
+      console.warn(`Unsupported MCP server URL scheme: ${serverConfig.url}`);
+      continue;
+    }
+
+    const client = new McpClient({
+      name: `Agent-${serverConfig.name}-Client`,
+      version: "1.0.0",
+      // logger: console, // Optional: for debugging MCP communication
+    });
+
+    try {
+      await client.connect(transport);
+      mcpClients[serverConfig.name] = client;
+      console.log(`Successfully connected to MCP server: ${serverConfig.name}`);
+      // You might want to list tools to confirm connection and availability
+      // const tools = await client.listTools();
+      // console.log(`${serverConfig.name} tools:`, tools.map(t => t.name));
+    } catch (error) {
+      console.error(`Failed to connect to MCP server ${serverConfig.name} at ${serverConfig.url}:`, error);
+    }
+  }
+}
+
+// Call this during agent initialization
+// await initializeMcpClients();
+
+// Placeholder function to get a client for a tool
+// In a real system, this would involve looking up which server hosts which tool.
+// For simplicity, we assume tool names might map directly to server names or have a known mapping.
+function getMcpClientForTool(toolName: string): McpClient | undefined {
+  // This is a naive lookup. A better system would map tool names to specific MCP server clients.
+  // For example, if toolName is "runCommand", it might map to the "DesktopCommander" client.
+  // This mapping needs to be established based on how your tools are distributed across MCP servers.
+  if (mcpClients[toolName]) return mcpClients[toolName]; // if toolName is a server name
+  // Add more sophisticated lookup logic here if needed
+  // e.g. iterate mcpClients and check client.listTools() if not too slow, or have a predefined map
+  console.warn(`No direct MCP client found for tool/server name: ${toolName}. Attempting to find a match...`);
+  // Fallback: check if any client offers this tool (can be slow if many clients/tools)
+  // This part is complex and depends on your tool discovery strategy.
+  // For MVP, a simpler mapping from tool name to server name is advisable.
+  // Example: if (toolName.startsWith("desktop.")) return mcpClients["DesktopCommander"];
+  return undefined; 
+}
+
+// Placeholder for parsing LLM tool requests
+// Replace with your actual implementation based on LLM output format
+interface ToolCallRequest {
+  toolName: string | null;
+  toolArgs: any | null;
+}
+function parseLLMToolRequest(aiResponse: string | null | undefined): ToolCallRequest {
+  if (!aiResponse) return { toolName: null, toolArgs: null };
+  // Example: LLM outputs JSON like {"tool_name": "runCommand", "arguments": {"command": "ls"}}
+  try {
+    const parsed = JSON.parse(aiResponse);
+    if (parsed.tool_name && parsed.arguments) {
+      return { toolName: parsed.tool_name, toolArgs: parsed.arguments };
+    }
+  } catch (e) {
+    // Or if LLM uses a specific string format, parse that.
+    // E.g., "[TOOL_CALL] toolName(arg1=value1, arg2=value2)"
+    if (aiResponse.includes("[TOOL_CALL]")) { 
+        // Basic parsing, needs to be robust
+        const match = aiResponse.match(/TOOL_CALL\]\s*(\w+)\((.*)\)/);
+        if (match && match[1] && match[2]) {
+            const toolName = match[1];
+            const argsString = match[2];
+            // Crude arg parsing - assumes simple key=value, not robust for complex args
+            const toolArgs = Object.fromEntries(argsString.split(",").map(s => s.trim().split("=")));
+            return { toolName, toolArgs };
+        }
+    }
+  }
+  return { toolName: null, toolArgs: null };
+}
+
 
 // After defining the workflow and nodes:
 const memoryCheckpointer = new MemorySaver();
