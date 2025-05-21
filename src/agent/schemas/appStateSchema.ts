@@ -17,13 +17,23 @@ export const ToolCallSchema = z.object({
 
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 
+// Define reflection result structure
+export const ReflectionResultSchema = z.object({
+  score: z.number().optional(),
+  critique: z.string()
+});
+
+export type ReflectionResult = z.infer<typeof ReflectionResultSchema>;
+
 // Define the agent's state structure
 export const AppStateSchema = z.object({
   input: z.string().describe("Current user query"),
   messages: z.array(MessageSchema).default([]).describe("Conversation history"),
   aiResponse: z.string().optional().describe("Current AI response"),
   toolCall: ToolCallSchema.optional().describe("Current tool call data"),
-  toolResults: z.record(z.string(), z.any()).optional().describe("Results from tool calls")
+  toolResults: z.record(z.string(), z.any()).optional().describe("Results from tool calls"),
+  reflectionResult: ReflectionResultSchema.optional().describe("Self-reflection results"),
+  memoryId: z.string().optional().describe("ID of stored memory")
 });
 
 export type AppState = z.infer<typeof AppStateSchema>;
