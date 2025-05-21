@@ -1,8 +1,24 @@
 import { StateGraph } from "@langchain/langgraph";
-import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { AppState, AppStateSchema, ToolCall } from "./schemas/appStateSchema";
 import { generateResponse } from "./llmClient";
 import { McpClientManager } from "../mcp/client";
+
+// Simple in-memory store for conversation state
+class SimpleMemoryStore {
+  private memory: Record<string, any> = {};
+
+  async get(key: string): Promise<any> {
+    return this.memory[key] || null;
+  }
+
+  async put(key: string, value: any): Promise<void> {
+    this.memory[key] = value;
+  }
+
+  async list(): Promise<string[]> {
+    return Object.keys(this.memory);
+  }
+}
 
 // Create nodes for the workflow
 const entryPointNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
@@ -16,8 +32,8 @@ const entryPointNode = async (state: AppState, context: any): Promise<Partial<Ap
 };
 
 const llmQueryNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
-  // Prepare system prompt that instructs the model about available tools
-  const mcpManager = context.mcpManager as McpClientManager;
+  // Get MCP manager from context or from global context (workaround)
+  const mcpManager = (context?.mcpManager || (global as any).mcpManagerContext) as McpClientManager;
   let toolsPrompt = "You are a helpful AI assistant. Respond to the user's queries in a helpful and informative way.";
   
   // Only attempt to list tools if mcpManager is available
@@ -100,7 +116,8 @@ const toolExecutionNode = async (state: AppState, context: any): Promise<Partial
   const toolCall = state.toolCall;
   if (!toolCall) return {};
   
-  const mcpManager = context.mcpManager as McpClientManager;
+  // Get MCP manager from context or from global context (workaround)
+  const mcpManager = (context?.mcpManager || (global as any).mcpManagerContext) as McpClientManager;
   
   // If mcpManager is not available, return an error
   if (!mcpManager) {
@@ -145,47 +162,99 @@ const toolExecutionNode = async (state: AppState, context: any): Promise<Partial
   }
 };
 
-// Create the workflow
+// Create the workflow with LangGraph
 export function createAgentWorkflow(mcpManager?: McpClientManager) {
-  // Create the state graph
-  const workflow = new StateGraph<AppState>({
-    channels: AppStateSchema.shape
-  });
+  try {
+    console.log("Creating agent workflow with LangGraph...");
+    
+    // Create the state graph
+    const workflow = new StateGraph<AppState>({
+      channels: AppStateSchema.shape
+    });
 
-  // Use provided manager or the placeholder
-  const manager = mcpManager || new McpClientManager();
+    // Use provided manager or the placeholder
+    const manager = mcpManager || new McpClientManager();
+    console.log("MCPManager availability:", !!manager);
 
-  // Add nodes
-  workflow.addNode("entryPoint", entryPointNode);
-  workflow.addNode("llmQuery", llmQueryNode);
-  workflow.addNode("toolExecution", toolExecutionNode);
+    // Add nodes
+    workflow.addNode("entryPoint", entryPointNode);
+    workflow.addNode("llmQuery", llmQueryNode);
+    workflow.addNode("toolExecution", toolExecutionNode);
+    console.log("Nodes added to the graph");
 
-  // Set the entrypoint
-  workflow.setEntryPoint("entryPoint");
+    // Set the entrypoint
+    workflow.setEntryPoint("entryPoint");
+    console.log("Entry point set");
 
-  // Add edges
-  workflow.addEdge("entryPoint", "llmQuery");
-  
-  // FIXED: Conditional edge from LLM to Tool Execution or end
-  workflow.addConditionalEdges(
-    "llmQuery",
-    (state) => !!state.toolCall, // Convert to boolean
-    {
-      true: "toolExecution",
-      false: "__end__"
-    }
-  );
-  
-  // Edge from Tool Execution back to LLM Query to process results
-  workflow.addEdge("toolExecution", "llmQuery");
+    // Add edges
+    workflow.addEdge("entryPoint", "llmQuery");
+    console.log("Edge added: entryPoint -> llmQuery");
+    
+    // Conditional edge from LLM to Tool Execution or end
+    console.log("Adding conditional edges...");
+    workflow.addConditionalEdges(
+      "llmQuery",
+      (state: AppState) => !!state.toolCall, // Convert to boolean
+      {
+        true: "toolExecution",
+        false: "__end__"
+      }
+    );
+    console.log("Conditional edges added: llmQuery -> toolExecution/end");
+    
+    // Edge from Tool Execution back to LLM Query to process results
+    workflow.addEdge("toolExecution", "llmQuery");
+    console.log("Edge added: toolExecution -> llmQuery");
 
-  // Compile the graph with memory
-  const checkpointer = new MemorySaver();
-  const compiledGraph = workflow.compile({ 
-    checkpointer,
-    // Pass the MCP manager to all nodes via context
-    nodeContext: { mcpManager: manager }
-  });
+        // Do not use any checkpointer for now
+    console.log("Compiling the graph without a checkpointer...");
+    
+    // Compile the graph with the correct API for our version
+    const compiledGraph = workflow.compile();
+    
+    // Create a custom wrapper that includes our context
+    const wrappedGraph = {
+      invoke: async (state: AppState, config: any = {}) => {
+        // We need to modify how we invoke the graph to pass the MCP manager
+        // This is a workaround for the limitations in the older LangGraph version
+        try {
+          console.log("Invoking wrapped graph with custom context");
+          
+          // Add the MCP manager to the global context temporarily
+          // This is not ideal but works around the limitations
+          (global as any).mcpManagerContext = manager;
+          
+          // Invoke the actual graph
+          const result = await compiledGraph.invoke(state);
+          
+          // Clean up the global context
+          delete (global as any).mcpManagerContext;
+          
+          return result;
+        } catch (error) {
+          console.error("Error invoking wrapped graph:", error);
+          throw error;
+        }
+      }
+    };
+    
+    console.log("Graph compiled successfully");
 
-  return compiledGraph;
+    // Let's inspect the compiled graph
+    console.log("Compiled graph structure:", 
+      JSON.stringify({
+        // Show information about the graph that's safe to stringify
+        hasNodes: !!compiledGraph.constructor.name,
+        graphType: compiledGraph.constructor.name,
+        // List methods available (for debugging)
+        methods: Object.getOwnPropertyNames(Object.getPrototypeOf(compiledGraph))
+      }, null, 2)
+    );
+
+    return wrappedGraph;
+  } catch (error) {
+    console.error("Error creating agent workflow:", error);
+    // Rethrow to propagate the error
+    throw error;
+  }
 }

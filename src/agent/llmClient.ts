@@ -1,23 +1,56 @@
 import { GoogleGenerativeAI, GenerativeModel, Content, Part } from "@google/generative-ai";
 import { Message } from "./schemas/appStateSchema";
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+// Load environment variables immediately
+const envPath = path.resolve(process.cwd(), '.env');
+console.log('LLMClient: Loading environment from:', envPath);
+dotenv.config({ path: envPath });
 
 // Check for API key
 const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey || apiKey === "your_gemini_api_key_here") {
-  console.warn("WARNING: GEMINI_API_KEY is not set or is using default value. Please add a valid API key to your .env file.");
+
+// Log environment details for debugging
+console.log('Environment variables loaded:');
+console.log('- GEMINI_API_KEY exists:', !!apiKey);
+if (apiKey) {
+  // Show first 4 and last 4 chars only, for security
+  const maskedKey = apiKey.length > 8 
+    ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`
+    : '****';
+  console.log('- API Key (masked):', maskedKey);
 }
 
-// Initialize the Google Generative AI client
-const genAI = new GoogleGenerativeAI(apiKey || "");
+// Initialize the Google Generative AI client only if we have a valid API key
+let genAI: GoogleGenerativeAI | null = null;
+let model: GenerativeModel | null = null;
 
-// Get the model
-const model: GenerativeModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+// Check if the API key is valid
+const isValidKey = apiKey && 
+                  apiKey !== "your_gemini_api_key_here";
+
+console.log('- API Key appears valid:', isValidKey);
+
+if (isValidKey) {
+  console.log('Initializing Gemini model with the API key...');
+  genAI = new GoogleGenerativeAI(apiKey);
+  model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  console.log('Gemini model initialized successfully.');
+} else {
+  console.error('WARNING: Invalid or missing GEMINI_API_KEY. LLM functionality will not work.');
+}
 
 export async function generateResponse(
   messages: Array<Message>,
   systemPrompt?: string
 ): Promise<string> {
   try {
+    // Check if model is initialized
+    if (!model) {
+      throw new Error("Gemini model is not initialized. Check your API key.");
+    }
+
     // Convert our message format to Gemini's format
     const geminiMessages: Content[] = messages.map(msg => {
       // Gemini uses "user" instead of "human" and "model" instead of "ai"
@@ -55,6 +88,14 @@ export async function generateResponse(
     return response.text();
   } catch (error) {
     console.error("Error generating response:", error);
-    return "I encountered an error while processing your request.";
+    // Provide more detailed error messages
+    if (!apiKey || apiKey === "your_gemini_api_key_here") {
+      return "Error: Missing API key. Please add a valid GEMINI_API_KEY to your .env file.";
+    } else if (!model) {
+      return "Error: Failed to initialize LLM. Please check your API key and try again.";
+    } else {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return `Error: ${errorMessage}`;
+    }
   }
 }

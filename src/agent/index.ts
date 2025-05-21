@@ -1,6 +1,13 @@
 import { createAgentWorkflow } from "./workflow";
 import { AppState } from "./schemas/appStateSchema";
 import { McpClientManager } from '../mcp/client';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+// Load environment variables early - before any imports execute
+const envPath = path.resolve(process.cwd(), '.env');
+dotenv.config({ path: envPath });
+console.log("Environment loaded in agent/index.ts");
 
 // Will be initialized during startup
 let agentWorkflow: any = null;
@@ -54,6 +61,9 @@ export async function initializeAgent() {
   }
 }
 
+// Simple in-memory conversation store
+const conversationStore: Record<string, AppState> = {};
+
 /**
  * Process a user query and return a response
  * @param query The user's input query
@@ -65,15 +75,68 @@ export async function processQuery(query: string, threadId: string = "default"):
     throw new Error("Agent not initialized. Call initializeAgent() first.");
   }
   
-  // Initialize state with the user's query
-  const initialState: AppState = {
-    input: query,
-    messages: []
-  };
-
-  // Invoke the workflow with the initial state and thread ID
-  const resultState = await agentWorkflow.invoke(initialState, { configurable: { threadId } });
+  // Check if API key is valid - if not, run in simple echo mode for testing
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "your_gemini_api_key_here") {
+    console.log("Running in echo mode due to missing API key");
+    return `[ECHO MODE] You said: "${query}" (API key not configured, echo mode enabled)`;
+  }
   
-  // Return the AI's response
-  return resultState.aiResponse || "No response generated";
+  try {
+    // Get existing conversation state or create new one
+    const existingState = conversationStore[threadId];
+    console.log(`Processing query for thread ${threadId} - Existing state:`, existingState ? 
+      `Has ${existingState.messages?.length || 0} messages` : 
+      'No previous state');
+    
+    // Initialize state with the user's query - preserve history if it exists
+    const initialState: AppState = {
+      input: query,
+      messages: existingState?.messages || []
+    };
+
+    console.log(`Invoking workflow with initial state:`, {
+      input: initialState.input,
+      messageCount: initialState.messages.length
+    });
+    
+    // Try to inspect the workflow object
+    console.log("Workflow type:", agentWorkflow.constructor.name);
+    console.log("Available methods:", Object.getOwnPropertyNames(Object.getPrototypeOf(agentWorkflow)));
+    
+    try {
+      // Invoke the workflow with the initial state
+      console.log("Starting workflow invocation...");
+      const resultState = await agentWorkflow.invoke(initialState);
+      console.log("Workflow invocation completed successfully");
+      
+      // Store updated state for next interaction
+      conversationStore[threadId] = resultState;
+      
+      // Log the result structure
+      console.log("Result structure:", {
+        hasAiResponse: !!resultState.aiResponse,
+        responseLength: resultState.aiResponse?.length || 0,
+        messageCount: resultState.messages?.length || 0,
+        hasToolCall: !!resultState.toolCall,
+        hasToolResults: !!resultState.toolResults && Object.keys(resultState.toolResults || {}).length > 0
+      });
+      
+      // Return the AI's response
+      return resultState.aiResponse || "No response generated";
+    } catch (workflowError) {
+      // Detailed error logging for invoke method
+      console.error("Workflow invocation error:", workflowError);
+      console.error("Error stack:", workflowError.stack);
+      
+      if (workflowError.message.includes('checkpointer.get')) {
+        return `Error with checkpointer: ${workflowError.message}. This is likely an issue with the LangGraph memory system.`;
+      }
+      
+      return `Workflow error: ${workflowError.message}`;
+    }
+  } catch (error: any) { // Use any to safely access error properties
+    console.error(`Error processing query in thread ${threadId}:`, error);
+    return `Sorry, I encountered an error: ${error.message}`;
+  }
 }

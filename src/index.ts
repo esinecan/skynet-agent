@@ -1,9 +1,5 @@
-import dotenv from 'dotenv';
-import { initializeAgent } from './agent';
+import { initializeAgent } from './agent'; // This already loads the environment
 import { startApiServer } from './server/api';
-
-// Load environment variables
-dotenv.config();
 
 // Main function to start everything
 async function main() {
@@ -14,9 +10,9 @@ async function main() {
     await initializeAgent();
     console.log('Agent initialized successfully');
     
-    // Start the API server
-    const port = parseInt(process.env.PORT || process.env.API_PORT || '3000');
-    await startApiServer(port);
+    // Start the API server - use a higher port number
+    const port = Number.parseInt(process.env.PORT || process.env.API_PORT || '9000');
+    await startApiServer(port, 10); // Increase retries to 10
     
     console.log('Skynet Agent is ready for interaction');
   } catch (error) {
