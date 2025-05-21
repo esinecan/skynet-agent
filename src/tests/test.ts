@@ -13,7 +13,7 @@ dotenv.config({ path: envPath });
 
 // Configuration
 const API_URL = process.env.TEST_API_URL || 'http://localhost:9000';
-const GOOGLE_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyD5tYYm39l3vd740ZswbreAckS5boLzYuY';
+const GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
 
 // Update .env file with the provided Google API key
 async function updateEnvFile() {
