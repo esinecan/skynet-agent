@@ -15,19 +15,20 @@ async function main() {
     console.log('Agent initialized successfully');
     
     // Start the API server
-    const port = parseInt(process.env.API_PORT || '3000');
-    startApiServer(port);
-    console.log(`API server started on port ${port}`);
+    const port = parseInt(process.env.PORT || process.env.API_PORT || '3000');
+    await startApiServer(port);
     
     console.log('Skynet Agent is ready for interaction');
   } catch (error) {
-    console.error('Failed to initialize agent:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Failed to initialize agent:', errorMessage);
     process.exit(1);
   }
 }
 
 // Run the main function
 main().catch(error => {
-  console.error('Unhandled error in main:', error);
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  console.error('Unhandled error in main:', errorMessage);
   process.exit(1);
 });

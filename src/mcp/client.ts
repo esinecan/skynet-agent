@@ -1,14 +1,19 @@
-import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { Client as McpClient, Tool } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-type McpServerConfig = {
+interface McpServerConfig {
   name: string;
   transport: "stdio" | "http";
   command?: string;
   args?: string[];
   url?: string;
-};
+}
+
+export interface ToolInfo {
+  name: string;
+  description?: string;
+}
 
 export class McpClientManager {
   private clients: Map<string, McpClient> = new Map();
@@ -69,7 +74,7 @@ export class McpClientManager {
     return this.clients.get(serverName);
   }
 
-  async callTool(serverName: string, toolName: string, args: any): Promise<any> {
+  async callTool(serverName: string, toolName: string, args: Record<string, any>): Promise<any> {
     const client = this.getClient(serverName);
     if (!client) {
       throw new Error(`No MCP client found for server: ${serverName}`);
@@ -82,13 +87,14 @@ export class McpClientManager {
       });
       return result;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`Error calling tool ${toolName} on ${serverName}:`, error);
-      throw error;
+      throw new Error(errorMessage);
     }
   }
 
   // Method to list all available tools across all connected servers
-  async listAllTools(): Promise<{serverName: string, tools: any[]}[]> {
+  async listAllTools(): Promise<{serverName: string, tools: ToolInfo[]}[]> {
     const allTools = [];
     
     for (const [serverName, client] of this.clients.entries()) {

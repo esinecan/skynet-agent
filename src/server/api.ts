@@ -31,8 +31,32 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-export function startApiServer(port: number = 3000) {
-  return app.listen(port, () => {
-    console.log(`API server listening on port ${port}`);
+export function startApiServer(port: number = 3000, maxRetries: number = 5): Promise<any> {
+  return new Promise((resolve, reject) => {
+    // Recursive function to try different ports
+    const attemptListen = (currentPort: number, retriesLeft: number) => {
+      const server = app.listen(currentPort)
+        .on('listening', () => {
+          console.log(`API server listening on port ${currentPort}`);
+          resolve(server);
+        })
+        .on('error', (err: NodeJS.ErrnoException) => {
+          if (err.code === 'EADDRINUSE') {
+            console.warn(`Port ${currentPort} is already in use`);
+            if (retriesLeft > 0) {
+              console.log(`Trying port ${currentPort + 1}...`);
+              server.close();
+              attemptListen(currentPort + 1, retriesLeft - 1);
+            } else {
+              reject(new Error(`Unable to find available port after ${maxRetries} attempts`));
+            }
+          } else {
+            reject(err);
+          }
+        });
+    };
+
+    // Start with initial port
+    attemptListen(port, maxRetries);
   });
 }

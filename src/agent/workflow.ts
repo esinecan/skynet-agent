@@ -1,6 +1,6 @@
 import { StateGraph } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { AppState, AppStateSchema } from "./schemas/appStateSchema";
+import { AppState, AppStateSchema, ToolCall } from "./schemas/appStateSchema";
 import { generateResponse } from "./llmClient";
 import { McpClientManager } from "../mcp/client";
 
@@ -18,27 +18,37 @@ const entryPointNode = async (state: AppState, context: any): Promise<Partial<Ap
 const llmQueryNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
   // Prepare system prompt that instructs the model about available tools
   const mcpManager = context.mcpManager as McpClientManager;
-  const toolsList = await mcpManager.listAllTools();
+  let toolsPrompt = "You are a helpful AI assistant. Respond to the user's queries in a helpful and informative way.";
   
-  // Format tools for the system prompt
-  let toolsPrompt = "You have access to the following tools:\n";
-  
-  for (const server of toolsList) {
-    toolsPrompt += `\n## ${server.serverName} Server:\n`;
-    for (const tool of server.tools) {
-      toolsPrompt += `- ${tool.name}: ${tool.description || 'No description'}\n`;
+  // Only attempt to list tools if mcpManager is available
+  if (mcpManager) {
+    try {
+      const toolsList = await mcpManager.listAllTools();
+      
+      // Format tools for the system prompt
+      if (toolsList.length > 0) {
+        toolsPrompt = "You have access to the following tools:\n";
+        
+        for (const server of toolsList) {
+          toolsPrompt += `\n## ${server.serverName} Server:\n`;
+          for (const tool of server.tools) {
+            toolsPrompt += `- ${tool.name}: ${tool.description || 'No description'}\n`;
+          }
+        }
+        
+        // If tools are available, add instructions
+        const hasTools = toolsList.some(server => server.tools?.length > 0);
+        
+        if (hasTools) {
+          toolsPrompt += "\nTo use a tool, respond with JSON in the following format:\n";
+          toolsPrompt += '```json\n{"server": "serverName", "tool": "toolName", "args": {"arg1": "value1"}}\n```\n';
+          toolsPrompt += "If you don't need to use a tool, just respond normally.";
+        }
+      }
+    } catch (error) {
+      console.error("Error listing tools:", error);
+      // Continue with default prompt if error occurs
     }
-  }
-  
-  // If no tools are available, don't add tool instructions
-  const hasTools = toolsList.length > 0 && toolsList.some(server => server.tools?.length > 0);
-  
-  if (hasTools) {
-    toolsPrompt += "\nTo use a tool, respond with JSON in the following format:\n";
-    toolsPrompt += '```json\n{"server": "serverName", "tool": "toolName", "args": {"arg1": "value1"}}\n```\n';
-    toolsPrompt += "If you don't need to use a tool, just respond normally.";
-  } else {
-    toolsPrompt = "You are a helpful AI assistant. Respond to the user's queries in a helpful and informative way.";
   }
   
   // Generate response
@@ -63,7 +73,7 @@ const llmQueryNode = async (state: AppState, context: any): Promise<Partial<AppS
 };
 
 // Helper to extract tool calls from LLM response
-function extractToolCall(response: string): any {
+function extractToolCall(response: string): ToolCall | null {
   // Look for JSON blocks in the response
   const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) || 
                    response.match(/\{[\s\S]*"server"[\s\S]*"tool"[\s\S]*\}/);
@@ -73,7 +83,11 @@ function extractToolCall(response: string): any {
       const jsonStr = jsonMatch[1] || jsonMatch[0];
       const parsed = JSON.parse(jsonStr);
       if (parsed.server && parsed.tool) {
-        return parsed;
+        return {
+          server: parsed.server,
+          tool: parsed.tool,
+          args: parsed.args || {}
+        };
       }
     } catch (e) {
       console.error("Failed to parse tool call JSON:", e);
@@ -87,6 +101,19 @@ const toolExecutionNode = async (state: AppState, context: any): Promise<Partial
   if (!toolCall) return {};
   
   const mcpManager = context.mcpManager as McpClientManager;
+  
+  // If mcpManager is not available, return an error
+  if (!mcpManager) {
+    const errorMsg = `Error: No MCP Manager available to execute tool ${toolCall.tool}`;
+    console.error(errorMsg);
+    
+    return {
+      messages: [...state.messages, 
+        { role: "ai", content: state.aiResponse || "I tried to use a tool but couldn't." },
+        { role: "system", content: errorMsg }
+      ]
+    };
+  }
   
   try {
     const result = await mcpManager.callTool(
@@ -132,6 +159,9 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
   workflow.addNode("entryPoint", entryPointNode);
   workflow.addNode("llmQuery", llmQueryNode);
   workflow.addNode("toolExecution", toolExecutionNode);
+
+  // Set the entrypoint
+  workflow.setEntryPoint("entryPoint");
 
   // Add edges
   workflow.addEdge("entryPoint", "llmQuery");
