@@ -2,16 +2,9 @@ import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createLogger } from '../utils/logger';
+import { McpServerConfig } from '../utils/configLoader';
 
 const logger = createLogger('mcpClient');
-
-interface McpServerConfig {
-  name: string;
-  transport: "stdio" | "http";
-  command?: string;
-  args?: string[];
-  url?: string;
-}
 
 export interface ToolInfo {
   name: string;

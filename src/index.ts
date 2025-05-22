@@ -8,6 +8,8 @@ import { createLogger } from './utils/logger';
 import { setupGlobalErrorHandlers } from './utils/errorHandler';
 import { initializeAgent } from './agent';
 import { startApiServer } from './server/api';
+import { loadMcpServerConfigs } from './utils/configLoader';
+import * as fs from 'node:fs';
 
 // Load environment variables early
 const envPath = path.resolve(process.cwd(), '.env');
@@ -30,6 +32,17 @@ function checkEnvironment(): boolean {
     logger.warn(`Missing or invalid environment variables: ${missingVars.join(', ')}`);
     logger.info('The system will run in limited functionality mode');
     return false;
+  }
+  
+  // Check for MCP configuration
+  const configJsonPath = path.resolve(process.cwd(), 'config.json');
+  const hasConfigJson = fs.existsSync(configJsonPath) && fs.statSync(configJsonPath).size > 0;
+  const hasMcpEnvConfig = !!process.env.SKYNET_MCP_SERVERS_JSON;
+  
+  if (!hasConfigJson && !hasMcpEnvConfig) {
+    logger.info('No MCP configuration found in config.json or SKYNET_MCP_SERVERS_JSON. Using defaults.');
+  } else {
+    logger.info(`MCP configuration found: ${hasConfigJson ? 'config.json' : 'SKYNET_MCP_SERVERS_JSON'}`);
   }
   
   logger.info('Environment configuration validated');
@@ -64,7 +77,8 @@ async function main() {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error('Failed to initialize agent:', error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error('Failed to initialize agent:', err);
     process.exit(1);
   }
 }

@@ -6,10 +6,11 @@ import { createAgentWorkflow } from "./workflow";
 import { AppState } from "./schemas/appStateSchema";
 import { McpClientManager } from '../mcp/client';
 import * as dotenv from 'dotenv';
-import * as path from 'path';
+import * as path from 'node:path';
 import { createLogger } from '../utils/logger';
 import { WorkflowError } from '../utils/errorHandler';
 import { updateComponentHealth, HealthStatus } from '../utils/health';
+import { loadMcpServerConfigs } from '../utils/configLoader';
 
 // Initialize logger
 const logger = createLogger('agent');
@@ -28,25 +29,9 @@ let mcpManager: McpClientManager | null = null;
  */
 export async function initializeAgent(): Promise<{ agentWorkflow: any; mcpManager: McpClientManager | null }> {
   try {
-    // Configure MCP servers - these will be customizable in the future
-    const mcpServers: any[] = [
-      // For initial testing, we'll use minimal configuration
-      // We can add real MCP servers as needed
-      /*
-      {
-        name: "desktopCommander",
-        transport: "stdio",
-        command: "npx",
-        args: ["-y", "@wonderwhy-er/desktop-commander"]
-      },
-      {
-        name: "playwright",
-        transport: "stdio",
-        command: "npx",
-        args: ["@playwright/mcp@latest"]
-      }
-      */
-    ];
+    // Load MCP server configurations from the config loader
+    const mcpServers = loadMcpServerConfigs();
+    logger.info(`Loaded ${mcpServers.length} MCP server configurations`);
     
     // Initialize MCP client manager if we have servers configured
     if (mcpServers.length > 0) {

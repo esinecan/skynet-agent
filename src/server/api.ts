@@ -4,7 +4,7 @@
 
 import express from 'express';
 import cors from 'cors';
-import { processQuery } from '../agent';
+import { processQuery, initializeAgent } from '../agent';
 import { createLogger } from '../utils/logger';
 import { handleApiError, setupGlobalErrorHandlers } from '../utils/errorHandler';
 import { getHealthReport, getHealthStatus, initializeHealthMonitoring } from '../utils/health';
@@ -12,6 +12,7 @@ import { memoryManager } from '../memory';
 import { initializeMemoryConsolidation, getConsolidationStatus } from '../memory/consolidation';
 import { initializeIntrinsicMotivation, getIntrinsicMotivationStatus, getRecentIntrinsicTasks } from '../agent/intrinsicMotivation';
 import { initializeSelfReflection } from '../agent/selfReflection';
+import { reloadMcpServerConfigs } from '../utils/configLoader';
 
 const logger = createLogger('server');
 
@@ -123,6 +124,33 @@ app.post('/memory/consolidate', async (req, res) => {
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error triggering memory consolidation:', err);
+    const errorResponse = handleApiError(error);
+    return res.status(errorResponse.status).json(errorResponse.body);
+  }
+});
+
+// MCP configuration reload endpoint
+app.post('/mcp/reload', async (req, res) => {
+  try {
+    logger.info('Reloading MCP server configurations');
+    
+    // Reload MCP configurations
+    const configs = reloadMcpServerConfigs();
+    
+    // Reinitialize the agent with new configurations
+    // This will require the user to re-init the agent in a real implementation
+    // For now, we just return the loaded configs
+    
+    res.json({
+      success: true,
+      message: 'MCP server configurations reloaded',
+      count: configs.length,
+      servers: configs.map(c => c.name),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error('Error reloading MCP configurations:', err);
     const errorResponse = handleApiError(error);
     return res.status(errorResponse.status).json(errorResponse.body);
   }

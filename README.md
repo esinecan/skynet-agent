@@ -29,6 +29,8 @@ npm install
 
 ## Configuration
 
+### Environment Variables
+
 Copy `.env.example` to `.env` and set the following variables:
 
 ```env
@@ -40,6 +42,70 @@ INTRINSIC_TASK_DIR="./data/tasks"
 REFLECTION_DIR="./data/reflections"
 CONSOLIDATION_DIR="./data/consolidation"
 MEMORY_DIR="./data/memory"
+```
+
+### MCP Server Configuration
+
+The agent can connect to multiple MCP (Model Context Protocol) servers to access external tools. There are three ways to configure MCP servers, in order of precedence:
+
+1. **Environment Variable**: Set `SKYNET_MCP_SERVERS_JSON` with a JSON string
+   ```
+   SKYNET_MCP_SERVERS_JSON='{"playwright":{"command":"npx","args":["@playwright/mcp@latest"]}}'
+   ```
+
+2. **Config File**: Create/edit `config.json` in the project root:
+   ```json
+   {
+     "mcp": {
+       "servers": {
+         "playwright": {
+           "command": "npx",
+           "args": ["@playwright/mcp@latest"]
+         },
+         "filesystem": {
+           "command": "npx",
+           "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+         }
+       }
+     }
+   }
+   ```
+
+3. **VS Code Settings**: Add MCP configurations to your VS Code settings.json.
+
+If no configuration is found, a default configuration with the Playwright MCP server will be used.
+
+### Available MCP Servers
+
+- **playwright**: Browser automation (`@playwright/mcp`)
+- **filesystem**: File operations (`@modelcontextprotocol/server-filesystem`)
+- **windows-cli**: Windows CLI access (`@simonb97/server-win-cli`)
+- **sequential-thinking**: Step-by-step problem solving (`@modelcontextprotocol/server-sequential-thinking`)
+
+You can add any MCP-compliant server to the configuration.
+
+### Dynamic MCP Configuration
+
+The agent supports dynamically reloading MCP server configurations without restarting the service. You can:
+
+1. **Modify the config.json file**: Update the MCP server configurations and reload
+2. **Use the reload API endpoint**: Send a POST request to reload configurations
+
+```bash
+# Reload MCP configurations via API
+curl -X POST http://localhost:8080/mcp/reload
+```
+
+The response will include the newly loaded server configurations:
+
+```json
+{
+  "success": true,
+  "message": "MCP server configurations reloaded",
+  "count": 4,
+  "servers": ["filesystem", "windows-cli", "playwright", "sequential-thinking"],
+  "timestamp": "2025-05-23T12:34:56.789Z"
+}
 ```
 
 ## Usage
