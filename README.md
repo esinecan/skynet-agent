@@ -1,4 +1,4 @@
-# Skynet Agent
+# Skynet Agent (Warning: implementation not finished yet)
 
 A cognitive AI agent with short-term and long-term memory layers, tool-calling capabilities, and autonomous behavior.
 
