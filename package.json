@@ -4,13 +4,19 @@
   "description": "A cognitive AI agent with short-term and long-term memory capabilities",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "tsc",
+    "build:client": "cd client && npm run build",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "dev:gui": "ts-node-dev --respawn --transpile-only src/index.ts --gui",
+    "dev:gui": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "ts-node-dev --respawn --transpile-only src/index.ts --gui",
+    "dev:client": "cd client && npm run dev",
     "gui": "node dist/index.js --gui",
     "lint": "eslint . --ext .ts",
-    "test": "jest"
+    "test": "jest",
+    "install:all": "npm install && cd client && npm install",
+    "postinstall": "cd client && npm install"
   },
   "keywords": [
     "ai",
@@ -29,6 +35,7 @@
     "@langchain/langgraph-checkpoint": "^0.0.17",
     "@modelcontextprotocol/sdk": "^1.11.4",
     "@types/multer": "^1.4.12",
+    "@zilliz/milvus2-sdk-node": "^2.5.9",
     "axios": "^1.9.0",
     "concurrently": "^9.1.2",
     "cors": "^2.8.5",

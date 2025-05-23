@@ -32,6 +32,8 @@ interface SystemMetrics {
   requestsProcessed: number;
   llmCallsMade: number;
   toolCallsMade: number;
+  memoriesStored: number;
+  memoriesRetrieved: number;
   errors: Record<string, number>; // error counts by type
 }
 
@@ -50,6 +52,8 @@ const healthState: {
     requestsProcessed: 0,
     llmCallsMade: 0,
     toolCallsMade: 0,
+    memoriesStored: 0,
+    memoriesRetrieved: 0,
     errors: {}
   }
 };
@@ -109,7 +113,7 @@ function calculateOverallHealth(): void {
  * Increment a metric counter
  * @param metric Metric name
  */
-export function incrementMetric(metric: 'requestsProcessed' | 'llmCallsMade' | 'toolCallsMade'): void {
+export function incrementMetric(metric: 'requestsProcessed' | 'llmCallsMade' | 'toolCallsMade' | 'memoriesStored' | 'memoriesRetrieved'): void {
   healthState.metrics[metric]++;
 }
 
@@ -127,6 +131,35 @@ export function recordError(errorType: string): void {
 export function updateMetrics(): void {
   healthState.metrics.uptime = (Date.now() - healthState.metrics.startTime.getTime()) / 1000;
   healthState.metrics.memoryUsage = process.memoryUsage();
+}
+
+/**
+ * Perform health check on Milvus memory system
+ */
+export async function checkMilvusHealth(): Promise<void> {
+  try {
+    // Import here to avoid circular dependencies
+    const { memoryManager } = await import('../memory/index.js');
+    
+    const isHealthy = await memoryManager.healthCheck();
+    const memoryCount = await memoryManager.getMemoryCount();
+    
+    if (isHealthy) {
+      updateComponentHealth('milvus', HealthStatus.HEALTHY, 'Milvus connection active', {
+        memoryCount,
+        lastCheck: new Date().toISOString()
+      });
+    } else {
+      updateComponentHealth('milvus', HealthStatus.UNHEALTHY, 'Milvus connection failed', {
+        lastCheck: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    updateComponentHealth('milvus', HealthStatus.UNHEALTHY, 'Milvus health check error', {
+      error: error instanceof Error ? error.message : String(error),
+      lastCheck: new Date().toISOString()
+    });
+  }
 }
 
 /**
@@ -199,6 +232,11 @@ export function initializeHealthMonitoring(): void {
   setInterval(() => {
     updateMetrics();
     
+    // Check Milvus health every minute
+    checkMilvusHealth().catch(error => {
+      logger.error('Milvus health check failed', error);
+    });
+    
     // Log periodic health status
     logger.debug('Health status update', {
       status: healthState.overall,
@@ -206,7 +244,8 @@ export function initializeHealthMonitoring(): void {
       memory: {
         rss: Math.round(healthState.metrics.memoryUsage.rss / 1024 / 1024) + 'MB',
         heapUsed: Math.round(healthState.metrics.memoryUsage.heapUsed / 1024 / 1024) + 'MB'
-      }
+      },
+      components: Object.keys(healthState.components).length
     });
   }, 60000); // Check every minute
   

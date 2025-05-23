@@ -5,6 +5,8 @@
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { processQuery, initializeAgent } from '../agent';
 import { createLogger } from '../utils/logger';
 import { handleApiError, setupGlobalErrorHandlers } from '../utils/errorHandler';
@@ -22,9 +24,6 @@ const logger = createLogger('server');
 const app = express();
 app.use(express.json());
 app.use(cors());
-
-// Serve static files from the public directory
-app.use(express.static('public'));
 
 // Set up global error handlers
 setupGlobalErrorHandlers();
@@ -360,3 +359,30 @@ export function startApiServer(port: number = 3000, maxRetries: number = 5): Pro
     attemptListen(port, maxRetries);
   });
 }
+
+// Serve React build in production
+const setupClientRoutes = () => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const clientDistPath = path.join(__dirname, '../../client/dist');
+  
+  logger.info(`Environment: ${isProduction ? 'production' : 'development'}`);
+  
+  if (isProduction && fs.existsSync(clientDistPath)) {
+    // Serve static files from the React build
+    logger.info(`Serving React app from ${clientDistPath}`);
+    app.use(express.static(clientDistPath));
+    
+    // Handle React routing, return all non-API routes to React app
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api')) {
+        return next();
+      }
+      res.sendFile(path.join(clientDistPath, 'index.html'));
+    });
+  } else {
+    logger.info('Development mode: Not serving React app');
+  }
+};
+
+// Call this before starting the server
+setupClientRoutes();
