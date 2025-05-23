@@ -1,4 +1,4 @@
-# Skynet Agent
+# Skynet Agent (Warning: implementation not finished yet)
 
 Skynet Agent is an autonomous AI assistant built with Node.js and TypeScript. It integrates with Google Gemini, supports intrinsic motivation, self-reflection, memory management, and external tool execution via the Model Context Protocol (MCP). It exposes an HTTP API for interaction.
 
