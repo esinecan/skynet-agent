@@ -2,71 +2,20 @@
 
 *Last Updated: May 23, 2025*
 
-**⚠️ Note:** The `mcp.md` file was deleted in recent changes. This file contained important MCP SDK documentation. Consider restoring it from git history if needed for reference.
+
 
 This document contains prioritized development tasks for the Skynet Agent project based on the current implementation state. The agent has a solid foundation with MCP integration, memory systems, and self-reflection already working - these todos focus on completing and optimizing the existing functionality.
 
 ## Recent Completions
 - ✅ **Real Embeddings Implementation** - Memory system now uses Gemini's embedding-001 model instead of random vectors, making memory retrieval actually functional.
+- ✅ **Self-Reflection System** - Already implemented and working in workflow with adaptive response generation
+- ✅ **Multi-Step Reasoning** - Already implemented in selfReflection.ts with performMultiStepReasoning function
 
 ## 🔥 Critical Priority (Quick Wins)
 
-### 1. Enable Adaptive Response Generation
-**Status:** Self-reflection works but improvements aren't used
-**Files to modify:** `src/agent/workflow.ts`
-**Estimated effort:** 30 minutes
-**Impact:** Immediate response quality improvement
-
-**Problem:** The `performSelfReflection` function generates improved responses but they're never used. The `generateImprovement` parameter is hardcoded to `false`.
-
-**Implementation:**
-```typescript
-// In selfReflectionNode (src/agent/workflow.ts), line ~219
-const reflectionResult = await performSelfReflection(
-  latestUserMessage.content,
-  state.aiResponse,
-  mode,
-  true // Enable improved response generation ← CHANGE THIS
-);
-
-// Add after line ~228:
-let finalAiResponse = state.aiResponse;
-if (reflectionResult.improvedResponse && reflectionResult.score !== undefined && reflectionResult.score < 7) {
-  logger.info('Using improved response due to low quality score', {
-    originalScore: reflectionResult.score,
-    improvedResponseLength: reflectionResult.improvedResponse.length
-  });
-  finalAiResponse = reflectionResult.improvedResponse;
-  
-  // Update the messages array with the improved response
-  const updatedMessages = [...state.messages];
-  const lastAiMessageIndex = updatedMessages.length - 1;
-  if (updatedMessages[lastAiMessageIndex]?.role === "ai") {
-    updatedMessages[lastAiMessageIndex].content = finalAiResponse;
-  }
-  
-  return {
-    aiResponse: finalAiResponse,
-    messages: updatedMessages,
-    reflectionResult: {
-      score: reflectionResult.score,
-      critique: reflectionResult.critique,
-      improved: true
-    }
-  };
-}
-
-return {
-  aiResponse: finalAiResponse,
-  reflectionResult: {
-    score: reflectionResult.score,
-    critique: reflectionResult.critique,
-    improved: false
-  }
-};
-```
-
-**Testing:** Ask complex questions and monitor logs for "Using improved response" messages.
+### 1. ✅ COMPLETED - Adaptive Response Generation Already Working
+**Status:** COMPLETED - Already implemented and working in workflow
+**Implementation:** The `selfReflectionNode` in workflow.ts already has adaptive response generation with improvement threshold logic. The system generates improved responses when quality score is below 7.
 
 ---
 
@@ -87,7 +36,7 @@ return {
 
 ---
 
-### 3. Add Memory Pruning System
+### 2. Add Memory Pruning System
 **Status:** Not implemented, memory will grow indefinitely
 **Files to modify:** `src/memory/index.ts`, `src/memory/consolidation.ts`
 **Estimated effort:** 2-3 hours
@@ -236,131 +185,19 @@ MAX_MEMORY_AGE_DAYS=90
 
 ## 🔶 High Priority (Major Features)
 
-### 4. Integrate Multi-Step Reasoning into Workflow
+### 3. Integrate Multi-Step Reasoning into Workflow
 **Status:** Function exists but not accessible in main flow
 **Files to modify:** `src/agent/workflow.ts`, `src/agent/schemas/appStateSchema.ts`
 **Estimated effort:** 3-4 hours
 **Impact:** Enables advanced reasoning for complex problems
 
-**Problem:** `performMultiStepReasoning` function exists but isn't integrated into the workflow, so users can't trigger it.
+**Problem:** `performMultiStepReasoning` function exists in selfReflection.ts but isn't integrated into the main workflow, so users can't easily trigger it.
 
-**Implementation:**
-
-1. **Update AppStateSchema** in `src/agent/schemas/appStateSchema.ts`:
-```typescript
-// Add after memoryId field:
-reasoningSteps: z.array(z.string()).optional().describe("Steps from multi-step reasoning"),
-finalReasoningAnswer: z.string().optional().describe("Final answer from reasoning"),
-triggerMultiStepReasoning: z.boolean().optional().describe("Flag to trigger multi-step reasoning")
-```
-
-2. **Add detection logic in llmQueryNode** in `src/agent/workflow.ts`:
-```typescript
-// Add after toolCall extraction, around line 125:
-let triggerMultiStepReasoning = false;
-
-// Detect complex problems that need step-by-step reasoning
-const complexityIndicators = [
-  'break down this problem',
-  'step by step',
-  'analyze this',
-  'walk me through',
-  'how would you approach',
-  'what are the steps'
-];
-
-const queryLower = latestUserMessage.content.toLowerCase();
-const isComplex = complexityIndicators.some(indicator => queryLower.includes(indicator)) ||
-                 latestUserMessage.content.length > 200; // Long queries likely need reasoning
-
-if (!toolCall && isComplex) {
-  logger.info('Triggering multi-step reasoning for complex query');
-  triggerMultiStepReasoning = true;
-}
-
-// Update the return logic:
-if (toolCall) {
-  // Tool call logic remains the same...
-} else if (triggerMultiStepReasoning) {
-  return {
-    aiResponse: response, // Keep initial response for context
-    triggerMultiStepReasoning: true,
-    messages: [...state.messages, { role: "ai", content: "Let me break this down step by step..." }]
-  };
-} else {
-  // Normal response logic remains the same...
-}
-```
-
-3. **Create multiStepReasoningNode**:
-```typescript
-// Add after memoryStorageNode, around line 270:
-const multiStepReasoningNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
-  try {
-    logger.info('Performing multi-step reasoning');
-    
-    const latestUserMessage = state.messages
-      .filter(m => m.role === "human")
-      .pop();
-    
-    if (!latestUserMessage) {
-      logger.warn('No user message found for multi-step reasoning');
-      return {};
-    }
-    
-    const { steps, finalAnswer } = await performMultiStepReasoning(
-      latestUserMessage.content,
-      state.aiResponse || ''
-    );
-    
-    logger.info('Multi-step reasoning completed', {
-      stepCount: steps.length,
-      finalAnswerLength: finalAnswer.length
-    });
-    
-    return {
-      reasoningSteps: steps,
-      finalReasoningAnswer: finalAnswer,
-      aiResponse: finalAnswer,
-      messages: [...state.messages, { role: "ai", content: finalAnswer }]
-    };
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    logger.error('Error in multi-step reasoning node', err);
-    throw new WorkflowError('Error during multi-step reasoning', { cause: err });
-  }
-};
-```
-
-4. **Update workflow graph** in `createAgentWorkflow`:
-```typescript
-// Add the node (around line 300):
-workflow.addNode("multiStepReasoning", multiStepReasoningNode);
-
-// Update conditional edges (around line 315):
-workflow.addConditionalEdges(
-  "llmQuery",
-  (state: AppState) => {
-    if (state.toolCall) return "tool";
-    if (state.triggerMultiStepReasoning) return "reasoning";
-    return "reflection";
-  },
-  {
-    tool: "toolExecution",
-    reasoning: "multiStepReasoning", 
-    reflection: "selfReflection"
-  }
-);
-
-// Add edge from reasoning to reflection:
-workflow.addEdge("multiStepReasoning", "selfReflection");
-```
-
-**Testing:** Ask "break down this problem: how does photosynthesis work?" and verify step-by-step reasoning.
+**Note:** The function is already implemented and can be called manually, but workflow integration would make it automatically triggered for complex queries.
 
 ---
 
-### 5. Implement Workflow Checkpointing
+### 4. Implement Workflow Checkpointing
 **Status:** No persistence across restarts
 **Files to create:** `src/utils/fileCheckpointer.ts`
 **Files to modify:** `src/agent/workflow.ts`, `src/agent/index.ts`
@@ -501,7 +338,7 @@ try {
 
 ## 🔷 Medium Priority (Enhancements)
 
-### 6. Enhanced Intrinsic Task System
+### 5. Enhanced Intrinsic Task System
 **Status:** Only reflection task exists
 **Files to modify:** `src/agent/intrinsicMotivation.ts`
 **Estimated effort:** 4-6 hours
@@ -695,7 +532,7 @@ if (idleTimeMinutes >= IDLE_THRESHOLD_MINUTES) {
 
 ---
 
-### 7. Performance Monitoring Dashboard
+### 6. Performance Monitoring Dashboard
 **Status:** Not implemented
 **Files to create:** `src/monitoring/dashboard.ts`, `src/server/dashboardRoutes.ts`
 **Estimated effort:** 6-8 hours
@@ -856,7 +693,7 @@ app.use('/', dashboardRoutes);
 
 ## 🔹 Low Priority (Nice to Have)
 
-### 8. Advanced MCP Server Management
+### 7. Advanced MCP Server Management
 **Status:** Working but could be enhanced
 **Files to modify:** `src/mcp/client.ts`, `src/utils/configLoader.ts`
 **Estimated effort:** 3-4 hours
@@ -867,7 +704,7 @@ app.use('/', dashboardRoutes);
 - Automatic retry on connection failure
 - Server capability discovery
 
-### 9. Conversation Export/Import
+### 8. Conversation Export/Import
 **Status:** Not implemented
 **Files to create:** `src/utils/conversationManager.ts`
 **Estimated effort:** 2-3 hours
@@ -877,7 +714,7 @@ app.use('/', dashboardRoutes);
 - Import conversation history
 - Conversation search and filtering
 
-### 10. Advanced Memory Analytics
+### 9. Advanced Memory Analytics
 **Status:** Basic memory system working
 **Files to create:** `src/memory/analytics.ts`
 **Estimated effort:** 4-5 hours
@@ -894,10 +731,10 @@ app.use('/', dashboardRoutes);
 
 For maximum impact with minimal effort:
 
-1. **Enable Adaptive Response Generation** (30 min) - Immediate quality improvement
+1. ~~**Enable Adaptive Response Generation**~~ ✅ COMPLETED - Already working in production
 2. ~~**Implement Real Embeddings**~~ ✅ COMPLETED - Memory system now functional with Gemini embeddings
 3. **Add Memory Pruning** (2-3 hours) - Prevents long-term issues
-4. **Integrate Multi-Step Reasoning** (3-4 hours) - Adds powerful capability
+4. **Workflow Integration for Multi-Step Reasoning** (3-4 hours) - Auto-trigger for complex queries
 5. **Implement Workflow Checkpointing** (4-5 hours) - Major reliability improvement
 6. **Enhanced Intrinsic Tasks** (4-6 hours) - More interesting autonomous behavior
 

@@ -11,6 +11,10 @@ import { startApiServer } from './server/api';
 import { loadMcpServerConfigs } from './utils/configLoader';
 import * as fs from 'node:fs';
 
+// Parse command-line arguments
+const args = process.argv.slice(2);
+const enableGUI = args.includes('--gui');
+
 // Load environment variables early
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
@@ -63,13 +67,27 @@ async function main() {
       workflowAvailable: !!agentWorkflow,
       mcpAvailable: !!mcpManager
     });
-    
-    // Start the API server - use a higher port number
+      // Start the API server - use a higher port number
     const port = Number.parseInt(process.env.PORT || process.env.API_PORT || '9000');
     await startApiServer(port, 10); // Increase retries to 10
     
+    // If GUI mode is enabled, open the browser
+    if (enableGUI) {
+      const url = `http://localhost:${port}`;
+      logger.info(`GUI mode enabled, access Skynet at ${url}`);
+      
+      // Try to open the browser if running in a desktop environment
+      try {
+        const { default: open } = await import('open');
+        await open(url);
+      } catch (error) {
+        logger.info(`Browser auto-open not available. Please navigate to ${url} manually.`);
+      }
+    }
+    
     logger.info('Skynet Agent is ready for interaction', {
       port,
+      guiMode: enableGUI,
       envValid,
       googleApiKey: process.env.GEMINI_API_KEY ? 'configured' : 'missing',
       idleThreshold: process.env.IDLE_THRESHOLD_MINUTES || '10',
