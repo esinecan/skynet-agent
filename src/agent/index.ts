@@ -1,13 +1,24 @@
+/**
+ * Agent initialization and query processing
+ */
+
 import { createAgentWorkflow } from "./workflow";
 import { AppState } from "./schemas/appStateSchema";
 import { McpClientManager } from '../mcp/client';
 import * as dotenv from 'dotenv';
-import * as path from 'path';
+import * as path from 'node:path';
+import { createLogger } from '../utils/logger';
+import { WorkflowError } from '../utils/errorHandler';
+import { updateComponentHealth, HealthStatus } from '../utils/health';
+import { loadMcpServerConfigs } from '../utils/configLoader';
+
+// Initialize logger
+const logger = createLogger('agent');
 
 // Load environment variables early - before any imports execute
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
-console.log("Environment loaded in agent/index.ts");
+logger.info("Environment loaded in agent/index.ts");
 
 // Will be initialized during startup
 let agentWorkflow: any = null;
@@ -16,48 +27,33 @@ let mcpManager: McpClientManager | null = null;
 /**
  * Initialize the agent with MCP clients and workflow
  */
-export async function initializeAgent() {
+export async function initializeAgent(): Promise<{ agentWorkflow: any; mcpManager: McpClientManager | null }> {
   try {
-    // Configure MCP servers - these will be customizable in the future
-    const mcpServers = [
-      // For initial testing, we'll use minimal configuration
-      // We can add real MCP servers as needed
-      /*
-      {
-        name: "desktopCommander",
-        transport: "stdio",
-        command: "npx",
-        args: ["-y", "@wonderwhy-er/desktop-commander"]
-      },
-      {
-        name: "playwright",
-        transport: "stdio",
-        command: "npx",
-        args: ["@playwright/mcp@latest"]
-      }
-      */
-    ];
+    // Load MCP server configurations from the config loader
+    const mcpServers = loadMcpServerConfigs();
+    logger.info(`Loaded ${mcpServers.length} MCP server configurations`);
     
     // Initialize MCP client manager if we have servers configured
     if (mcpServers.length > 0) {
       mcpManager = new McpClientManager(mcpServers);
       await mcpManager.initialize();
-      console.log('MCP clients initialized');
+      logger.info('MCP clients initialized');
       
       // Create workflow with MCP manager
       agentWorkflow = createAgentWorkflow(mcpManager);
     } else {
       // For now, create workflow without MCP integrations
-      console.log('No MCP servers configured, running in standalone mode');
+      logger.info('No MCP servers configured, running in standalone mode');
       agentWorkflow = createAgentWorkflow();
     }
     
-    console.log('Agent workflow initialized');
+    logger.info('Agent workflow initialized');
     
     return { agentWorkflow, mcpManager };
   } catch (error) {
-    console.error('Error initializing agent:', error);
-    throw error;
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error('Error initializing agent:', err);
+    throw err;
   }
 }
 
@@ -78,16 +74,17 @@ export async function processQuery(query: string, threadId: string = "default"):
   // Check if API key is valid - if not, run in simple echo mode for testing
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your_gemini_api_key_here") {
-    console.log("Running in echo mode due to missing API key");
+    logger.warn("Running in echo mode due to missing API key");
     return `[ECHO MODE] You said: "${query}" (API key not configured, echo mode enabled)`;
   }
   
   try {
     // Get existing conversation state or create new one
     const existingState = conversationStore[threadId];
-    console.log(`Processing query for thread ${threadId} - Existing state:`, existingState ? 
-      `Has ${existingState.messages?.length || 0} messages` : 
-      'No previous state');
+    logger.info(`Processing query for thread ${threadId} - Existing state:`, {
+      hasState: !!existingState,
+      messageCount: existingState?.messages?.length || 0
+    });
     
     // Initialize state with the user's query - preserve history if it exists
     const initialState: AppState = {
@@ -95,26 +92,26 @@ export async function processQuery(query: string, threadId: string = "default"):
       messages: existingState?.messages || []
     };
 
-    console.log(`Invoking workflow with initial state:`, {
+    logger.info(`Invoking workflow with initial state:`, {
       input: initialState.input,
       messageCount: initialState.messages.length
     });
     
     // Try to inspect the workflow object
-    console.log("Workflow type:", agentWorkflow.constructor.name);
-    console.log("Available methods:", Object.getOwnPropertyNames(Object.getPrototypeOf(agentWorkflow)));
+    logger.info("Workflow type:", { type: agentWorkflow.constructor.name });
+    logger.info("Available methods:", { methods: Object.getOwnPropertyNames(Object.getPrototypeOf(agentWorkflow)) });
     
     try {
       // Invoke the workflow with the initial state
-      console.log("Starting workflow invocation...");
+      logger.info("Starting workflow invocation...");
       const resultState = await agentWorkflow.invoke(initialState);
-      console.log("Workflow invocation completed successfully");
+      logger.info("Workflow invocation completed successfully");
       
       // Store updated state for next interaction
       conversationStore[threadId] = resultState;
       
       // Log the result structure
-      console.log("Result structure:", {
+      logger.info("Result structure:", {
         hasAiResponse: !!resultState.aiResponse,
         responseLength: resultState.aiResponse?.length || 0,
         messageCount: resultState.messages?.length || 0,
@@ -124,19 +121,20 @@ export async function processQuery(query: string, threadId: string = "default"):
       
       // Return the AI's response
       return resultState.aiResponse || "No response generated";
-    } catch (workflowError) {
+    } catch (workflowError: any) {
       // Detailed error logging for invoke method
-      console.error("Workflow invocation error:", workflowError);
-      console.error("Error stack:", workflowError.stack);
+      const err = workflowError instanceof Error ? workflowError : new Error(String(workflowError));
+      logger.error("Workflow invocation error:", err);
       
-      if (workflowError.message.includes('checkpointer.get')) {
+      if (workflowError.message && workflowError.message.includes('checkpointer.get')) {
         return `Error with checkpointer: ${workflowError.message}. This is likely an issue with the LangGraph memory system.`;
       }
       
-      return `Workflow error: ${workflowError.message}`;
+      return `Workflow error: ${workflowError.message || 'Unknown error'}`;
     }
-  } catch (error: any) { // Use any to safely access error properties
-    console.error(`Error processing query in thread ${threadId}:`, error);
-    return `Sorry, I encountered an error: ${error.message}`;
+  } catch (error: any) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error(`Error processing query in thread ${threadId}:`, err);
+    return `Sorry, I encountered an error: ${error.message || 'Unknown error'}`;
   }
 }

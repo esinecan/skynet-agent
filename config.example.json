@@ -1,0 +1,47 @@
+{
+  "mcp": {
+    "servers": {
+      "filesystem": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "C:/Users/<your-username>/Documents/Skynet"
+        ]
+      },
+      "windows-cli": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@simonb97/server-win-cli"
+        ]
+      },
+      "playwright": {
+        "command": "npx",
+        "args": [
+          "@playwright/mcp@latest"
+        ]
+      },
+      "sequential-thinking": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-sequential-thinking"
+        ]
+      }
+    }
+  },
+  "agent": {
+    "model": "gemini-pro",
+    "maxTokens": 2048,
+    "temperature": 0.7
+  },
+  "memory": {
+    "storePath": "./data/memory",
+    "consolidationInterval": 10
+  },
+  "server": {
+    "port": 8080,
+    "host": "localhost"
+  }
+}

@@ -14,6 +14,7 @@ out/
 .env.development.local
 .env.test.local
 .env.production.local
+config.json
 
 # Logs
 logs
@@ -46,6 +47,7 @@ coverage/
 
 # Vector database files (if using local vector DB)
 vector_db/
+data/
 *.faiss
 
 # Temporary files
