@@ -103,11 +103,6 @@ For production use, set up Milvus for high-performance vector storage:
    MILVUS_ADDRESS=localhost:19530
    MILVUS_COLLECTION=skynet_memories
    ```
-
-#### Development: In-Memory Fallback
-
-If Milvus is not available, the system automatically falls back to in-memory vector storage suitable for development and testing.
-
 ### MCP Server Configuration
 
 The agent can connect to multiple MCP (Model Context Protocol) servers to access external tools. There are three ways to configure MCP servers, in order of precedence:
