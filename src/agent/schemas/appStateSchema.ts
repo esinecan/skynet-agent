@@ -20,7 +20,8 @@ export type ToolCall = z.infer<typeof ToolCallSchema>;
 // Define reflection result structure
 export const ReflectionResultSchema = z.object({
   score: z.number().optional(),
-  critique: z.string()
+  critique: z.string(),
+  improved: z.boolean().optional().describe("Whether the response was improved")
 });
 
 export type ReflectionResult = z.infer<typeof ReflectionResultSchema>;

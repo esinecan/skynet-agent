@@ -290,7 +290,7 @@ const selfReflectionNode = async (state: AppState, context: any): Promise<Partia
       latestUserMessage.content,
       state.aiResponse,
       mode,
-      false // Don't generate improved response for now
+      true // Enable improved response generation
     );
     
     logger.info('Self-reflection completed', { 
@@ -298,12 +298,38 @@ const selfReflectionNode = async (state: AppState, context: any): Promise<Partia
       critiqueLength: reflectionResult.critique.length
     });
     
-    // For now, we'll just store the reflection result but not modify the response
-    // In a future version, we could use the improved response if the score is low
+    let finalAiResponse = state.aiResponse;
+    if (reflectionResult.improvedResponse && reflectionResult.score !== undefined && reflectionResult.score < 7) {
+      logger.info('Using improved response due to low quality score', {
+        originalScore: reflectionResult.score,
+        improvedResponseLength: reflectionResult.improvedResponse.length
+      });
+      finalAiResponse = reflectionResult.improvedResponse;
+      
+      // Update the messages array with the improved response
+      const updatedMessages = [...state.messages];
+      const lastAiMessageIndex = updatedMessages.length - 1;
+      if (updatedMessages[lastAiMessageIndex]?.role === "ai") {
+        updatedMessages[lastAiMessageIndex].content = finalAiResponse;
+      }
+      
+      return {
+        aiResponse: finalAiResponse,
+        messages: updatedMessages,
+        reflectionResult: {
+          score: reflectionResult.score,
+          critique: reflectionResult.critique,
+          improved: true
+        }
+      };
+    }
+
     return {
+      aiResponse: finalAiResponse,
       reflectionResult: {
         score: reflectionResult.score,
-        critique: reflectionResult.critique
+        critique: reflectionResult.critique,
+        improved: false
       }
     };
   } catch (error) {

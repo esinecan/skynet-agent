@@ -1,7 +1,7 @@
 /**
  * Test script for Skynet Agent core functionality
  * Tests basic query processing, memory operations, and health endpoints
- */
+ 
 
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -31,7 +31,7 @@ async function updateEnvFile() {
     
     // Update or add GEMINI_API_KEY
     if (envContent.includes('GEMINI_API_KEY=')) {
-      envContent = envContent.replace(/GEMINI_API_KEY=.*/, `GEMINI_API_KEY=${GOOGLE_API_KEY}`);
+      envContent = envContent.replace(/GEMINI_API_KEY=., `GEMINI_API_KEY=${GOOGLE_API_KEY}`);
     } else {
       envContent += `\nGEMINI_API_KEY=${GOOGLE_API_KEY}\n`;
     }
@@ -255,3 +255,4 @@ if (require.main === module) {
 }
 
 export { runTests };
+*/
