@@ -12,6 +12,8 @@ Skynet Agent is an autonomous AI assistant built with Node.js and TypeScript. It
 * External tool execution via MCP client manager
 * Express-based API server with health endpoints and global error handling
 * Structured logging and health monitoring utilities
+* Web-based GUI interface for easy interaction and conversation management
+* File upload support for sharing documents with the agent
 
 ## Prerequisites
 
@@ -133,6 +135,29 @@ Content-Type: application/json
 }
 ```
 
+## Using the Web GUI
+
+Skynet Agent now includes a web-based interface for easier interaction. To use the GUI:
+
+1. Start Skynet Agent with the GUI flag:
+   ```bash
+   # Development mode
+   npm run dev:gui
+   
+   # Production mode
+   npm run build
+   npm run gui
+   ```
+   
+2. The browser will automatically open to http://localhost:9000.
+
+3. Features of the GUI:
+   - Create and manage multiple chat sessions
+   - Real-time streaming responses
+   - Markdown rendering with syntax highlighting
+   - File upload for sharing documents with the agent
+   - Mobile-friendly responsive design
+
 ## Architecture
 
 * **src/index.ts**: Main entry point; loads environment, initializes logger, error handlers, agent, and API server.
@@ -151,11 +176,9 @@ Content-Type: application/json
   * `consolidation.ts`: Cron-scheduled task to summarize recent memories.
 * **src/mcp/client.ts**: MCP client manager for connecting to external tool servers, listing tools, and executing tool calls.
 * **src/server/api.ts**: Express server with `/query` endpoint, health routes, CORS, and request logging.
+* **src/db/sessions.ts**: Session management for GUI conversations.
+* **public/**: Frontend assets for the web GUI.
 * **src/utils/**: Utility modules
-
-  * `logger.ts`: Creates a namespaced logger (Winston-based).
-  * `errorHandler.ts`: Global error handlers for uncaught exceptions and promise rejections.
-  * `health.ts`: Health-status tracking, metrics, and health-report endpoints.
 
 ## Folder Structure
 
@@ -177,11 +200,14 @@ src/
 │   └── client.ts
 ├── server/
 │   └── api.ts
+├── db/
+│   └── sessions.ts
 └── utils/
     ├── logger.ts
     ├── errorHandler.ts
     └── health.ts
 ```
+
 Along with the mocked embeddings (which use a simple random vector for both storage and retrieval queries), several other parts of the Skynet Agent system are either mocked, simplified, or currently missing/unimplemented:
 
 ### Mocked/Simplified Components:
