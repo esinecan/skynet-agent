@@ -2,7 +2,12 @@
 
 *Last Updated: May 23, 2025*
 
+**⚠️ Note:** The `mcp.md` file was deleted in recent changes. This file contained important MCP SDK documentation. Consider restoring it from git history if needed for reference.
+
 This document contains prioritized development tasks for the Skynet Agent project based on the current implementation state. The agent has a solid foundation with MCP integration, memory systems, and self-reflection already working - these todos focus on completing and optimizing the existing functionality.
+
+## Recent Completions
+- ✅ **Real Embeddings Implementation** - Memory system now uses Gemini's embedding-001 model instead of random vectors, making memory retrieval actually functional.
 
 ## 🔥 Critical Priority (Quick Wins)
 
@@ -65,110 +70,20 @@ return {
 
 ---
 
-### 2. Implement Real Embeddings for Memory
-**Status:** Using random vectors, making memory retrieval useless
-**Files to modify:** `src/memory/index.ts`
-**Files to create:** `src/utils/embeddings.ts`
-**Estimated effort:** 2-3 hours
-**Impact:** Makes the memory system actually functional
+### 2. Implement Real Embeddings for Memory ✅ COMPLETED
+**Status:** COMPLETED - Real embeddings implemented using Gemini API
+**Files modified:** `src/memory/index.ts` 
+**Files created:** `src/utils/embeddings.ts`, `src/tests/embedding-test.ts`
+**Implementation date:** Based on changes.txt diff
 
-**Problem:** Memory uses `Math.random()` embeddings, so retrieval returns random results regardless of relevance.
+**What was implemented:**
+- Created `EmbeddingService` class using Gemini's embedding-001 model
+- Added deterministic hash-based fallback for when API is unavailable
+- Integrated with MemoryManager for both storage and retrieval
+- Created comprehensive test suite to verify functionality
+- Embeddings now use 384-dimensional vectors (standard size)
 
-**Implementation:**
-
-1. **Create embedding service** (`src/utils/embeddings.ts`):
-```typescript
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { createLogger } from './logger';
-
-const logger = createLogger('embeddings');
-
-export class EmbeddingService {
-  private genAI: GoogleGenerativeAI;
-  
-  constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      logger.warn('GEMINI_API_KEY not configured, using fallback embeddings');
-    } else {
-      this.genAI = new GoogleGenerativeAI(apiKey);
-    }
-  }
-  
-  async generateEmbedding(text: string): Promise<number[]> {
-    try {
-      if (!this.genAI) {
-        return this.hashBasedEmbedding(text);
-      }
-      
-      // Use Gemini's embedding model
-      const model = this.genAI.getGenerativeModel({ model: "text-embedding-004" });
-      const result = await model.embedContent(text);
-      
-      if (result.embedding && result.embedding.values) {
-        logger.debug(`Generated real embedding for text length ${text.length}`);
-        return result.embedding.values;
-      } else {
-        logger.warn('No embedding values returned, using fallback');
-        return this.hashBasedEmbedding(text);
-      }
-    } catch (error) {
-      logger.error('Failed to generate embedding, using fallback:', error);
-      return this.hashBasedEmbedding(text);
-    }
-  }
-  
-  // Deterministic fallback that's better than random
-  private hashBasedEmbedding(text: string): number[] {
-    const normalized = text.toLowerCase().trim();
-    const words = normalized.split(/\s+/);
-    const embedding = new Array(384).fill(0); // Standard embedding size
-    
-    // Create deterministic embedding based on text content
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      for (let j = 0; j < word.length; j++) {
-        const charCode = word.charCodeAt(j);
-        const index = (charCode + i + j) % embedding.length;
-        embedding[index] += (charCode / 255.0 - 0.5) * (1.0 / Math.sqrt(words.length + 1));
-      }
-    }
-    
-    // Normalize the vector
-    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    if (magnitude > 0) {
-      for (let i = 0; i < embedding.length; i++) {
-        embedding[i] /= magnitude;
-      }
-    }
-    
-    return embedding;
-  }
-}
-
-export const embeddingService = new EmbeddingService();
-```
-
-2. **Update MemoryManager** in `src/memory/index.ts`:
-```typescript
-// Add import at top
-import { embeddingService } from '../utils/embeddings';
-
-// Replace the mock embedding lines (~84-85) in storeMemory:
-// OLD: const mockEmbedding = Array(128).fill(0).map(() => Math.random() - 0.5);
-// NEW:
-const embedding = await embeddingService.generateEmbedding(text);
-
-// Replace the mock embedding lines (~108-109) in retrieveMemories:
-// OLD: const mockQueryEmbedding = Array(128).fill(0).map(() => Math.random() - 0.5);
-// NEW:
-const queryEmbedding = await embeddingService.generateEmbedding(query);
-
-// Update the search call:
-const results = this.vectorStore.search(queryEmbedding, limit);
-```
-
-**Testing:** Store a few memories, then query for related content and verify relevant memories are returned.
+**Testing:** Run `npx ts-node src/tests/embedding-test.ts` to verify embedding similarity and memory retrieval work correctly. Consider adding `"test:embeddings": "ts-node src/tests/embedding-test.ts"` to package.json scripts.
 
 ---
 
@@ -980,7 +895,7 @@ app.use('/', dashboardRoutes);
 For maximum impact with minimal effort:
 
 1. **Enable Adaptive Response Generation** (30 min) - Immediate quality improvement
-2. **Implement Real Embeddings** (2-3 hours) - Makes memory system functional
+2. ~~**Implement Real Embeddings**~~ ✅ COMPLETED - Memory system now functional with Gemini embeddings
 3. **Add Memory Pruning** (2-3 hours) - Prevents long-term issues
 4. **Integrate Multi-Step Reasoning** (3-4 hours) - Adds powerful capability
 5. **Implement Workflow Checkpointing** (4-5 hours) - Major reliability improvement

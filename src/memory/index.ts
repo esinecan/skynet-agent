@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger } from '../utils/logger';
 import { WorkflowError } from '../utils/errorHandler';
+import { embeddingService } from '../utils/embeddings';
 
 const logger = createLogger('memory');
 
@@ -169,17 +170,20 @@ class MemoryManager {
       // Generate a simple ID
       const id = `mem_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       
-      // In a real implementation, we would generate embeddings using an embedding model
-      // For this MVP, we'll use a simple mock embedding (random vector)
-      const mockEmbedding = Array(128).fill(0).map(() => Math.random() - 0.5);
+      // Generate real embeddings using the embedding service
+      logger.info('Generating embedding for memory storage', { textLength: text.length });
+      const embedding = await embeddingService.generateEmbedding(text);
       
       // Store the memory
-      this.vectorStore.add(id, text, mockEmbedding, metadata);
+      this.vectorStore.add(id, text, embedding, metadata);
       
       // Save to disk
       this.vectorStore.save(this.memoryFilePath);
       
-      logger.info(`Stored new memory with ID: ${id}`, { textLength: text.length });
+      logger.info(`Stored new memory with ID: ${id}`, { 
+        textLength: text.length,
+        embeddingSize: embedding.length
+      });
       
       return id;
     } catch (error) {
@@ -196,12 +200,12 @@ class MemoryManager {
     }
     
     try {
-      // In a real implementation, we would generate query embedding using an embedding model
-      // For this MVP, we'll use a simple mock embedding (random vector)
-      const mockQueryEmbedding = Array(128).fill(0).map(() => Math.random() - 0.5);
+      // Generate real query embedding using the embedding service
+      logger.info('Generating embedding for memory retrieval', { queryLength: query.length });
+      const queryEmbedding = await embeddingService.generateEmbedding(query);
       
       // Search for similar memories
-      const results = this.vectorStore.search(mockQueryEmbedding, limit);
+      const results = this.vectorStore.search(queryEmbedding, limit);
       
       logger.info(`Retrieved ${results.length} memories for query`, { 
         queryLength: query.length,

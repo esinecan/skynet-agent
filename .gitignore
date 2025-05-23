@@ -47,6 +47,7 @@ coverage/
 
 # Vector database files (if using local vector DB)
 vector_db/
+data/
 *.faiss
 
 # Temporary files
