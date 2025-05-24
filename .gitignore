@@ -46,10 +46,13 @@ coverage/
 .eslintcache
 
 # Vector database files (if using local vector DB)
-vector_db/
+volumes/
 data/
 *.faiss
 
 # Temporary files
 tmp/
 temp/
+
+# Sentry Config File
+.sentryclirc

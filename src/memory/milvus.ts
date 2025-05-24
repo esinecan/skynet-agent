@@ -3,6 +3,7 @@
  * Provides professional vector storage and retrieval using Milvus vector database
  */
 
+import * as Sentry from "@sentry/node";
 import { MilvusClient, DataType, MetricType, IndexType } from '@zilliz/milvus2-sdk-node';
 import { createLogger } from '../utils/logger';
 import { embeddingService } from '../utils/embeddings';
@@ -50,11 +51,7 @@ export class MilvusMemoryManager {
 
   constructor() {
     this.collectionName = MILVUS_CONFIG.collection_name;
-    this.client = new MilvusClient({
-      address: MILVUS_CONFIG.address,
-      username: MILVUS_CONFIG.username,
-      password: MILVUS_CONFIG.password,
-    });
+    this.client = new MilvusClient(MILVUS_CONFIG);
     
     logger.info('Milvus Memory Manager initialized', { 
       address: MILVUS_CONFIG.address,
@@ -66,34 +63,46 @@ export class MilvusMemoryManager {
    * Initialize the Milvus connection and create collection if needed
    */
   async initialize(): Promise<void> {
-    try {
-      // Wait for client connection
-      await this.client.connectPromise;
-      logger.info('Connected to Milvus successfully');
+    return Sentry.startSpan({ name: 'milvus.initialize' }, async (span) => {
+      try {
+        span?.setAttribute('collection_name', this.collectionName);
+        
+        Sentry.addBreadcrumb({
+          message: 'Initializing Milvus memory manager',
+          category: 'memory',
+          level: 'info',
+          data: { collectionName: this.collectionName }
+        });
 
-      // Check if collection exists
-      const hasCollection = await this.client.hasCollection({
-        collection_name: this.collectionName,
-      });
+        logger.info('Initializing Milvus memory manager...');
+        // Wait for client connection
+        await this.client.connectPromise;
+        logger.info('Connected to Milvus successfully');
 
-      if (!hasCollection.value) {
-        logger.info(`Collection ${this.collectionName} does not exist, creating...`);
-        await this.createCollection();
-      } else {
-        logger.info(`Collection ${this.collectionName} already exists`);
+        // Check if collection exists
+        const hasCollection = await this.client.hasCollection({
+          collection_name: this.collectionName,
+        });
+
+        if (!hasCollection.value) {
+          logger.info(`Collection ${this.collectionName} does not exist, creating...`);
+          await this.createCollection();
+        } else {
+          logger.info(`Collection ${this.collectionName} already exists`);
+        }
+
+        // Load collection into memory for search
+        await this.loadCollection();
+        
+        this.initialized = true;
+        logger.info('Milvus Memory Manager initialized successfully');
+
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        logger.error('Failed to initialize Milvus Memory Manager', err);
+        throw err;
       }
-
-      // Load collection into memory for search
-      await this.loadCollection();
-      
-      this.initialized = true;
-      logger.info('Milvus Memory Manager initialized successfully');
-
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      logger.error('Failed to initialize Milvus Memory Manager', err);
-      throw err;
-    }
+    });
   }
 
   /**

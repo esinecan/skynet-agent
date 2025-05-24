@@ -3,6 +3,7 @@
  * Provides system health checks, performance metrics, and status reporting
  */
 
+import * as Sentry from "@sentry/node";
 import { createLogger } from './logger';
 
 const logger = createLogger('health');
@@ -71,13 +72,29 @@ export function updateComponentHealth(
   message: string,
   details?: Record<string, any>
 ): void {
-  healthState.components[component] = {
+  const healthData = {
     status,
     message,
     lastChecked: new Date(),
     details
   };
+
+  healthState.components[component] = healthData;
   
+  // Send to Sentry
+  Sentry.setTag(`component.${component}.status`, status);
+  Sentry.addBreadcrumb({
+    message: `Component health updated: ${component}`,
+    category: 'health',
+    level: status === HealthStatus.HEALTHY ? 'info' : 'warning',
+    data: { status, message, details }
+  });
+
+  // Log critical status changes
+  if (status === HealthStatus.UNHEALTHY) {
+    Sentry.captureMessage(`Component ${component} is unhealthy: ${message}`, 'warning');
+  }
+
   // Recalculate overall health
   calculateOverallHealth();
   
@@ -113,7 +130,13 @@ function calculateOverallHealth(): void {
  * Increment a metric counter
  * @param metric Metric name
  */
-export function incrementMetric(metric: 'requestsProcessed' | 'llmCallsMade' | 'toolCallsMade' | 'memoriesStored' | 'memoriesRetrieved'): void {
+export function incrementMetric(metric: keyof SystemMetrics): void {
+  Sentry.addBreadcrumb({
+    message: `Incrementing metric: ${metric}`,
+    category: 'metrics',
+    level: 'debug'
+  });
+
   healthState.metrics[metric]++;
 }
 

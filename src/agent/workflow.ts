@@ -3,8 +3,10 @@
  * Integrates memory, intrinsic motivation, and self-reflection capabilities
  */
 
+import * as Sentry from "@sentry/node";
 import { StateGraph } from "@langchain/langgraph";
-import { AppState, AppStateSchema, ToolCall } from "./schemas/appStateSchema";
+import type { AppState, ToolCall } from "./schemas/appStateSchema";
+import { AppStateSchema } from "./schemas/appStateSchema";
 import { generateResponse } from "./llmClient";
 import { McpClientManager } from "../mcp/client";
 import { createLogger } from "../utils/logger";
@@ -16,92 +18,191 @@ import { performSelfReflection, ReflectionMode } from "./selfReflection";
 
 const logger = createLogger('workflow');
 
+// Define the context interface for workflow nodes
+interface WorkflowContext {
+  mcpManager?: McpClientManager;
+}
+
+// Global type augmentation for temporary context storage
+declare global {
+  // eslint-disable-next-line no-var
+  var mcpManagerContext: McpClientManager | undefined;
+}
+
+// Simple retrieval decision based on query analysis
+const shouldRetrieve = (query: string): boolean => {
+  const skipPatterns = [
+    /^(hi|hello|hey|goodbye|thanks|thank you)$/i, // Greetings and closings
+    /^(what is \d+ [\+\-\*\/] \d+)/i,             // Basic math
+    /^\s*tell me a joke\s*$/i,                    // Simple requests like jokes
+    /^\s*who are you\??\s*$/i,                    // Identity questions
+    /^(help|commands?|what can you do)\??$/i,     // Meta questions
+    /^\s*how are you\??\s*$/i,                    // Simple conversational questions
+  ];
+  
+  return !skipPatterns.some(pattern => pattern.test(query.trim()));
+};
+
 // Create nodes for the workflow
-const entryPointNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
-  try {
-    logger.info('Entering workflow at entry point node', { 
-      hasInput: !!state.input,
-      messageCount: state.messages?.length || 0
-    });
-    
-    // Update last user interaction time for intrinsic motivation system
-    updateLastUserInteraction();
-    
-    // Add the user input to the messages array if it's not already there
-    if (state.input && !state.messages.some(m => m.role === "human" && m.content === state.input)) {
-      logger.debug('Adding user input to message history', { inputLength: state.input.length });
+const entryPointNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
+  return Sentry.startSpan({ name: 'workflow.entry_point' }, async (span) => {
+    try {
+      span?.setAttribute('has_input', !!state.input);
+      span?.setAttribute('message_count', state.messages?.length || 0);
       
+      Sentry.addBreadcrumb({
+        message: 'Workflow entry point',
+        category: 'workflow',
+        level: 'info',
+        data: { input: state.input?.substring(0, 100) }
+      });
+
+      logger.info('Entering workflow at entry point node', { 
+        hasInput: !!state.input,
+        messageCount: state.messages?.length || 0
+      });
+      
+      // Update last user interaction time for intrinsic motivation system
+      updateLastUserInteraction();
+      
+      // Add the user input to the messages array if it's not already there
+      if (state.input && !state.messages.some(m => m.role === "human" && m.content === state.input)) {
+        logger.debug('Adding user input to message history', { inputLength: state.input.length });
+        
+        return {
+          messages: [...state.messages, { role: "human", content: state.input }]
+        };
+      }
+      
+      return {};
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Error in entry point node', err);
+      throw new WorkflowError('Error processing user input', { cause: err });
+    }
+  });
+};
+
+const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
+  return Sentry.startSpan({ name: 'workflow.memory_retrieval' }, async (span) => {
+    try {
+      span?.setAttribute('has_input', !!state.input);
+      span?.setAttribute('message_count', state.messages?.length || 0);
+      
+      Sentry.addBreadcrumb({
+        message: 'Memory retrieval evaluation',
+        category: 'workflow',
+        level: 'info'
+      });
+
+      logger.info('Evaluating memory retrieval need', { 
+        hasInput: !!state.input,
+        messageCount: state.messages?.length || 0
+      });
+    
+      // Get the latest user message
+      const latestUserMessage = state.messages
+        .filter(m => m.role === "human")
+        .pop();
+      
+      if (!latestUserMessage) {
+        logger.warn('No user message found for memory retrieval');
+        return {
+          retrievalEvaluation: {
+            shouldRetrieve: false,
+            query: "",
+            retrievedDocs: []
+          }
+        };
+      }
+
+      const query = latestUserMessage.content;
+      const retrieveDecision = shouldRetrieve(query);
+      
+      if (!retrieveDecision) {
+        logger.info('Skipping memory retrieval for simple query', { query: query.slice(0, 50) });
+        return {
+          retrievalEvaluation: {
+            shouldRetrieve: false,
+            query,
+            retrievedDocs: []
+          },
+          messages: [
+            ...state.messages,
+            { 
+              role: "system", 
+              content: "This appears to be a simple query that doesn't require memory context."
+            }
+          ]
+        };
+      }
+      
+      logger.info('Retrieving relevant memories', { query: query.slice(0, 50) });
+      
+      // Retrieve relevant memories
+      const relevantMemories = await memoryManager.retrieveMemories(query, 3);
+      
+      if (relevantMemories.length === 0) {
+        logger.info('No relevant memories found');
+        return {
+          retrievalEvaluation: {
+            shouldRetrieve: true,
+            query,
+            retrievedDocs: []
+          }
+        };
+      }
+
+      logger.info(`Found ${relevantMemories.length} relevant memories`, {
+        topMemoryScore: relevantMemories[0].score
+      });
+
+      // Format memories for inclusion in the context
+      const memoryContext = relevantMemories.map(mem => 
+        `[Memory ${mem.id}]: ${mem.text}`
+      ).join('\n\n');
+
+      // Add memory context as a system message
       return {
-        messages: [...state.messages, { role: "human", content: state.input }]
+        retrievalEvaluation: {
+          shouldRetrieve: true,
+          query,
+          retrievedDocs: relevantMemories
+        },
+        messages: [
+          ...state.messages,
+          { 
+            role: "system", 
+            content: `Relevant information from your memory:\n\n${memoryContext}`
+          }
+        ]
+      };
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Error in memory retrieval node', err);
+      Sentry.captureException(err, {
+        tags: { operation: 'memory_retrieval' },
+        extra: { query: state.input }
+      });
+      // Continue without memory rather than failing the workflow
+      return {
+        retrievalEvaluation: {
+          shouldRetrieve: true,
+          query: state.input || "",
+          retrievedDocs: []
+        }
       };
     }
-    
-    return {};
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    logger.error('Error in entry point node', err);
-    throw new WorkflowError('Error processing user input', { cause: err });
-  }
+  });
 };
 
-const memoryRetrievalNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
-  try {
-    logger.info('Retrieving relevant memories', { 
-      hasInput: !!state.input,
-      messageCount: state.messages?.length || 0
-    });
-    
-    // Get the latest user message
-    const latestUserMessage = state.messages
-      .filter(m => m.role === "human")
-      .pop();
-    
-    if (!latestUserMessage) {
-      logger.warn('No user message found for memory retrieval');
-      return {};
-    }
-    
-    // Retrieve relevant memories
-    const relevantMemories = await memoryManager.retrieveMemories(latestUserMessage.content, 3);
-    
-    if (relevantMemories.length === 0) {
-      logger.info('No relevant memories found');
-      return {};
-    }
-    
-    logger.info(`Found ${relevantMemories.length} relevant memories`, {
-      topMemoryScore: relevantMemories[0].score
-    });
-    
-    // Format memories for inclusion in the context
-    const memoryContext = relevantMemories.map(mem => 
-      `[Memory ${mem.id}]: ${mem.text}`
-    ).join('\n\n');
-    
-    // Add memory context as a system message
-    return {
-      messages: [
-        ...state.messages,
-        { 
-          role: "system", 
-          content: `Relevant information from your memory:\n\n${memoryContext}`
-        }
-      ]
-    };
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    logger.error('Error in memory retrieval node', err);
-    // Continue without memory rather than failing the workflow
-    return {};
-  }
-};
-
-const llmQueryNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
+const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
   try {
     logger.info('Generating LLM response', { messageCount: state.messages?.length || 0 });
     
     // Get MCP manager from context or from global context (workaround)
-    const mcpManager = (context?.mcpManager || (global as any).mcpManagerContext) as McpClientManager;
+    const contextObj = context as WorkflowContext;
+    const mcpManager = (contextObj?.mcpManager || global.mcpManagerContext) as McpClientManager;
     let toolsPrompt = "You are a helpful AI assistant with advanced cognitive capabilities. Respond to the user's queries in a helpful and informative way.";
     
     // Only attempt to list tools if mcpManager is available
@@ -197,19 +298,20 @@ function extractToolCall(response: string): ToolCall | null {
   return null;
 }
 
-const toolExecutionNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
+const toolExecutionNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
   const toolCall = state.toolCall;
   if (!toolCall) return {};
   
   try {
-    logger.info(`Executing tool call`, { 
+    logger.info('Executing tool call', { 
       server: toolCall.server, 
       tool: toolCall.tool,
       args: JSON.stringify(toolCall.args)
     });
     
     // Get MCP manager from context or from global context (workaround)
-    const mcpManager = (context?.mcpManager || (global as any).mcpManagerContext) as McpClientManager;
+    const contextObj = context as WorkflowContext;
+    const mcpManager = (contextObj?.mcpManager || global.mcpManagerContext) as McpClientManager;
     
     // If mcpManager is not available, return an error
     if (!mcpManager) {
@@ -232,8 +334,7 @@ const toolExecutionNode = async (state: AppState, context: any): Promise<Partial
       toolCall.tool, 
       toolCall.args
     );
-    
-    logger.info(`Tool execution successful`, { 
+      logger.info('Tool execution successful', { 
       resultSize: typeof result === 'string' ? result.length : JSON.stringify(result).length
     });
     
@@ -261,7 +362,7 @@ const toolExecutionNode = async (state: AppState, context: any): Promise<Partial
   }
 };
 
-const selfReflectionNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
+const selfReflectionNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
   // Only perform self-reflection if we have an AI response
   if (!state.aiResponse) {
     return {};
@@ -340,7 +441,7 @@ const selfReflectionNode = async (state: AppState, context: any): Promise<Partia
   }
 };
 
-const memoryStorageNode = async (state: AppState, context: any): Promise<Partial<AppState>> => {
+const memoryStorageNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
   // Only store in memory if we have an AI response
   if (!state.aiResponse) {
     return {};
@@ -417,12 +518,10 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
 
     // Set the entrypoint
     workflow.setEntryPoint("entryPoint");
-    logger.info("Entry point set");
-
-    // Add edges
+    logger.info("Entry point set");    // Add edges
     workflow.addEdge("entryPoint", "memoryRetrieval");
     workflow.addEdge("memoryRetrieval", "llmQuery");
-    logger.info("Initial edges added");
+    logger.info("Edge added: memoryRetrieval -> llmQuery");
     
     // Conditional edge from LLM to Tool Execution or Self-Reflection
     logger.info("Adding conditional edges...");
@@ -453,10 +552,9 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
     
     // Compile the graph with the correct API for our version
     const compiledGraph = workflow.compile();
-    
-    // Create a custom wrapper that includes our context
+      // Create a custom wrapper that includes our context
     const wrappedGraph = {
-      invoke: async (state: AppState, config: any = {}) => {
+      invoke: async (state: AppState, config: Record<string, unknown> = {}) => {
         // We need to modify how we invoke the graph to pass the MCP manager
         // This is a workaround for the limitations in the older LangGraph version
         try {
@@ -471,16 +569,15 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
             HealthStatus.HEALTHY, 
             'Processing user query'
           );
-          
-          // Add the MCP manager to the global context temporarily
+            // Add the MCP manager to the global context temporarily
           // This is not ideal but works around the limitations
-          (global as any).mcpManagerContext = manager;
+          global.mcpManagerContext = manager;
           
           // Invoke the actual graph
           const result = await compiledGraph.invoke(state);
           
           // Clean up the global context
-          delete (global as any).mcpManagerContext;
+          global.mcpManagerContext = undefined;
           
           logger.info("Graph invocation completed successfully");
           

@@ -2,6 +2,7 @@
  * Centralized logging utility for consistent log formatting and management
  */
 
+import * as Sentry from "@sentry/node";
 import * as fs from 'fs';
 import * as path from 'path';
 import * as util from 'util';
@@ -61,26 +62,63 @@ export function createLogger(module: string) {
 function log(level: LogLevel, module: string, message: string, context?: Error | Record<string, any>) {
   const timestamp = new Date().toISOString();
   const levelName = LogLevel[level];
+  const correlationId = Sentry.getCurrentScope()?.getPropagationContext()?.traceId || 'N/A';
   
-  // Format the log message
-  let logString = `[${timestamp}] [${levelName}] [${module}] ${message}`;
+  // Format the log message - switched to JSON structured logging
+  const logEntry: Record<string, any> = {
+    timestamp,
+    level: levelName,
+    module,
+    message,
+    correlationId,
+  };
+  
+  // Add context if provided
+  if (context) {
+    if (context instanceof Error) {
+      logEntry.error_message = context.message;
+      logEntry.error_stack = context.stack;
+      logEntry.error_name = context.name;
+    } else {
+      logEntry.context_data = context;
+    }
+  }
+
+  const logString = JSON.stringify(logEntry);
+
+  // Legacy format for backwards compatibility
+  let legacyLogString = `[${timestamp}] [${levelName}] [${module}] ${message}`;
   
   // Add context if provided
   if (context) {
     try {
       if (context instanceof Error) {
-        logString += `\nError: ${context.message}`;
+        legacyLogString += `\nError: ${context.message}`;
         if (context.stack) {
-          logString += `\nStack: ${context.stack}`;
+          legacyLogString += `\nStack: ${context.stack}`;
         }
       } else {
-        logString += `\nContext: ${util.inspect(context, { depth: 4 })}`;
+        legacyLogString += `\nContext: ${util.inspect(context, { depth: 4 })}`;
       }
     } catch (e) {
       // Fix: Handle unknown error type properly
       const errorMessage = e instanceof Error ? e.message : String(e);
-      logString += `\nContext: [Error serializing context: ${errorMessage}]`;
+      legacyLogString += `\nContext: [Error serializing context: ${errorMessage}]`;
     }
+  }
+
+  // Sentry breadcrumbs and error capturing
+  if (level === LogLevel.ERROR && context instanceof Error) {
+    Sentry.captureException(context, (scope) => {
+      scope.setTag('module', module);
+      scope.setExtra('log_message', message);
+      if (!(context instanceof Error) && typeof context === 'object' && context !== null) {
+        scope.setExtras(context as Record<string, any>);
+      }
+      return scope;
+    });  } else {
+    const sentryLevel = levelName.toLowerCase() as Sentry.SeverityLevel;
+    Sentry.addBreadcrumb({ category: 'log', message: `[${module}] ${message}`, level: sentryLevel, data: typeof context === 'object' ? context : { detail: context } });
   }
   
   // Output to console if enabled
@@ -94,6 +132,6 @@ function log(level: LogLevel, module: string, message: string, context?: Error |
   
   // Write to file if enabled
   if (LOG_TO_FILE) {
-    fs.appendFileSync(LOG_FILE_PATH, logString + '\n');
+    fs.appendFileSync(LOG_FILE_PATH, legacyLogString + '\n');
   }
 }
