@@ -30,33 +30,40 @@ const InputArea: React.FC = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     
-    const uploadedAttachments: FileAttachment[] = [];
+    const files = Array.from(e.target.files);
     
-    for (let i = 0; i < e.target.files.length; i++) {
-      const file = e.target.files[i];
-      const reader = new FileReader();
+    try {
+      const uploadedAttachments = await Promise.all(
+        files.map(file => 
+          new Promise<FileAttachment>((resolve, reject) => {
+            const reader = new FileReader();
+            
+            reader.onload = () => {
+              if (typeof reader.result === "string") {
+                const base64Data = reader.result.split(",")[1];
+                resolve({
+                  name: file.name,
+                  type: file.type,
+                  data: base64Data
+                });
+              } else {
+                reject(new Error("File reading failed"));
+              }
+            };
+            
+            reader.onerror = () => reject(new Error("File reading error"));
+            reader.readAsDataURL(file);
+          })
+        )
+      );
       
-      reader.onload = () => {
-        if (typeof reader.result === "string") {
-          const base64Data = reader.result.split(",")[1];
-          
-          uploadedAttachments.push({
-            name: file.name,
-            type: file.type,
-            data: base64Data
-          });
-          
-          if (uploadedAttachments.length === e.target.files!.length) {
-            setAttachments(prev => [...prev, ...uploadedAttachments]);
-          }
-        }
-      };
-      
-      reader.readAsDataURL(file);
+      setAttachments(prev => [...prev, ...uploadedAttachments]);
+    } catch (error) {
+      console.error("Error uploading files:", error);
+    } finally {
+      // Clear file input
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
-    
-    // Clear file input
-    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // Remove attachment
