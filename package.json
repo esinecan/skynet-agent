@@ -4,7 +4,7 @@
   "description": "A cognitive AI agent with short-term and long-term memory capabilities",
   "main": "dist/index.js",
   "scripts": {
-    "build": "npm run build:server && npm run build:client",
+    "build": "npm run build:server && npm run build:client && npm run sentry:sourcemaps",
     "build:server": "tsc",
     "build:client": "cd client && npm run build",
     "start": "node dist/index.js",
@@ -16,7 +16,7 @@
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "install:all": "npm install && cd client && npm install",
-    "postinstall": "cd client && npm install"
+    "sentry:sourcemaps": "sentry-cli sourcemaps inject --org eren-can-sinecan --project skynet ./dist && sentry-cli sourcemaps upload --org eren-can-sinecan --project skynet ./dist"
   },
   "keywords": [
     "ai",
@@ -34,6 +34,9 @@
     "@langchain/langgraph": "^0.0.8",
     "@langchain/langgraph-checkpoint": "^0.0.17",
     "@modelcontextprotocol/sdk": "^1.11.4",
+    "@sentry/cli": "^2.45.0",
+    "@sentry/node": "^9.22.0",
+    "@sentry/profiling-node": "^9.22.0",
     "@types/multer": "^1.4.12",
     "@zilliz/milvus2-sdk-node": "^2.5.9",
     "axios": "^1.9.0",

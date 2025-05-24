@@ -2,7 +2,9 @@
  * Enhanced API server with health endpoints and improved error handling
  */
 
-import express from 'express';
+import * as Sentry from "@sentry/node";
+import express, { type Express } from 'express';
+import { type Server } from 'node:http';
 import cors from 'cors';
 import multer from 'multer';
 import * as path from 'node:path';
@@ -22,6 +24,8 @@ const logger = createLogger('server');
 
 // Initialize Express app
 const app = express();
+
+// Sentry: Setup middleware (v8+ uses setupExpressErrorHandler at the end)
 app.use(express.json());
 app.use(cors());
 
@@ -36,6 +40,12 @@ const upload = multer({
 
 // Request logging middleware
 app.use((req, res, next) => {
+  // Add correlation ID to Sentry scope for this request
+  const span = Sentry.getActiveSpan();
+  if (span) {
+    const spanContext = Sentry.spanToTraceHeader(span);
+    Sentry.setTag("correlation_id", spanContext);
+  }
   logger.info(`${req.method} ${req.path}`, {
     ip: req.ip,
     userAgent: req.get('User-Agent')
@@ -46,6 +56,7 @@ app.use((req, res, next) => {
 // Simple endpoint for user queries
 app.post('/query', async (req, res) => {
   try {
+    Sentry.setTag("api.route", "/query");
     const { query, sessionId = 'default' } = req.body;
     
     if (!query) {
@@ -55,6 +66,8 @@ app.post('/query', async (req, res) => {
     logger.info(`Processing query in session ${sessionId}`, {
       queryLength: query.length
     });
+    Sentry.setTag("sessionId", sessionId);
+    Sentry.setExtra("query_length", query.length);
     
     const response = await processQuery(query, sessionId);
     
@@ -62,12 +75,13 @@ app.post('/query', async (req, res) => {
       sessionId,
       responseLength: response.length
     });
-    
-    return res.json({ response });
+    Sentry.addBreadcrumb({ category: 'api', message: 'Query processed successfully', level: 'info', data: { sessionId, responseLength: response.length } });
+      return res.json({ response });
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error processing query:', err);
-    const errorResponse = handleApiError(error);
+    const errorResponse = handleApiError(error); // This will also send to Sentry
+    // Sentry.Handlers.errorHandler will pick this up if not caught before
     return res.status(errorResponse.status).json(errorResponse.body);
   }
 });
@@ -75,6 +89,7 @@ app.post('/query', async (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   const status = getHealthStatus();
+  Sentry.addBreadcrumb({ category: 'health', message: 'Health endpoint accessed', level: 'info', data: status });
   res.json({
     status: status.status,
     uptime: status.uptime,
@@ -86,6 +101,7 @@ app.get('/health', (req, res) => {
 // Detailed health report endpoint
 app.get('/health/report', (req, res) => {
   const report = getHealthReport();
+  Sentry.addBreadcrumb({ category: 'health', message: 'Health report accessed', level: 'info' });
   res.json(report);
 });
 
@@ -94,6 +110,7 @@ app.get('/memory/status', async (req, res) => {
   try {
     const memoryCount = await memoryManager.getMemoryCount();
     const consolidationStatus = getConsolidationStatus();
+    Sentry.addBreadcrumb({ category: 'memory', message: 'Memory status accessed', level: 'info', data: { memoryCount, consolidationStatus } });
     
     res.json({
       memoryCount,
@@ -297,11 +314,77 @@ app.post('/api/upload', upload.array('files', 10), async (req, res) => {
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error handling file upload:', err);
     const errorResponse = handleApiError(error);
-    res.status(errorResponse.status).json(errorResponse.body);
+    res.status(errorResponse.status).json(errorResponse.body);  }
+});
+
+// Debug Sentry endpoint for testing error reporting
+app.get("/debug-sentry", (req, res) => {
+  logger.info("Debug Sentry endpoint accessed");
+  
+  // Add breadcrumb for debugging
+  Sentry.addBreadcrumb({
+    category: 'debug',
+    message: 'Debug Sentry endpoint accessed',
+    level: 'info',
+    data: { timestamp: new Date().toISOString() }
+  });
+  
+  // Test different types of Sentry functionality
+  const testType = req.query.test as string;
+    switch (testType) {
+    case 'error': {
+      // Test error capture
+      const testError = new Error("This is a test error for Sentry monitoring");
+      Sentry.captureException(testError);
+      logger.error("Test error captured", { error: testError });
+      res.json({ 
+        message: "Test error sent to Sentry", 
+        error: testError.message,
+        timestamp: new Date().toISOString()
+      });
+      break;
+    }
+      
+    case 'transaction':
+      // Test transaction/span
+      return Sentry.startSpan({ name: 'debug-transaction', op: 'debug' }, (span) => {
+        span?.setAttributes({ test: true, debug: 'true' });
+        
+        logger.info("Test transaction created");
+        res.json({ 
+          message: "Test transaction created", 
+          traceId: span?.spanContext().traceId,
+          timestamp: new Date().toISOString()
+        });
+      });
+      
+    case 'breadcrumb':
+      // Test breadcrumb
+      Sentry.addBreadcrumb({
+        category: 'test',
+        message: 'Test breadcrumb added',
+        level: 'info',
+        data: { test: true }
+      });
+      logger.info("Test breadcrumb added");
+      res.json({ 
+        message: "Test breadcrumb added to Sentry", 
+        timestamp: new Date().toISOString()
+      });
+      break;
+      
+    default:
+      // Default info response
+      res.json({
+        message: "Sentry debug endpoint is working",
+        availableTests: ['error', 'transaction', 'breadcrumb'],
+        usage: "Add ?test=<type> to test specific functionality",
+        timestamp: new Date().toISOString()
+      });
   }
 });
 
-export function startApiServer(port: number = 3000, maxRetries: number = 5): Promise<any> {
+export function startApiServer(port = 3000, maxRetries = 5): Promise<Server> {
   return new Promise((resolve, reject) => {
     // Initialize all subsystems
     try {
@@ -349,7 +432,7 @@ export function startApiServer(port: number = 3000, maxRetries: number = 5): Pro
               reject(error);
             }
           } else {
-            logger.error(`Server error:`, err);
+            logger.error('Server error:', err);
             reject(err);
           }
         });
@@ -386,3 +469,6 @@ const setupClientRoutes = () => {
 
 // Call this before starting the server
 setupClientRoutes();
+
+// Sentry: Error Handler must be registered after all controllers and before any other error middleware
+Sentry.setupExpressErrorHandler(app);

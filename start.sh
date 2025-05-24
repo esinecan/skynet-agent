@@ -17,13 +17,27 @@ if [ ! -f .env ]; then
 fi
 
 # Check if API key is configured
-if ! grep -q "^GEMINI_API_KEY=.*[^[:space:]]" .env && ! grep -q "^OPENAI_API_KEY=.*[^[:space:]]" .env; then
+if ! grep -q "^GEMINI_API_KEY=.*[^[:space:]]" .env; then
     echo "⚠️  No API key found in .env file"
-    echo "   Please set GEMINI_API_KEY or OPENAI_API_KEY in .env file"
+    echo "   Please set GEMINI_API_KEY in .env file"
     exit 1
 fi
 
 echo "📦 Building and starting services..."
+
+# Build TypeScript and upload source maps to Sentry (if configured)
+echo "🔧 Building TypeScript and preparing source maps..."
+npm run build
+if [ -d "dist" ]; then
+    if [ -n "$SENTRY_DSN" ]; then
+        echo "📤 Uploading source maps to Sentry..."
+        npx @sentry/wizard@latest -i sourcemaps --saas --quiet || echo "⚠️  Source map upload failed (continuing anyway)"
+    else
+        echo "ℹ️  SENTRY_DSN not configured, skipping source map upload"
+    fi
+else
+    echo "⚠️  Build failed, dist directory not found"
+fi
 
 # Build and start all services
 docker-compose up --build -d

@@ -2,8 +2,12 @@
  * Updated main entry point with enhanced initialization and error handling
  */
 
+// IMPORTANT: Make sure to import `instrument.ts` at the very top of your file.
+import "./instrument"; // This executes Sentry.init()
+
+import * as Sentry from "@sentry/node";
 import * as dotenv from 'dotenv';
-import * as path from 'path';
+import * as path from 'node:path';
 import { createLogger } from './utils/logger';
 import { setupGlobalErrorHandlers } from './utils/errorHandler';
 import { initializeAgent } from './agent';
@@ -58,18 +62,21 @@ async function main() {
   logger.info('Skynet Agent is initializing...');
   
   // Check environment
+  Sentry.addBreadcrumb({ category: 'init', message: 'Starting environment check', level: 'info' });
   const envValid = checkEnvironment();
+  Sentry.setTag("env_valid", envValid);
   
   try {
     // Initialize the agent and workflow
-    const { agentWorkflow, mcpManager } = await initializeAgent();
-    logger.info('Agent initialized successfully', {
+    const { agentWorkflow, mcpManager } = await initializeAgent();    logger.info('Agent initialized successfully', {
       workflowAvailable: !!agentWorkflow,
       mcpAvailable: !!mcpManager
     });
+    Sentry.addBreadcrumb({ category: 'init', message: 'Agent initialized', level: 'info', data: { workflowAvailable: !!agentWorkflow, mcpAvailable: !!mcpManager } });
       // Start the API server - use a higher port number
     const port = Number.parseInt(process.env.PORT || process.env.API_PORT || '9000');
     await startApiServer(port, 10); // Increase retries to 10
+    Sentry.setTag("server_port", port);
     
     // If GUI mode is enabled, open the browser
     if (enableGUI) {
@@ -92,18 +99,21 @@ async function main() {
       googleApiKey: process.env.GEMINI_API_KEY ? 'configured' : 'missing',
       idleThreshold: process.env.IDLE_THRESHOLD_MINUTES || '10',
       memoryConsolidation: process.env.MEMORY_CONSOLIDATION_SCHEDULE || '0 2 * * *'
-    });
-  } catch (error) {
+    });  } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Failed to initialize agent:', err);
+    Sentry.captureException(err, { tags: { context: 'agent_initialization' } });
     process.exit(1);
   }
 }
 
 // Run the main function
-main().catch(error => {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  logger.error('Unhandled error in main:', error);
-  process.exit(1);
-});
+(async () => {
+  await main().catch(error => {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('Unhandled error in main:', error);
+    Sentry.captureException(error, { tags: { context: 'main_execution_catch' } });
+    process.exit(1);
+  });
+})();

@@ -31,6 +31,20 @@ if errorlevel 1 (
 
 echo 📦 Building and starting services...
 
+REM Build TypeScript and upload source maps to Sentry (if configured)
+echo 🔧 Building TypeScript and preparing source maps...
+call npm run build
+if exist dist (
+    if defined SENTRY_DSN (
+        echo 📤 Uploading source maps to Sentry...
+        npx @sentry/wizard@latest -i sourcemaps --saas --quiet || echo ⚠️  Source map upload failed ^(continuing anyway^)
+    ) else (
+        echo ℹ️  SENTRY_DSN not configured, skipping source map upload
+    )
+) else (
+    echo ⚠️  Build failed, dist directory not found
+)
+
 REM Build and start all services
 docker-compose up --build -d
 

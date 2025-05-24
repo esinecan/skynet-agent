@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Milvus dependencies
   etcd:
@@ -79,7 +77,6 @@ services:
       - MILVUS_COLLECTION=skynet_memories
       # Copy any API keys from .env file
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MEMORY_DIR=/app/data/memory
     volumes:
       - ./data:/app/data
@@ -88,7 +85,7 @@ services:
       milvus:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

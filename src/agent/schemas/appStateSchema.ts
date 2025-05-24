@@ -26,6 +26,15 @@ export const ReflectionResultSchema = z.object({
 
 export type ReflectionResult = z.infer<typeof ReflectionResultSchema>;
 
+// Define retrieval evaluation structure
+export const RetrievalEvaluationSchema = z.object({
+  shouldRetrieve: z.boolean().describe("Whether retrieval should be performed"),
+  query: z.string().describe("The query used for retrieval"),
+  retrievedDocs: z.array(z.any()).optional().describe("Documents retrieved from memory")
+});
+
+export type RetrievalEvaluation = z.infer<typeof RetrievalEvaluationSchema>;
+
 // Define the agent's state structure
 export const AppStateSchema = z.object({
   input: z.string().describe("Current user query"),
@@ -34,7 +43,8 @@ export const AppStateSchema = z.object({
   toolCall: ToolCallSchema.optional().describe("Current tool call data"),
   toolResults: z.record(z.string(), z.any()).optional().describe("Results from tool calls"),
   reflectionResult: ReflectionResultSchema.optional().describe("Self-reflection results"),
-  memoryId: z.string().optional().describe("ID of stored memory")
+  memoryId: z.string().optional().describe("ID of stored memory"),
+  retrievalEvaluation: RetrievalEvaluationSchema.optional().describe("Memory retrieval evaluation results")
 });
 
 export type AppState = z.infer<typeof AppStateSchema>;

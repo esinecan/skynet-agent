@@ -2,6 +2,7 @@
  * Error handling utility for consistent error management across the application
  */
 
+import * as Sentry from "@sentry/node";
 import { createLogger } from './logger';
 
 const logger = createLogger('errorHandler');
@@ -51,6 +52,12 @@ export function handleApiError(error: unknown): { status: number; body: { error:
   
   // Log the error
   logger.error('API error:', err);
+  Sentry.captureException(err, (scope) => {
+    scope.setTag('api.error', 'true');
+    scope.setTag('statusCode', statusCode);
+    scope.setExtra('originalError', err);
+    return scope;
+  });
   
   // Determine status code
   let statusCode = 500;
@@ -74,6 +81,7 @@ export function handleApiError(error: unknown): { status: number; body: { error:
 export function setupGlobalErrorHandlers(): void {
   // Handle uncaught exceptions
   process.on('uncaughtException', (error) => {
+    Sentry.captureException(error, { tags: { type: 'uncaughtException' } });
     logger.error('Uncaught exception', error);
     
     // Give time for logs to be written before exiting
@@ -84,6 +92,7 @@ export function setupGlobalErrorHandlers(): void {
   
   // Handle unhandled promise rejections
   process.on('unhandledRejection', (reason, promise) => {
+    Sentry.captureException(reason || new Error('Unhandled Rejection'), { tags: { type: 'unhandledRejection' }, extra: { promise } });
     const err = reason instanceof Error ? reason : new Error(String(reason));
     logger.error('Unhandled promise rejection', err);
   });

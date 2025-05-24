@@ -1,7 +1,8 @@
-import { GoogleGenerativeAI, GenerativeModel, Content, Part } from "@google/generative-ai";
-import { Message } from "./schemas/appStateSchema";
+import * as Sentry from "@sentry/node";
+import { GoogleGenerativeAI, type GenerativeModel, type Content, type Part } from "@google/generative-ai";
+import type { Message } from "./schemas/appStateSchema";
 import * as dotenv from 'dotenv';
-import * as path from 'path';
+import * as path from 'node:path';
 
 // Load environment variables immediately
 const envPath = path.resolve(process.cwd(), '.env');
@@ -35,7 +36,7 @@ console.log('- API Key appears valid:', isValidKey);
 if (isValidKey) {
   console.log('Initializing Gemini model with the API key...');
   genAI = new GoogleGenerativeAI(apiKey);
-  model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-05-20" });
   console.log('Gemini model initialized successfully.');
 } else {
   console.error('WARNING: Invalid or missing GEMINI_API_KEY. LLM functionality will not work.');
@@ -45,57 +46,72 @@ export async function generateResponse(
   messages: Array<Message>,
   systemPrompt?: string
 ): Promise<string> {
-  try {
-    // Check if model is initialized
-    if (!model) {
-      throw new Error("Gemini model is not initialized. Check your API key.");
-    }
-
-    // Convert our message format to Gemini's format
-    const geminiMessages: Content[] = messages.map(msg => {
-      // Gemini uses "user" instead of "human" and "model" instead of "ai"
-      const role = msg.role === "human" ? "user" : 
-                  msg.role === "ai" ? "model" : "system";
+  return Sentry.startSpan({ name: 'llm.generate_response' }, async (span) => {
+    try {
+      span?.setAttribute('message_count', messages.length);
+      span?.setAttribute('has_system_prompt', !!systemPrompt);
       
-      return { role, parts: [{ text: msg.content } as Part] };
-    });
+      Sentry.addBreadcrumb({
+        message: 'Generating LLM response',
+        category: 'llm',
+        level: 'info',
+        data: { 
+          messageCount: messages.length,
+          hasSystemPrompt: !!systemPrompt 
+        }
+      });
 
-    // Setup chat session with system prompt if provided
-    const chatConfig: {
-      systemInstruction?: {text: string},
-      history?: Content[]
-    } = {};
-    
-    if (systemPrompt) {
-      chatConfig.systemInstruction = { text: systemPrompt };
-    }
-    
-    const chatSession = model.startChat({
-      ...chatConfig,
-      history: geminiMessages.filter(msg => msg.role !== "system"),
-    });
+      // Check if model is initialized
+      if (!model) {
+        throw new Error("Gemini model is not initialized. Check your API key.");
+      }
 
-    // Get the latest message (that isn't a system message)
-    const userMessages = geminiMessages.filter(msg => msg.role === "user");
-    const lastMessage = userMessages[userMessages.length - 1];
-    
-    if (!lastMessage) {
-      throw new Error("No user messages found in conversation history");
+      // Convert our message format to Gemini's format
+      const geminiMessages: Content[] = messages.map(msg => {
+        // Gemini uses "user" instead of "human" and "model" instead of "ai"
+        const role = msg.role === "human" ? "user" : 
+                    msg.role === "ai" ? "model" : "system";
+        
+        return { role, parts: [{ text: msg.content } as Part] };
+      });
+
+      // Setup chat session with system prompt if provided
+      const chatConfig: {
+        systemInstruction?: {text: string},
+        history?: Content[]
+      } = {};
+      
+      if (systemPrompt) {
+        chatConfig.systemInstruction = { text: systemPrompt };
+      }
+      
+      const chatSession = model.startChat({
+        ...chatConfig,
+        history: geminiMessages.filter(msg => msg.role !== "system"),
+      });
+
+      // Get the latest message (that isn't a system message)
+      const userMessages = geminiMessages.filter(msg => msg.role === "user");
+      const lastMessage = userMessages[userMessages.length - 1];
+      
+      if (!lastMessage) {
+        throw new Error("No user messages found in conversation history");
+      }
+      
+      const result = await chatSession.sendMessage(lastMessage.parts[0].text as string);
+      const response = result.response;
+      return response.text();
+    } catch (error) {
+      console.error("Error generating response:", error);
+      // Provide more detailed error messages
+      if (!apiKey || apiKey === "your_gemini_api_key_here") {
+        return "Error: Missing API key. Please add a valid GEMINI_API_KEY to your .env file.";
+      } else if (!model) {
+        return "Error: Failed to initialize LLM. Please check your API key and try again.";
+      } else {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return `Error: ${errorMessage}`;
+      }
     }
-    
-    const result = await chatSession.sendMessage(lastMessage.parts[0].text as string);
-    const response = result.response;
-    return response.text();
-  } catch (error) {
-    console.error("Error generating response:", error);
-    // Provide more detailed error messages
-    if (!apiKey || apiKey === "your_gemini_api_key_here") {
-      return "Error: Missing API key. Please add a valid GEMINI_API_KEY to your .env file.";
-    } else if (!model) {
-      return "Error: Failed to initialize LLM. Please check your API key and try again.";
-    } else {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return `Error: ${errorMessage}`;
-    }
-  }
+  });
 }

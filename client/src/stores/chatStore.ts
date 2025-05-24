@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import * as Sentry from "@sentry/react";
 
 interface Session {
   id: string;
@@ -35,20 +36,35 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   currentSession: null,
   isLoading: false,
   streamingMessage: "",
-
   loadSessions: async () => {
     try {
+      Sentry.addBreadcrumb({
+        message: 'Loading chat sessions',
+        category: 'api',
+        level: 'info'
+      });
+      
       const response = await fetch("/api/sessions");
       if (!response.ok) throw new Error("Failed to load sessions");
       const sessions = await response.json();
       set({ sessions });
     } catch (error) {
-      console.error("Error loading sessions:", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      Sentry.captureException(err, {
+        tags: { operation: 'load_sessions' },
+        extra: { sessionCount: get().sessions.length }
+      });
+      console.error("Error loading sessions:", err);
     }
   },
-
   createSession: async (title = "New Chat") => {
     try {
+      Sentry.addBreadcrumb({
+        message: `Creating new session: ${title}`,
+        category: 'api',
+        level: 'info'
+      });
+      
       const response = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -63,7 +79,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         currentSession: session
       }));
     } catch (error) {
-      console.error("Error creating new session:", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      Sentry.captureException(err, {
+        tags: { operation: 'create_session' },
+        extra: { title }
+      });
+      console.error("Error creating new session:", err);
     }
   },
 

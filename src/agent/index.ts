@@ -2,6 +2,7 @@
  * Agent initialization and query processing
  */
 
+import * as Sentry from "@sentry/node";
 import { createAgentWorkflow } from "./workflow";
 import { AppState } from "./schemas/appStateSchema";
 import { McpClientManager } from '../mcp/client';
@@ -28,33 +29,43 @@ let mcpManager: McpClientManager | null = null;
  * Initialize the agent with MCP clients and workflow
  */
 export async function initializeAgent(): Promise<{ agentWorkflow: any; mcpManager: McpClientManager | null }> {
-  try {
-    // Load MCP server configurations from the config loader
-    const mcpServers = loadMcpServerConfigs();
-    logger.info(`Loaded ${mcpServers.length} MCP server configurations`);
-    
-    // Initialize MCP client manager if we have servers configured
-    if (mcpServers.length > 0) {
-      mcpManager = new McpClientManager(mcpServers);
-      await mcpManager.initialize();
-      logger.info('MCP clients initialized');
+  return Sentry.startSpan({ name: 'agent.initialize' }, async (span) => {
+    try {
+      Sentry.setTag('operation', 'agent_initialization');
+      Sentry.addBreadcrumb({
+        message: 'Starting agent initialization',
+        category: 'agent',
+        level: 'info'
+      });
+
+      // Load MCP server configurations from the config loader
+      const mcpServers = loadMcpServerConfigs();
+      logger.info(`Loaded ${mcpServers.length} MCP server configurations`);
+      span?.setAttribute('mcp_servers_count', mcpServers.length);
       
-      // Create workflow with MCP manager
-      agentWorkflow = createAgentWorkflow(mcpManager);
-    } else {
-      // For now, create workflow without MCP integrations
-      logger.info('No MCP servers configured, running in standalone mode');
-      agentWorkflow = createAgentWorkflow();
+      // Initialize MCP client manager if we have servers configured
+      if (mcpServers.length > 0) {
+        mcpManager = new McpClientManager(mcpServers);
+        await mcpManager.initialize();
+        logger.info('MCP clients initialized');
+        
+        // Create workflow with MCP manager
+        agentWorkflow = createAgentWorkflow(mcpManager);
+      } else {
+        // For now, create workflow without MCP integrations
+        logger.info('No MCP servers configured, running in standalone mode');
+        agentWorkflow = createAgentWorkflow();
+      }
+      
+      logger.info('Agent workflow initialized');
+      
+      return { agentWorkflow, mcpManager };
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Error initializing agent:', err);
+      throw err;
     }
-    
-    logger.info('Agent workflow initialized');
-    
-    return { agentWorkflow, mcpManager };
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    logger.error('Error initializing agent:', err);
-    throw err;
-  }
+  });
 }
 
 // Simple in-memory conversation store
