@@ -384,9 +384,6 @@ app.get("/debug-sentry", (req, res) => {
   }
 });
 
-// Sentry error handler must be before any other error middleware and after all controllers
-app.use(Sentry.expressErrorHandler());
-
 export function startApiServer(port = 3000, maxRetries = 5): Promise<Server> {
   return new Promise((resolve, reject) => {
     // Initialize all subsystems
