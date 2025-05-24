@@ -17,6 +17,7 @@ import { initializeIntrinsicMotivation, getIntrinsicMotivationStatus, getRecentI
 import { initializeSelfReflection } from '../agent/selfReflection';
 import { reloadMcpServerConfigs } from '../utils/configLoader';
 import { sessionManager } from '../db/sessions';
+import { PORTS, API_PREFIX } from '../config/ports';
 
 const logger = createLogger('server');
 
@@ -44,7 +45,7 @@ app.use((req, res, next) => {
 });
 
 // Simple endpoint for user queries
-app.post('/query', async (req, res) => {
+app.post(`${API_PREFIX}/query`, async (req, res) => {
   try {
     const { query, sessionId = 'default' } = req.body;
     
@@ -73,7 +74,7 @@ app.post('/query', async (req, res) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get(`${API_PREFIX}/health`, (req, res) => {
   const status = getHealthStatus();
   res.json({
     status: status.status,
@@ -84,13 +85,13 @@ app.get('/health', (req, res) => {
 });
 
 // Detailed health report endpoint
-app.get('/health/report', (req, res) => {
+app.get(`${API_PREFIX}/health/report`, (req, res) => {
   const report = getHealthReport();
   res.json(report);
 });
 
 // Memory status endpoint
-app.get('/memory/status', async (req, res) => {
+app.get(`${API_PREFIX}/memory/status`, async (req, res) => {
   try {
     const memoryCount = await memoryManager.getMemoryCount();
     const consolidationStatus = getConsolidationStatus();
@@ -109,7 +110,7 @@ app.get('/memory/status', async (req, res) => {
 });
 
 // Intrinsic motivation status endpoint
-app.get('/intrinsic/status', (req, res) => {
+app.get(`${API_PREFIX}/intrinsic/status`, (req, res) => {
   const status = getIntrinsicMotivationStatus();
   const recentTasks = getRecentIntrinsicTasks();
   
@@ -121,7 +122,7 @@ app.get('/intrinsic/status', (req, res) => {
 });
 
 // Trigger memory consolidation manually (for testing)
-app.post('/memory/consolidate', async (req, res) => {
+app.post(`${API_PREFIX}/memory/consolidate`, async (req, res) => {
   try {
     const { runMemoryConsolidation } = require('../memory/consolidation');
     await runMemoryConsolidation();
@@ -140,7 +141,7 @@ app.post('/memory/consolidate', async (req, res) => {
 });
 
 // MCP configuration reload endpoint
-app.post('/mcp/reload', async (req, res) => {
+app.post(`${API_PREFIX}/mcp/reload`, async (req, res) => {
   try {
     logger.info('Reloading MCP server configurations');
     
@@ -301,7 +302,7 @@ app.post('/api/upload', upload.array('files', 10), async (req, res) => {
   }
 });
 
-export function startApiServer(port: number = 3000, maxRetries: number = 5): Promise<any> {
+export function startApiServer(port: number = PORTS.API_SERVER, maxRetries: number = 5): Promise<any> {
   return new Promise((resolve, reject) => {
     // Initialize all subsystems
     try {

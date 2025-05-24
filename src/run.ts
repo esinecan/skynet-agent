@@ -32,6 +32,7 @@ if (!apiKey || apiKey === 'your_gemini_api_key_here') {
 // Start the server directly instead of using dynamic import
 import { initializeAgent } from './agent';
 import { startApiServer } from './server/api';
+import { PORTS } from './config/ports';
 
 async function main() {
   console.log('Skynet Agent is initializing...');
@@ -42,7 +43,7 @@ async function main() {
     console.log('Agent initialized successfully');
     
     // Start the API server
-    const port = Number.parseInt(process.env.PORT || '9000');
+    const port = Number.parseInt(process.env.PORT || String(PORTS.API_SERVER));
     await startApiServer(port, 10);
     
     console.log('Skynet Agent is ready for interaction');

@@ -9,6 +9,7 @@ import { setupGlobalErrorHandlers } from './utils/errorHandler';
 import { initializeAgent } from './agent';
 import { startApiServer } from './server/api';
 import { loadMcpServerConfigs } from './utils/configLoader';
+import { PORTS } from './config/ports';
 import * as fs from 'node:fs';
 
 // Parse command-line arguments
@@ -67,8 +68,8 @@ async function main() {
       workflowAvailable: !!agentWorkflow,
       mcpAvailable: !!mcpManager
     });
-      // Start the API server - use a higher port number
-    const port = Number.parseInt(process.env.PORT || process.env.API_PORT || '9000');
+      // Start the API server
+    const port = Number.parseInt(process.env.PORT || String(PORTS.API_SERVER));
     await startApiServer(port, 10); // Increase retries to 10
     
     // If GUI mode is enabled, open the browser

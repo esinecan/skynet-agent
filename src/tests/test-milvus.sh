@@ -36,7 +36,7 @@ print_info() {
 echo "🔍 Test 1: Service Health Checks"
 
 print_info "Checking Skynet Agent health..."
-curl -f -s "${AGENT_URL}/health" > /dev/null
+curl -f -s "${AGENT_URL}/api/health" > /dev/null
 print_result $? "Skynet Agent is responsive"
 
 print_info "Checking Milvus WebUI..."
@@ -48,7 +48,7 @@ echo ""
 echo "🔍 Test 2: Detailed Health Status"
 
 print_info "Getting detailed health report..."
-HEALTH_RESPONSE=$(curl -s "${AGENT_URL}/health/report")
+HEALTH_RESPONSE=$(curl -s "${AGENT_URL}/api/health/report")
 echo "$HEALTH_RESPONSE" | grep -q "milvus"
 print_result $? "Milvus component found in health report"
 
@@ -67,7 +67,7 @@ echo ""
 echo "🔍 Test 3: Memory Storage and Retrieval"
 
 print_info "Testing memory storage..."
-STORE_RESPONSE=$(curl -s -X POST "${AGENT_URL}/query" \
+STORE_RESPONSE=$(curl -s -X POST "${AGENT_URL}/api/query" \
     -H "Content-Type: application/json" \
     -d "{\"query\": \"Remember that I prefer dark mode for all applications and my favorite programming language is TypeScript.\", \"sessionId\": \"${TEST_SESSION}\"}")
 
@@ -78,7 +78,7 @@ print_info "Waiting for memory to be indexed..."
 sleep 3
 
 print_info "Testing memory retrieval..."
-RETRIEVE_RESPONSE=$(curl -s -X POST "${AGENT_URL}/query" \
+RETRIEVE_RESPONSE=$(curl -s -X POST "${AGENT_URL}/api/query" \
     -H "Content-Type: application/json" \
     -d "{\"query\": \"What are my preferences?\", \"sessionId\": \"${TEST_SESSION}\"}")
 
@@ -95,7 +95,7 @@ echo ""
 echo "🔍 Test 4: Memory System Status"
 
 print_info "Checking memory status..."
-MEMORY_STATUS=$(curl -s "${AGENT_URL}/memory/status")
+MEMORY_STATUS=$(curl -s "${AGENT_URL}/api/memory/status")
 echo "$MEMORY_STATUS" | grep -q '"memoryCount"'
 print_result $? "Memory status endpoint accessible"
 
@@ -114,7 +114,7 @@ print_info "Running performance test with multiple queries..."
 START_TIME=$(date +%s)
 
 for i in {1..5}; do
-    curl -s -X POST "${AGENT_URL}/query" \
+    curl -s -X POST "${AGENT_URL}/api/query" \
         -H "Content-Type: application/json" \
         -d "{\"query\": \"Test query number ${i} for performance testing.\", \"sessionId\": \"${TEST_SESSION}\"}" > /dev/null
 done
@@ -135,14 +135,14 @@ echo "🔍 Test 6: Vector Search Quality"
 print_info "Testing semantic search quality..."
 
 # Store specific information
-curl -s -X POST "${AGENT_URL}/query" \
+curl -s -X POST "${AGENT_URL}/api/query" \
     -H "Content-Type: application/json" \
     -d "{\"query\": \"Remember: My cat's name is Whiskers and she loves tuna.\", \"sessionId\": \"${TEST_SESSION}\"}" > /dev/null
 
 sleep 2
 
 # Test semantic search
-SEARCH_RESPONSE=$(curl -s -X POST "${AGENT_URL}/query" \
+SEARCH_RESPONSE=$(curl -s -X POST "${AGENT_URL}/api/query" \
     -H "Content-Type: application/json" \
     -d "{\"query\": \"What does my pet like to eat?\", \"sessionId\": \"${TEST_SESSION}\"}")
 
@@ -158,7 +158,7 @@ print_info "Testing concurrent access..."
 
 # Run multiple queries in parallel
 for i in {1..3}; do
-    (curl -s -X POST "${AGENT_URL}/query" \
+    (curl -s -X POST "${AGENT_URL}/api/query" \
         -H "Content-Type: application/json" \
         -d "{\"query\": \"Concurrent test ${i}\", \"sessionId\": \"concurrent_${i}\"}" > /dev/null) &
 done
@@ -171,7 +171,7 @@ echo ""
 echo "🔍 Test 8: Error Handling"
 
 print_info "Testing error handling with malformed request..."
-ERROR_RESPONSE=$(curl -s -X POST "${AGENT_URL}/query" \
+ERROR_RESPONSE=$(curl -s -X POST "${AGENT_URL}/api/query" \
     -H "Content-Type: application/json" \
     -d "{\"invalid\": \"request\"}")
 
@@ -183,8 +183,8 @@ echo ""
 echo "📊 Test Summary"
 print_info "Getting final system status..."
 
-FINAL_HEALTH=$(curl -s "${AGENT_URL}/health")
-FINAL_MEMORY=$(curl -s "${AGENT_URL}/memory/status")
+FINAL_HEALTH=$(curl -s "${AGENT_URL}/api/health")
+FINAL_MEMORY=$(curl -s "${AGENT_URL}/api/memory/status")
 
 echo "System Status:"
 echo "$FINAL_HEALTH" | sed 's/,/,\n  /g' | sed 's/{/{\n  /' | sed 's/}/\n}/'
@@ -200,6 +200,6 @@ echo "🔧 System is ready for production use!"
 echo ""
 echo "📊 Access Points:"
 echo "   • Skynet Agent:    ${AGENT_URL}"
-echo "   • Health Check:    ${AGENT_URL}/health"
-echo "   • Memory Status:   ${AGENT_URL}/memory/status"
+echo "   • Health Check:    ${AGENT_URL}/api/health"
+echo "   • Memory Status:   ${AGENT_URL}/api/memory/status"
 echo "   • Milvus WebUI:    ${MILVUS_URL}"

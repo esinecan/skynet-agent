@@ -59,7 +59,7 @@ REM Wait for Skynet Agent to be healthy
 set attempt=0
 
 :wait_agent_loop
-curl -f http://localhost:3000/health >nul 2>&1
+curl -f http://localhost:3000/api/health >nul 2>&1
 if not errorlevel 1 (
     echo ✅ Skynet Agent is healthy
     goto success
@@ -79,7 +79,7 @@ echo 🎉 Skynet Agent is now running!
 echo.
 echo 📊 Service URLs:
 echo    • Skynet Agent:    http://localhost:3000
-echo    • Health Check:    http://localhost:3000/health
+echo    • Health Check:    http://localhost:3000/api/health
 echo    • Milvus WebUI:    http://localhost:9091
 echo    • Minio Console:   http://localhost:9001 (admin/admin)
 echo.
