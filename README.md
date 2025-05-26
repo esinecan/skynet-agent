@@ -326,26 +326,26 @@ src/
 ├── agent/
 │   ├── index.ts
 │   ├── intrinsicMotivation.ts
-│   ├── selfReflection.ts      # Enhanced with multi-step reasoning
+│   ├── selfReflection.ts 
 │   ├── llmClient.ts
-│   ├── workflow.ts            # Updated with adaptive responses
+│   ├── workflow.ts
 │   └── schemas/appStateSchema.ts
 ├── memory/
-│   ├── index.ts               # Production memory management
-│   ├── milvus.ts              # New: Milvus vector database
+│   ├── index.ts
+│   ├── milvus.ts
 │   └── consolidation.ts
 ├── mcp/
 │   └── client.ts
 ├── server/
-│   └── api.ts                 # Enhanced with GUI endpoints
+│   └── api.ts
 ├── db/
-│   └── sessions.ts            # New: Session management
+│   └── sessions.ts
 └── utils/
     ├── logger.ts
     ├── errorHandler.ts
     └── health.ts
 
-client/                        # New: React frontend
+client/
 ├── src/
 │   ├── App.tsx
 │   ├── main.tsx
@@ -364,22 +364,22 @@ client/                        # New: React frontend
 
 ## Recent Major Updates
 
-### ✅ **Completed Features**
+### **Features**
 
-1. **Real Embeddings Implementation** - Memory system now uses Gemini's embedding-001 model instead of random vectors, making memory retrieval actually functional.
-2. **Self-Reflection System** - Fully implemented and working in workflow with adaptive response generation.
+1. **RAG via Gemini** - Memory system now uses Gemini's embedding-001 model. **buggy**
+2. **Self-Reflection System** - **Temporarily turned off**
 3. **Multi-Step Reasoning** - Implemented in selfReflection.ts with performMultiStepReasoning function.
 4. **Milvus Vector Database** - Production-ready vector storage with automatic fallback to in-memory storage.
 5. **Docker Support** - Complete containerization with health checks.
 6. **Modern React GUI** - Complete web interface with session management, streaming responses, and file uploads.
 7. **Session Management System** - Persistent conversation storage with CRUD operations.
 8. **Streaming Chat API** - Real-time Server-Sent Events for live response streaming.
-9. **File Upload Support** - Multer-based file handling with base64 encoding for agent processing.
+9. **File Upload Support** - Multer-based file handling with base64 encoding for agent processing. **buggy**
 10. **Enhanced API Server** - RESTful endpoints for sessions, streaming, and file operations.
 
 ### 🔧 **Technology Stack**
 
-#### Backend (Production-Ready):
+#### Backend
 - **Node.js + TypeScript**: Core runtime and type safety
 - **Express.js**: Enhanced API server with session management and streaming
 - **Google Gemini**: LLM integration with real embeddings (embedding-001)
@@ -390,7 +390,7 @@ client/                        # New: React frontend
 - **Zustand**: State management
 - **Docker**: Containerization support
 
-#### Frontend (Modern React Stack):
+#### Frontend
 - **React 18**: Component-based UI framework
 - **TypeScript**: Type safety for frontend code
 - **Vite**: Fast development and build tooling
@@ -422,11 +422,9 @@ client/                        # New: React frontend
 
 1. ✅ Clone repository and install dependencies (`npm run install:all`)
 2. ✅ Copy `.env.example` to `.env` and configure your `GEMINI_API_KEY`
-3. ✅ Optional: Set up Milvus for production (falls back to in-memory storage)
+3. ✅ Set up Milvus
 4. ✅ Start development: `npm run dev:gui`
 5. ✅ Access GUI at http://localhost:3000 (opens automatically)
-
-The system is now production-ready with real AI capabilities, proper vector storage, modern user interface, and comprehensive API endpoints.
 
 ## Quick Verification
 
@@ -463,33 +461,9 @@ npm run gui
 # Access at http://localhost:3000
 ```
 
-### 4. Expected Features Working
-- ✅ Session creation and management
-- ✅ Real-time streaming responses
-- ✅ File upload functionality
-- ✅ Markdown rendering with syntax highlighting
-- ✅ Memory storage (falls back to in-memory if Milvus unavailable)
-- ✅ Self-reflection and adaptive responses
-- ✅ MCP tool integration
-
-## Project Status
-
-**Current Status**: ✅ **Production Ready**
-
-This implementation includes all major features from the quick-start guide:
-- Complete backend with session management
-- Modern React frontend with real-time streaming
-- File upload and processing
-- Production build system
-- Docker support
-- Comprehensive API endpoints
-
-**Last Updated**: May 23, 2025  
-**Version**: 0.1.0 (Full GUI Implementation)
-
-For the latest updates and documentation, visit the project repository.
-
 ## Troubleshooting
+
+Project is still in its development phase. If something is broken, give it a week and check back.
 
 ### Common Issues
 
@@ -506,12 +480,6 @@ npm run dev:gui
 If port 3000 is in use, update your `.env` file:
 ```env
 PORT=3001  # Or any available port
-```
-
-#### Milvus Connection Issues
-The system automatically falls back to in-memory storage if Milvus is unavailable. Check logs for:
-```
-[INFO] Memory: Using in-memory vector store (Milvus unavailable)
 ```
 
 #### Build Errors

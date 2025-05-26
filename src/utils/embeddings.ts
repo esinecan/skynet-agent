@@ -3,48 +3,63 @@
  * Provides real embeddings for memory storage and retrieval
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// TODO: Eren: update module system. "type": "module" <--- Add this line
+// Using dynamic import for @google/genai due to ES Module compatibility
 import { createLogger } from './logger';
 
 const logger = createLogger('embeddings');
 
 export class EmbeddingService {
-  private genAI: GoogleGenerativeAI | null = null;
+  private genAI: any = null;
   
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       logger.warn('GEMINI_API_KEY not configured, using fallback embeddings');
     } else {
-      this.genAI = new GoogleGenerativeAI(apiKey);
-      logger.info('Embedding service initialized with Gemini API');
+      this.initializeGenAI(apiKey);
     }
   }
-  
-  /**
+  private async initializeGenAI(apiKey: string) {
+    try {
+      const { GoogleGenAI } = await import('@google/genai');
+      this.genAI = new GoogleGenAI({ apiKey: apiKey });
+      logger.info('Embedding service initialized with Gemini API');
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to initialize Gemini API for embeddings:', err);
+    }
+  }/**
    * Generate embedding vector for text using Gemini API or fallback to hash-based method
    * @param text Text to generate embedding for
    * @returns Vector embedding as number array
    */
   async generateEmbedding(text: string): Promise<number[]> {
     try {
+      // Ensure GenAI is initialized
+      if (!this.genAI) {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (apiKey) {
+          await this.initializeGenAI(apiKey);
+        }
+      }
+
       if (!this.genAI) {
         logger.info('Using hash-based fallback embedding (no API key available)');
         return this.hashBasedEmbedding(text);
       }
+        // Use Gemini's embedding model with new SDK
+      const result = await this.genAI.models.embedContent({
+        model: "text-embedding-004", // Updated model name for new SDK
+        contents: [{ parts: [{ text: text }] }]
+      });
       
-      // Use Gemini's embedding model
-      const model = this.genAI.getGenerativeModel({ model: "embedding-001" });
-      const result = await model.embedContent(text);
-      
-      if (result.embedding && result.embedding.values) {
+      if (result.embeddings && result.embeddings.length > 0 && result.embeddings[0].values) {
         logger.debug(`Generated real embedding for text length ${text.length}`);
-        return result.embedding.values;
-      } else {
-        logger.warn('No embedding values returned from Gemini API, using fallback');
-        return this.hashBasedEmbedding(text);
+        return result.embeddings[0].values;
       }
-    } catch (error) {
+      logger.warn('No embedding values returned from Gemini API, using fallback');
+      return this.hashBasedEmbedding(text);    } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Failed to generate embedding, using fallback:', err);
       return this.hashBasedEmbedding(text);

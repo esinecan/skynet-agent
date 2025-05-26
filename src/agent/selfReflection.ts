@@ -160,10 +160,10 @@ async function performQuickReflection(
     Critique: [Your critique]
     ${generateImprovement ? 'Improved Response: [Your improved version of the response]' : ''}
   `;
-  
-  // Generate the reflection
+    // Generate the reflection
   const reflection = await generateResponse([
-    { role: "system", content: reflectionPrompt }
+    { role: "system", content: reflectionPrompt },
+    { role: "human", content: "Evaluate this response." }
   ]);
   
   // Parse the reflection
@@ -210,9 +210,9 @@ async function performThoroughReflection(
     
     Format your response as a concise analysis of what an ideal response should address.
   `;
-  
-  const queryAnalysis = await generateResponse([
-    { role: "system", content: queryAnalysisPrompt }
+    const queryAnalysis = await generateResponse([
+    { role: "system", content: queryAnalysisPrompt },
+    { role: "human", content: "Analyze this query." }
   ]);
   
   // Step 2: Evaluate the response against the query analysis
@@ -238,9 +238,9 @@ async function performThoroughReflection(
     Score: [1-10]
     Critique: [Your detailed critique with specific examples]
   `;
-  
-  const evaluation = await generateResponse([
-    { role: "system", content: evaluationPrompt }
+    const evaluation = await generateResponse([
+    { role: "system", content: evaluationPrompt },
+    { role: "human", content: "Evaluate this response." }
   ]);
   
   // Parse the evaluation
@@ -266,9 +266,9 @@ async function performThoroughReflection(
       Please provide an improved version of the response that addresses the critique.
       Focus on maintaining your own voice while improving the content and addressing any issues.
     `;
-    
-    improvedResponse = await generateResponse([
-      { role: "system", content: improvementPrompt }
+      improvedResponse = await generateResponse([
+      { role: "system", content: improvementPrompt },
+      { role: "human", content: "Improve this response." }
     ]);
   }
   
@@ -310,9 +310,9 @@ export async function performMultiStepReasoning(
       Step 2: [Description]
       ...and so on
     `;
-    
-    const breakdown = await generateResponse([
-      { role: "system", content: breakdownPrompt }
+      const breakdown = await generateResponse([
+      { role: "system", content: breakdownPrompt },
+      { role: "human", content: "Break down this problem." }
     ]);
     
     // Step 2: Execute each step
@@ -339,9 +339,9 @@ export async function performMultiStepReasoning(
         
         Please provide detailed reasoning for this step. Be thorough and consider multiple perspectives.
       `;
-      
-      const stepReasoning = await generateResponse([
-        { role: "system", content: stepPrompt }
+        const stepReasoning = await generateResponse([
+        { role: "system", content: stepPrompt },
+        { role: "human", content: "Reason through this step." }
       ]);
       
       steps.push(stepReasoning);
@@ -359,9 +359,9 @@ export async function performMultiStepReasoning(
       Based on the above reasoning, please provide a comprehensive final answer to the user's query.
       Make sure your answer is clear, accurate, and addresses all aspects of the query.
     `;
-    
-    const finalAnswer = await generateResponse([
-      { role: "system", content: finalPrompt }
+      const finalAnswer = await generateResponse([
+      { role: "system", content: finalPrompt },
+      { role: "human", content: "Provide the final answer." }
     ]);
     
     logger.info('Multi-step reasoning completed', {

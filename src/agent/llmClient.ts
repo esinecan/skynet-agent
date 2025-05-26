@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/node";
-import { GoogleGenerativeAI, type GenerativeModel, type Content, type Part } from "@google/generative-ai";
+// TODO: Eren: update module system. "type": "module" <--- Add this line
+// Using dynamic import for @google/genai due to ES Module compatibility
 import type { Message } from "./schemas/appStateSchema";
 import * as dotenv from 'dotenv';
 import * as path from 'node:path';
@@ -24,8 +25,8 @@ if (apiKey) {
 }
 
 // Initialize the Google Generative AI client only if we have a valid API key
-let genAI: GoogleGenerativeAI | null = null;
-let model: GenerativeModel | null = null;
+let genAI: any = null;
+let model: unknown | null = null;
 
 // Check if the API key is valid
 const isValidKey = apiKey && 
@@ -33,21 +34,25 @@ const isValidKey = apiKey &&
 
 console.log('- API Key appears valid:', isValidKey);
 
-if (isValidKey) {
-  console.log('Initializing Gemini model with the API key...');
-  genAI = new GoogleGenerativeAI(apiKey);
-  model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-05-20" });
-  console.log('Gemini model initialized successfully.');
-} else {
-  console.error('WARNING: Invalid or missing GEMINI_API_KEY. LLM functionality will not work.');
+// Dynamic import and initialization function
+async function initializeGenAI() {
+  if (isValidKey && !genAI) {
+    console.log('Initializing Gemini model with the API key...');
+    const { GoogleGenAI } = await import('@google/genai');
+    genAI = new GoogleGenAI({ apiKey: apiKey });
+    model = genAI.models; // Get the models module
+    console.log('Gemini model initialized successfully.');
+  } else if (!isValidKey) {
+    console.error('WARNING: Invalid or missing GEMINI_API_KEY. LLM functionality will not work.');
+  }
 }
 
 export async function generateResponse(
   messages: Array<Message>,
   systemPrompt?: string
 ): Promise<string> {
-  return Sentry.startSpan({ name: 'llm.generate_response' }, async (span) => {
-    try {
+  try {
+    return await Sentry.startSpan({ name: 'llm.generate_response' }, async (span) => {
       span?.setAttribute('message_count', messages.length);
       span?.setAttribute('has_system_prompt', !!systemPrompt);
       
@@ -61,57 +66,70 @@ export async function generateResponse(
         }
       });
 
-      // Check if model is initialized
-      if (!model) {
-        throw new Error("Gemini model is not initialized. Check your API key.");
+      // Initialize GenAI if not already done
+      await initializeGenAI();
+
+      // Check if client is initialized
+      if (!genAI) {
+        throw new Error("Gemini client is not initialized. Check your API key.");
       }
 
       // Convert our message format to Gemini's format
-      const geminiMessages: Content[] = messages.map(msg => {
+      const geminiMessages = messages.map(msg => {
         // Gemini uses "user" instead of "human" and "model" instead of "ai"
         const role = msg.role === "human" ? "user" : 
-                    msg.role === "ai" ? "model" : "system";
+                    msg.role === "ai" ? "model" : "user"; // treat system as user for now
         
-        return { role, parts: [{ text: msg.content } as Part] };
+        return { role, parts: [{ text: msg.content }] };
       });
 
-      // Setup chat session with system prompt if provided
+      // Filter system messages from history since they're handled separately
+      const historyMessages = geminiMessages.filter(msg => msg.role !== "system");
+
+      // Create chat session with system prompt if provided
       const chatConfig: {
-        systemInstruction?: {text: string},
-        history?: Content[]
-      } = {};
+        model: string;
+        systemInstruction?: { text: string };
+        history?: Array<{ role: string; parts: Array<{ text: string }> }>;
+      } = {
+        model: "gemini-2.5-flash-preview-05-20"
+      };
       
       if (systemPrompt) {
         chatConfig.systemInstruction = { text: systemPrompt };
       }
-      
-      const chatSession = model.startChat({
-        ...chatConfig,
-        history: geminiMessages.filter(msg => msg.role !== "system"),
-      });
 
-      // Get the latest message (that isn't a system message)
+      if (historyMessages.length > 1) {
+        // Use history excluding the last message (which we'll send separately)
+        chatConfig.history = historyMessages.slice(0, -1);
+      }
+
+      const chat = genAI.chats.create(chatConfig);
+
+      // Get the latest user message to send
       const userMessages = geminiMessages.filter(msg => msg.role === "user");
       const lastMessage = userMessages[userMessages.length - 1];
       
       if (!lastMessage) {
         throw new Error("No user messages found in conversation history");
       }
+
+      const result = await chat.sendMessage({
+        message: lastMessage.parts[0].text
+      });
       
-      const result = await chatSession.sendMessage(lastMessage.parts[0].text as string);
-      const response = result.response;
-      return response.text();
-    } catch (error) {
-      console.error("Error generating response:", error);
-      // Provide more detailed error messages
-      if (!apiKey || apiKey === "your_gemini_api_key_here") {
-        return "Error: Missing API key. Please add a valid GEMINI_API_KEY to your .env file.";
-      } else if (!model) {
-        return "Error: Failed to initialize LLM. Please check your API key and try again.";
-      } else {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return `Error: ${errorMessage}`;
-      }
+      return result.text || "";
+    }) || "";
+  } catch (error) {
+    console.error("Error generating response:", error);
+    // Provide more detailed error messages
+    if (!apiKey || apiKey === "your_gemini_api_key_here") {
+      return "Error: Missing API key. Please add a valid GEMINI_API_KEY to your .env file.";
     }
-  });
+    if (!genAI) {
+      return "Error: Failed to initialize LLM. Please check your API key and try again.";
+    }
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return `Error: ${errorMessage}`;
+  }
 }

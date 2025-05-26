@@ -386,7 +386,8 @@ const selfReflectionNode = async (state: AppState, context: unknown): Promise<Pa
     const isComplex = latestUserMessage.content.length > 100 || state.aiResponse.length > 500;
     const mode = isComplex ? ReflectionMode.THOROUGH : ReflectionMode.QUICK;
     
-    // Perform self-reflection
+    //TODO: Eren: Enable self-reflection
+    /*
     const reflectionResult = await performSelfReflection(
       latestUserMessage.content,
       state.aiResponse,
@@ -406,7 +407,9 @@ const selfReflectionNode = async (state: AppState, context: unknown): Promise<Pa
         improvedResponseLength: reflectionResult.improvedResponse.length
       });
       finalAiResponse = reflectionResult.improvedResponse;
-      
+      */
+     const finalAiResponse = state.aiResponse;
+
       // Update the messages array with the improved response
       const updatedMessages = [...state.messages];
       const lastAiMessageIndex = updatedMessages.length - 1;
@@ -414,7 +417,7 @@ const selfReflectionNode = async (state: AppState, context: unknown): Promise<Pa
         updatedMessages[lastAiMessageIndex].content = finalAiResponse;
       }
       
-      return {
+      /*return {
         aiResponse: finalAiResponse,
         messages: updatedMessages,
         reflectionResult: {
@@ -423,13 +426,15 @@ const selfReflectionNode = async (state: AppState, context: unknown): Promise<Pa
           improved: true
         }
       };
-    }
+    }*/
 
     return {
       aiResponse: finalAiResponse,
       reflectionResult: {
-        score: reflectionResult.score,
-        critique: reflectionResult.critique,
+        //score: reflectionResult.score,
+        score: 10, // TODO: Eren: Remove this hardcoded value
+        //critique: reflectionResult.critique,
+        critique: "This is a placeholder critique for the self-reflection process.",
         improved: false
       }
     };
@@ -499,7 +504,8 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
         toolCall: { value: null },
         toolResults: { value: null },
         reflectionResult: { value: null },
-        memoryId: { value: null }
+        memoryId: { value: null },
+        retrievalEvaluation: { value: null }
       }
     });
 

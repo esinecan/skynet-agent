@@ -212,20 +212,37 @@ export class MilvusMemoryManager {
     try {
       // Generate unique ID
       const id = `mem_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      const timestamp = new Date().toISOString();
-
-      // Generate embedding
+      const timestamp = new Date().toISOString();      // Generate embedding
       logger.info('Generating embedding for memory storage', { textLength: text.length });
-      const embedding = await embeddingService.generateEmbedding(text);
+      const embeddingResult = await embeddingService.generateEmbedding(text);
+
+      // Ensure embedding is a flat 1D array
+      let embedding = embeddingResult;
+      // Check if embedding is a 2D array and flatten if needed
+      if (Array.isArray(embeddingResult) && Array.isArray(embeddingResult[0])) {
+        embedding = embeddingResult.flat();
+        logger.debug('Flattened 2D embedding array to 1D', { 
+          originalShape: `${embeddingResult.length}x${embeddingResult[0].length}`,
+          flattenedLength: embedding.length
+        });
+      }
 
       // Prepare data for insertion
       const memoryData = [{
         id,
         text,
-        embedding,
+        embedding,  // Use the flattened embedding
         metadata: JSON.stringify(metadata),
         timestamp,
       }];
+
+      // Log the structure before insertion
+      logger.debug('Inserting memory with structure', { 
+        id,
+        textLength: text.length,
+        embeddingLength: embedding.length,
+        metadataKeys: Object.keys(metadata)
+      });
 
       // Insert into Milvus
       const insertResult = await this.client.insert({
@@ -274,10 +291,16 @@ export class MilvusMemoryManager {
       await this.initialize();
     }
 
-    try {
-      // Generate query embedding
+    try {      // Generate query embedding
       logger.info('Generating embedding for memory retrieval', { queryLength: query.length });
-      const queryEmbedding = await embeddingService.generateEmbedding(query);
+      const embeddingResult = await embeddingService.generateEmbedding(query);
+
+      // Ensure embedding is a flat 1D array
+      let queryEmbedding = embeddingResult;
+      // Check if embedding is a 2D array and flatten if needed
+      if (Array.isArray(embeddingResult) && Array.isArray(embeddingResult[0])) {
+        queryEmbedding = embeddingResult.flat();
+      }
 
       // Perform similarity search
       const searchResult = await this.client.search({
