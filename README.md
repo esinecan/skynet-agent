@@ -321,7 +321,7 @@ The GUI automatically opens at http://localhost:3000 and supports all modern bro
 
 ```
 src/
-├── index.ts                   # Enhanced with GUI support
+├── index.ts                   
 ├── run.ts
 ├── agent/
 │   ├── index.ts
