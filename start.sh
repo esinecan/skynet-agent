@@ -12,14 +12,14 @@ if [ ! -f .env ]; then
     echo "📋 Copying .env.example to .env..."
     cp .env.example .env
     echo "⚠️  Please edit .env file with your API keys before continuing"
-    echo "   Required: GEMINI_API_KEY or other LLM provider API key"
+    echo "   Required: GOOGLE_API_KEY or other LLM provider API key"
     exit 1
 fi
 
 # Check if API key is configured
-if ! grep -q "^GEMINI_API_KEY=.*[^[:space:]]" .env; then
+if ! grep -q "^GOOGLE_API_KEY=.*[^[:space:]]" .env; then
     echo "⚠️  No API key found in .env file"
-    echo "   Please set GEMINI_API_KEY in .env file"
+    echo "   Please set GOOGLE_API_KEY in .env file"
     exit 1
 fi
 

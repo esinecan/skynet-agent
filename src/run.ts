@@ -7,6 +7,41 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// Set up logging to idle-logs.txt
+const idleLogsPath = path.resolve(process.cwd(), 'idle-logs.txt');
+fs.writeFileSync(idleLogsPath, ''); // Empty the file
+
+// Create a write stream for the log file
+const logStream = fs.createWriteStream(idleLogsPath, { flags: 'a' });
+
+// Override console methods to also write to file
+const originalConsole = {
+  log: console.log,
+  error: console.error,
+  warn: console.warn,
+  info: console.info
+};
+
+console.log = function(...args) {
+  originalConsole.log(...args);
+  logStream.write(args.join(' ') + '\n');
+};
+
+console.error = function(...args) {
+  originalConsole.error(...args);
+  logStream.write('[ERROR] ' + args.join(' ') + '\n');
+};
+
+console.warn = function(...args) {
+  originalConsole.warn(...args);
+  logStream.write('[WARN] ' + args.join(' ') + '\n');
+};
+
+console.info = function(...args) {
+  originalConsole.info(...args);
+  logStream.write('[INFO] ' + args.join(' ') + '\n');
+};
+
 // Ensure .env file exists
 const envPath = path.resolve(process.cwd(), '.env');
 if (!fs.existsSync(envPath)) {
@@ -18,9 +53,9 @@ if (!fs.existsSync(envPath)) {
 dotenv.config({ path: envPath });
 
 // Check for Google API key
-const apiKey = process.env.GEMINI_API_KEY;
+const apiKey = process.env.GOOGLE_API_KEY;
 if (!apiKey || apiKey === 'your_gemini_api_key_here') {
- console.log('Please set your GEMINI_API_KEY in the .env file');
+ console.log('Please set your GOOGLE_API_KEY in the .env file');
  console.log('Visit https://ai.google.dev/ to obtain a Gemini API key');
  process.exit(1);
   

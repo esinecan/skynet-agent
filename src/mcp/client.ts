@@ -58,22 +58,47 @@ export class McpClientManager {
       this.clients.set(config.name, client);
       logger.info(`Connected to MCP server: ${config.name}`);
       
-      // List available tools for debugging
-      const tools = await client.listTools();
-      // Fix: Handle tools as potentially unknown type
-      const toolNames = Array.isArray(tools) ? 
-        tools.map((t: any) => t?.name || 'unnamed').join(', ') : 
-        'unknown tools';
-      logger.info(`${config.name} provides tools: ${toolNames}`);
+      // Debug the actual response from listTools
+      try {
+        const rawTools = await client.listTools();
+        logger.debug(`Raw tools response for ${config.name}:`, { 
+          type: typeof rawTools,
+          isArray: Array.isArray(rawTools),
+          value: rawTools 
+        });
+        
+        // Better handling of tool array
+        let toolNames = 'unknown tools';
+        if (Array.isArray(rawTools) && rawTools.length > 0) {
+          toolNames = rawTools.map(tool => {
+            if (typeof tool === 'object' && tool !== null) {
+              return tool.name || tool.function || 'unnamed';
+            }
+            return String(tool);
+          }).join(', ');
+        } else if (typeof rawTools === 'object' && rawTools !== null) {
+          // Handle case where it might be an object with properties
+          toolNames = Object.keys(rawTools).join(', ');
+        }
+        
+        logger.info(`${config.name} provides tools: ${toolNames}`);
+      } catch (toolError) {
+        const err = toolError instanceof Error ? toolError : new Error(String(toolError));
+        logger.warn(`Error listing tools for ${config.name}, but continuing:`, err);
+      }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error(`Connection to ${config.name} failed:`, err);
       throw err;
     }
   }
-
   getClient(serverName: string): McpClient | undefined {
     return this.clients.get(serverName);
+  }
+
+  // Method to get all connected clients for use with @google/genai mcpToTool
+  getAllClients(): McpClient[] {
+    return Array.from(this.clients.values());
   }
 
   async callTool(serverName: string, toolName: string, args: Record<string, any>): Promise<any> {
@@ -102,17 +127,36 @@ export class McpClientManager {
     for (const [serverName, client] of this.clients.entries()) {
       try {
         const rawTools = await client.listTools();
-        // Fix: Convert raw tools to ToolInfo array with proper type handling
-        const tools: ToolInfo[] = Array.isArray(rawTools) ? 
-          rawTools.map((t: any) => ({
-            name: t?.name || 'unnamed',
-            description: t?.description || undefined
-          })) : [];
+        logger.debug(`Raw tools from ${serverName}:`, { type: typeof rawTools, rawTools });
+        
+        let tools: ToolInfo[] = [];
+        
+        // Handle different potential response formats
+        if (Array.isArray(rawTools)) {
+          tools = rawTools.map((t: any) => {
+            // Extract name and description with better fallbacks
+            const name = t?.name || t?.function || t?.id || 'unnamed';
+            const description = t?.description || t?.help || t?.doc || undefined;
+            return { name, description };
+          });
+        } else if (typeof rawTools === 'object' && rawTools !== null) {
+          // Handle case where it might be an object with tool definitions as properties
+          tools = Object.entries(rawTools).map(([key, value]: [string, any]) => {
+            const name = value?.name || key;
+            const description = value?.description || value?.help || value?.doc || undefined;
+            return { name, description };
+          });
+        }
+        
+        // Improved logging: Include actual tool names
+        const toolNames = tools.map(t => t.name).join(", ");
+        logger.info(`Found ${tools.length} tools from server ${serverName}: ${toolNames || "none"}`);
         
         allTools.push({serverName, tools});
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         logger.error(`Error listing tools for ${serverName}:`, err);
+        allTools.push({serverName, tools: []});
       }
     }
     

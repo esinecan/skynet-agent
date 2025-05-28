@@ -13,7 +13,7 @@ dotenv.config({ path: envPath });
 
 // Configuration
 const API_URL = process.env.TEST_API_URL || 'http://localhost:9000';
-const GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
 // Update .env file with the provided Google API key
 async function updateEnvFile() {
@@ -29,11 +29,11 @@ async function updateEnvFile() {
     // Read current .env content
     let envContent = fs.readFileSync('.env', 'utf8');
     
-    // Update or add GEMINI_API_KEY
-    if (envContent.includes('GEMINI_API_KEY=')) {
-      envContent = envContent.replace(/GEMINI_API_KEY=., `GEMINI_API_KEY=${GOOGLE_API_KEY}`);
+    // Update or add GOOGLE_API_KEY
+    if (envContent.includes('GOOGLE_API_KEY=')) {
+      envContent = envContent.replace(/GOOGLE_API_KEY=., `GOOGLE_API_KEY=${GOOGLE_API_KEY}`);
     } else {
-      envContent += `\nGEMINI_API_KEY=${GOOGLE_API_KEY}\n`;
+      envContent += `\nGOOGLE_API_KEY=${GOOGLE_API_KEY}\n`;
     }
     
     // Write updated content back to .env

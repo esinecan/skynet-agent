@@ -1,135 +1,259 @@
-import * as Sentry from "@sentry/node";
-// TODO: Eren: update module system. "type": "module" <--- Add this line
-// Using dynamic import for @google/genai due to ES Module compatibility
-import type { Message } from "./schemas/appStateSchema";
-import * as dotenv from 'dotenv';
-import * as path from 'node:path';
+/**
+ * LLM Service for Skynet Agent - Vercel AI SDK Implementation
+ * This module provides a modern streaming interface for AI interactions
+ * with multi-provider support and MCP tool integration.
+ */
 
-// Load environment variables immediately
-const envPath = path.resolve(process.cwd(), '.env');
-console.log('LLMClient: Loading environment from:', envPath);
-dotenv.config({ path: envPath });
+import { streamText, CoreMessage, LanguageModelV1 } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createLogger } from '../utils/logger';
+import { McpClientManager } from '../mcp/client';
+import type { Message as InternalMessage } from './schemas/appStateSchema';
 
-// Check for API key
-const apiKey = process.env.GEMINI_API_KEY;
+const logger = createLogger('llmService');
 
-// Log environment details for debugging
-console.log('Environment variables loaded:');
-console.log('- GEMINI_API_KEY exists:', !!apiKey);
-if (apiKey) {
-  // Show first 4 and last 4 chars only, for security
-  const maskedKey = apiKey.length > 8 
-    ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`
-    : '****';
-  console.log('- API Key (masked):', maskedKey);
-}
+export class LLMService {
+  private llm: LanguageModelV1;
+  private modelId: string;
 
-// Initialize the Google Generative AI client only if we have a valid API key
-let genAI: any = null;
-let model: unknown | null = null;
+  constructor(private mcpClientManager: McpClientManager, modelId: string = 'google:gemini-2.0-flash') {
+    this.modelId = modelId;
+    const [provider, modelName] = modelId.split(':');
 
-// Check if the API key is valid
-const isValidKey = apiKey && 
-                  apiKey !== "your_gemini_api_key_here";
+    try {
+      switch (provider) {
+        case 'google':
+          if (!process.env.GOOGLE_API_KEY) {
+            throw new Error('GOOGLE_API_KEY environment variable is required for Google models');
+          }
+          this.llm = createGoogleGenerativeAI({ 
+            apiKey: process.env.GOOGLE_API_KEY 
+          })(modelName || 'gemini-2.0-flash');
+          break;
+        
+        case 'openai':
+          if (!process.env.OPENAI_API_KEY) {
+            throw new Error('OPENAI_API_KEY environment variable is required for OpenAI models');
+          }
+          this.llm = createOpenAI({ 
+            apiKey: process.env.OPENAI_API_KEY 
+          })(modelName || 'gpt-4o');
+          break;
+        
+        case 'anthropic':
+          if (!process.env.ANTHROPIC_API_KEY) {
+            throw new Error('ANTHROPIC_API_KEY environment variable is required for Anthropic models');
+          }
+          this.llm = createAnthropic({ 
+            apiKey: process.env.ANTHROPIC_API_KEY 
+          })(modelName || 'claude-3-5-sonnet-20241022');
+          break;
+        
+        default:
+          logger.warn(`Unknown provider '${provider}', defaulting to Google Gemini`);
+          if (!process.env.GOOGLE_API_KEY) {
+            throw new Error('GOOGLE_API_KEY environment variable is required for default Google models');
+          }
+          this.llm = createGoogleGenerativeAI({ 
+            apiKey: process.env.GOOGLE_API_KEY 
+          })('gemini-2.0-flash');
+          break;
+      }
+      
+      logger.info(`LLMService initialized with model: ${this.modelId}`);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error(`Failed to initialize LLMService: ${err.message}`);
+      throw err;
+    }
+  }
 
-console.log('- API Key appears valid:', isValidKey);
+  /**
+   * Convert internal message format to Vercel AI SDK format
+   */
+  private convertMessages(messages: InternalMessage[]): CoreMessage[] {
+    return messages.map(msg => {
+      let role: 'user' | 'assistant' | 'system';
+      
+      switch (msg.role) {
+        case 'human':
+          role = 'user';
+          break;
+        case 'ai':
+          role = 'assistant';
+          break;
+        case 'system':
+          role = 'system';
+          break;
+        default:
+          role = 'user';
+      }
 
-// Dynamic import and initialization function
-async function initializeGenAI() {
-  if (isValidKey && !genAI) {
-    console.log('Initializing Gemini model with the API key...');
-    const { GoogleGenAI } = await import('@google/genai');
-    genAI = new GoogleGenAI({ apiKey: apiKey });
-    model = genAI.models; // Get the models module
-    console.log('Gemini model initialized successfully.');
-  } else if (!isValidKey) {
-    console.error('WARNING: Invalid or missing GEMINI_API_KEY. LLM functionality will not work.');
+      return {
+        role,
+        content: msg.content
+      };
+    });
+  }
+
+  /**
+   * Prepare tools from MCP clients for Vercel AI SDK
+   */
+  private async prepareTools() {
+    try {
+      const allToolsData = await this.mcpClientManager.listAllTools();
+      const tools: Record<string, any> = {};
+
+      for (const serverData of allToolsData) {
+        const { serverName, tools: serverTools } = serverData;
+        
+        for (const tool of serverTools) {
+          const toolId = `${serverName}:${tool.name}`;
+          
+          tools[toolId] = {
+            description: tool.description || `Tool ${tool.name} from ${serverName}`,
+            parameters: {
+              type: 'object',
+              properties: {
+                args: {
+                  type: 'object',
+                  description: 'Arguments for the tool'
+                }
+              },
+              required: ['args']
+            },
+            execute: async (args: { args: any }) => {
+              try {
+                logger.debug(`Executing tool ${toolId} with args:`, args.args);
+                const result = await this.mcpClientManager.callTool(serverName, tool.name, args.args);
+                logger.debug(`Tool ${toolId} result:`, result);
+                return result;
+              } catch (error) {
+                const err = error instanceof Error ? error : new Error(String(error));
+                logger.error(`Tool execution failed for ${toolId}:`, err);
+                throw err;
+              }
+            }
+          };
+        }
+      }
+
+      logger.info(`Prepared ${Object.keys(tools).length} tools for LLM`);
+      return tools;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Failed to prepare tools:', err);
+      return {};
+    }
+  }
+
+  /**
+   * Generate response using new AI SDK with streaming support
+   */
+  async generateResponse(
+    messages: InternalMessage[],
+    systemPrompt?: string
+  ): Promise<ReadableStream> {
+    try {
+      // Convert messages to CoreMessage format
+      const coreMessages = this.convertMessages(messages);
+      
+      // Add system message if provided
+      if (systemPrompt) {
+        coreMessages.unshift({
+          role: 'system',
+          content: systemPrompt
+        });
+      }
+
+      // Prepare tools from MCP clients
+      const tools = await this.prepareTools();
+
+      logger.debug(`Generating response with ${coreMessages.length} messages and ${Object.keys(tools).length} tools`);
+
+      // Stream response from AI SDK
+      const result = await streamText({
+        model: this.llm,
+        messages: coreMessages,
+        tools: Object.keys(tools).length > 0 ? tools : undefined,
+        maxTokens: 4000,
+        temperature: 0.7
+      });
+
+      return result.toDataStream();
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error(`Error in LLMService.generateResponse: ${err.message}`);
+      
+      // Return error stream
+      const encoder = new TextEncoder();
+      return new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(`Error: ${err.message}`));
+          controller.close();
+        }
+      });
+    }
+  }
+
+  /**
+   * Legacy compatibility method for non-streaming responses
+   */
+  async generateResponseLegacy(
+    messages: InternalMessage[],
+    systemPrompt?: string
+  ): Promise<string> {
+    try {
+      const stream = await this.generateResponse(messages, systemPrompt);
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let result = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        result += decoder.decode(value, { stream: true });
+      }
+
+      return result;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error(`Error in legacy response generation: ${err.message}`);
+      return `Error: ${err.message}`;
+    }
+  }
+
+  /**
+   * Get model information
+   */
+  getModelInfo(): { id: string; provider: string; model: string } {
+    const [provider, model] = this.modelId.split(':');
+    return {
+      id: this.modelId,
+      provider: provider || 'unknown',
+      model: model || 'unknown'
+    };
   }
 }
 
+// Legacy export for compatibility - will be replaced in workflow
 export async function generateResponse(
-  messages: Array<Message>,
+  messages: InternalMessage[],
   systemPrompt?: string
 ): Promise<string> {
+  logger.warn('Using deprecated generateResponse function. Please migrate to LLMService class.');
+  
+  // This is a temporary compatibility shim
+  // In practice, the workflow should be updated to use LLMService directly
   try {
-    return await Sentry.startSpan({ name: 'llm.generate_response' }, async (span) => {
-      span?.setAttribute('message_count', messages.length);
-      span?.setAttribute('has_system_prompt', !!systemPrompt);
-      
-      Sentry.addBreadcrumb({
-        message: 'Generating LLM response',
-        category: 'llm',
-        level: 'info',
-        data: { 
-          messageCount: messages.length,
-          hasSystemPrompt: !!systemPrompt 
-        }
-      });
-
-      // Initialize GenAI if not already done
-      await initializeGenAI();
-
-      // Check if client is initialized
-      if (!genAI) {
-        throw new Error("Gemini client is not initialized. Check your API key.");
-      }
-
-      // Convert our message format to Gemini's format
-      const geminiMessages = messages.map(msg => {
-        // Gemini uses "user" instead of "human" and "model" instead of "ai"
-        const role = msg.role === "human" ? "user" : 
-                    msg.role === "ai" ? "model" : "user"; // treat system as user for now
-        
-        return { role, parts: [{ text: msg.content }] };
-      });
-
-      // Filter system messages from history since they're handled separately
-      const historyMessages = geminiMessages.filter(msg => msg.role !== "system");
-
-      // Create chat session with system prompt if provided
-      const chatConfig: {
-        model: string;
-        systemInstruction?: { text: string };
-        history?: Array<{ role: string; parts: Array<{ text: string }> }>;
-      } = {
-        model: "gemini-2.5-flash-preview-05-20"
-      };
-      
-      if (systemPrompt) {
-        chatConfig.systemInstruction = { text: systemPrompt };
-      }
-
-      if (historyMessages.length > 1) {
-        // Use history excluding the last message (which we'll send separately)
-        chatConfig.history = historyMessages.slice(0, -1);
-      }
-
-      const chat = genAI.chats.create(chatConfig);
-
-      // Get the latest user message to send
-      const userMessages = geminiMessages.filter(msg => msg.role === "user");
-      const lastMessage = userMessages[userMessages.length - 1];
-      
-      if (!lastMessage) {
-        throw new Error("No user messages found in conversation history");
-      }
-
-      const result = await chat.sendMessage({
-        message: lastMessage.parts[0].text
-      });
-      
-      return result.text || "";
-    }) || "";
+    // We need to create a temporary service instance
+    // This assumes mcpClientManager is available globally or we need to refactor
+    throw new Error('Legacy generateResponse function requires migration to LLMService. Please update the calling code.');
   } catch (error) {
-    console.error("Error generating response:", error);
-    // Provide more detailed error messages
-    if (!apiKey || apiKey === "your_gemini_api_key_here") {
-      return "Error: Missing API key. Please add a valid GEMINI_API_KEY to your .env file.";
-    }
-    if (!genAI) {
-      return "Error: Failed to initialize LLM. Please check your API key and try again.";
-    }
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return `Error: ${errorMessage}`;
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error(`Legacy generateResponse error: ${err.message}`);
+    return `Error: Migration required - ${err.message}`;
   }
 }

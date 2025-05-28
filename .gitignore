@@ -56,3 +56,4 @@ temp/
 
 # Sentry Config File
 .sentryclirc
+vercel docs.md

@@ -8,7 +8,8 @@ import * as path from 'path';
 import { createLogger } from '../utils/logger';
 import { WorkflowError } from '../utils/errorHandler';
 import { memoryManager } from './index';
-import { generateResponse } from '../agent/llmClient';
+import { LLMService } from '../agent/llmClient';
+import { McpClientManager } from '../mcp/client';
 import { updateComponentHealth, HealthStatus } from '../utils/health';
 import * as cron from 'node-cron';
 
@@ -156,8 +157,10 @@ export async function runMemoryConsolidation(): Promise<void> {
       Generate a thoughtful consolidation of these memories:
     `;
     
-    // Generate consolidation
-    const consolidation = await generateResponse([
+    // Generate consolidation using LLMService (without MCP tools for memory consolidation)
+    const mcpManager = new McpClientManager([]); // Empty MCP manager for consolidation
+    const llmService = new LLMService(mcpManager, process.env.AGENT_MODEL || 'google:gemini-2.0-flash');
+    const consolidation = await llmService.generateResponseLegacy([
       { role: "system", content: consolidationPrompt }
     ]);
     

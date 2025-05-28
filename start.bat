@@ -14,17 +14,17 @@ if not exist .env (
     echo 📋 Copying .env.example to .env...
     copy .env.example .env
     echo ⚠️  Please edit .env file with your API keys before continuing
-    echo    Required: GEMINI_API_KEY or other LLM provider API key
+    echo    Required: GOOGLE_API_KEY or other LLM provider API key
     exit /b 1
 )
 
 REM Check if API key is configured (basic check)
-findstr /B "GEMINI_API_KEY=.*[^=]" .env >nul
+findstr /B "GOOGLE_API_KEY=.*[^=]" .env >nul
 if errorlevel 1 (
     findstr /B "OPENAI_API_KEY=.*[^=]" .env >nul
     if errorlevel 1 (
         echo ⚠️  No API key found in .env file
-        echo    Please set GEMINI_API_KEY or OPENAI_API_KEY in .env file
+        echo    Please set GOOGLE_API_KEY or OPENAI_API_KEY in .env file
         exit /b 1
     )
 )

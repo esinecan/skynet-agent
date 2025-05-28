@@ -9,7 +9,8 @@ import cors from 'cors';
 import multer from 'multer';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { processQuery, initializeAgent } from '../agent';
+import { streamText } from 'ai';
+import { processQuery, processQueryStream, initializeAgent } from '../agent';
 import { createLogger } from '../utils/logger';
 import { handleApiError, setupGlobalErrorHandlers } from '../utils/errorHandler';
 import { getHealthReport, getHealthStatus, initializeHealthMonitoring } from '../utils/health';
@@ -260,18 +261,20 @@ app.post('/api/chat/stream', async (req, res) => {
     // Send initial acknowledgment
     res.write(`data: ${JSON.stringify({ type: 'start' })}\n\n`);
     
-    // Process with agent
-    const response = await processQuery(message, sessionId);
-    
-    // Simulate streaming by sending chunks
-    const chunks = response.match(/.{1,50}/g) || [];
+    // Get streaming response from agent
+    const responseStream = await processQueryStream(message, sessionId);
+    const reader = responseStream.getReader();
+    const decoder = new TextDecoder();
     let fullResponse = '';
     
-    for (const chunk of chunks) {
+    // Stream the response chunks
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      const chunk = decoder.decode(value, { stream: true });
       fullResponse += chunk;
       res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
-      // Small delay to simulate streaming
-      await new Promise(resolve => setTimeout(resolve, 50));
     }
     
     // Add assistant message to session

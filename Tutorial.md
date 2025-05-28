@@ -28,7 +28,7 @@ This design achieves an “LLM prosthetic” model: instead of adding more LLMs,
 To run Skynet Agent, you need:
 
 * **Node.js 18+** and npm.
-* A **Gemini API key** (set `GEMINI_API_KEY` in your `.env`).
+* A **Gemini API key** (set `GOOGLE_API_KEY` in your `.env`).
 * (Optional) **Milvus** vector database for persistent memory (otherwise it falls back to in-memory vectors).
 * (Optional) Tools you want to use via MCP (e.g. Playwright installed, filesystem server, etc.).
 
@@ -44,7 +44,7 @@ cd client && npm install && cd ..
 **2. Configure environment:** Copy `.env.example` to `.env` and set your values, e.g.:
 
 ```dotenv
-GEMINI_API_KEY=<your-gemini-key>
+GOOGLE_API_KEY=<your-gemini-key>
 PORT=3000
 # MCP Server config (JSON string or use config.json)
 # Example to use Playwright MCP:

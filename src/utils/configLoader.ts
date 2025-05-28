@@ -54,11 +54,26 @@ export function loadMcpServerConfigs(forceReload = false): McpServerConfig[] {
         const config = JSON.parse(configData);
         
         if (config.mcp?.servers) {
-          logger.info('Loaded MCP server configs from config.json', { 
-            count: Object.keys(config.mcp.servers).length 
-          });
-          cachedConfigs = convertConfigFormat(config.mcp.servers);
-          return cachedConfigs;
+          // Check if servers is an array or object
+          if (Array.isArray(config.mcp.servers)) {
+            logger.info('Found array-format MCP servers config');
+            // Add explicit type for server parameter to fix the implicit 'any' error
+            cachedConfigs = config.mcp.servers.map((server: any) => ({
+              name: server.name || 'unnamed',
+              transport: server.config?.url ? "http" : "stdio",
+              command: server.config?.command,
+              args: server.config?.args,
+              url: server.config?.url
+            }));
+            
+            // Initialize to empty array if null to fix null assignment error
+            return cachedConfigs || [];
+          } else {
+            // Object format - convert keys to names
+            logger.info('Found object-format MCP servers config');
+            cachedConfigs = convertConfigFormat(config.mcp.servers);
+            return cachedConfigs;
+          }
         }
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));

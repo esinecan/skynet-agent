@@ -7,7 +7,7 @@ import * as Sentry from "@sentry/node";
 import { StateGraph } from "@langchain/langgraph";
 import type { AppState, ToolCall } from "./schemas/appStateSchema";
 import { AppStateSchema } from "./schemas/appStateSchema";
-import { generateResponse } from "./llmClient";
+import { LLMService } from "./llmClient";
 import { McpClientManager } from "../mcp/client";
 import { createLogger } from "../utils/logger";
 import { WorkflowError } from "../utils/errorHandler";
@@ -27,6 +27,8 @@ interface WorkflowContext {
 declare global {
   // eslint-disable-next-line no-var
   var mcpManagerContext: McpClientManager | undefined;
+  // eslint-disable-next-line no-var
+  var llmServiceContext: LLMService | undefined;
 }
 
 // Simple retrieval decision based on query analysis
@@ -118,6 +120,11 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
 
       const query = latestUserMessage.content;
       const retrieveDecision = shouldRetrieve(query);
+      
+      logger.info('Memory retrieval decision', { 
+        query: query.slice(0, 50), 
+        shouldRetrieve: retrieveDecision 
+      });
       
       if (!retrieveDecision) {
         logger.info('Skipping memory retrieval for simple query', { query: query.slice(0, 50) });
@@ -240,8 +247,12 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
     // Track LLM call for metrics
     incrementMetric('llmCallsMade');
     
-    // Generate response
-    const response = await generateResponse(state.messages, toolsPrompt);
+    // Generate response using new LLMService
+    const llmService = global.llmServiceContext;
+    if (!llmService) {
+      throw new WorkflowError('LLMService not available in global context');
+    }
+    const response = await llmService.generateResponseLegacy(state.messages, toolsPrompt);
     
     // Check if the response contains a tool call
     const toolCall = extractToolCall(response);
@@ -513,6 +524,10 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
     const manager = mcpManager || new McpClientManager();
     logger.info("MCPManager availability:", { available: !!manager });
 
+    // Create LLM service instance
+    const llmService = new LLMService(manager, process.env.AGENT_MODEL || 'google:gemini-2.0-flash');
+    logger.info("LLMService created with model:", llmService.getModelInfo());
+
     // Add nodes
     workflow.addNode("entryPoint", entryPointNode);
     workflow.addNode("memoryRetrieval", memoryRetrievalNode);
@@ -575,15 +590,17 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
             HealthStatus.HEALTHY, 
             'Processing user query'
           );
-            // Add the MCP manager to the global context temporarily
+            // Add the MCP manager and LLM service to the global context temporarily
           // This is not ideal but works around the limitations
           global.mcpManagerContext = manager;
+          global.llmServiceContext = llmService;
           
           // Invoke the actual graph
           const result = await compiledGraph.invoke(state);
           
           // Clean up the global context
           global.mcpManagerContext = undefined;
+          global.llmServiceContext = undefined;
           
           logger.info("Graph invocation completed successfully");
           

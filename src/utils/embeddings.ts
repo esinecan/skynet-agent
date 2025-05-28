@@ -3,63 +3,57 @@
  * Provides real embeddings for memory storage and retrieval
  */
 
-// TODO: Eren: update module system. "type": "module" <--- Add this line
-// Using dynamic import for @google/genai due to ES Module compatibility
 import { createLogger } from './logger';
+import { embed } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
 const logger = createLogger('embeddings');
 
 export class EmbeddingService {
-  private genAI: any = null;
+  private googleAI: any = null;
   
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GOOGLE_API_KEY;
     if (!apiKey) {
-      logger.warn('GEMINI_API_KEY not configured, using fallback embeddings');
+      logger.warn('GOOGLE_API_KEY not configured, using fallback embeddings');
     } else {
-      this.initializeGenAI(apiKey);
+      this.initializeGoogleAI(apiKey);
     }
   }
-  private async initializeGenAI(apiKey: string) {
+  
+  private initializeGoogleAI(apiKey: string) {
     try {
-      const { GoogleGenAI } = await import('@google/genai');
-      this.genAI = new GoogleGenAI({ apiKey: apiKey });
-      logger.info('Embedding service initialized with Gemini API');
+      this.googleAI = createGoogleGenerativeAI({ apiKey });
+      logger.info('Embedding service initialized with Google AI SDK');
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error('Failed to initialize Gemini API for embeddings:', err);
+      logger.error('Failed to initialize Google AI SDK for embeddings:', err);
     }
-  }/**
+  }
+
+  /**
    * Generate embedding vector for text using Gemini API or fallback to hash-based method
    * @param text Text to generate embedding for
    * @returns Vector embedding as number array
    */
   async generateEmbedding(text: string): Promise<number[]> {
     try {
-      // Ensure GenAI is initialized
-      if (!this.genAI) {
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (apiKey) {
-          await this.initializeGenAI(apiKey);
-        }
+      // Use the new AI SDK if available
+      if (this.googleAI) {
+        const { embedding } = await embed({
+          model: this.googleAI.textEmbeddingModel('text-embedding-004'),
+          value: text,
+        });
+        
+        logger.debug(`Generated real embedding for text length ${text.length}`, {
+          dimension: embedding.length
+        });
+        return embedding;
       }
 
-      if (!this.genAI) {
-        logger.info('Using hash-based fallback embedding (no API key available)');
-        return this.hashBasedEmbedding(text);
-      }
-        // Use Gemini's embedding model with new SDK
-      const result = await this.genAI.models.embedContent({
-        model: "text-embedding-004", // Updated model name for new SDK
-        contents: [{ parts: [{ text: text }] }]
-      });
-      
-      if (result.embeddings && result.embeddings.length > 0 && result.embeddings[0].values) {
-        logger.debug(`Generated real embedding for text length ${text.length}`);
-        return result.embeddings[0].values;
-      }
-      logger.warn('No embedding values returned from Gemini API, using fallback');
-      return this.hashBasedEmbedding(text);    } catch (error) {
+      logger.info('Using hash-based fallback embedding (no API key available)');
+      return this.hashBasedEmbedding(text);
+    } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Failed to generate embedding, using fallback:', err);
       return this.hashBasedEmbedding(text);
@@ -75,7 +69,7 @@ export class EmbeddingService {
   private hashBasedEmbedding(text: string): number[] {
     const normalized = text.toLowerCase().trim();
     const words = normalized.split(/\s+/);
-    const embedding = new Array(384).fill(0); // Standard embedding size
+    const embedding = new Array(768).fill(0); // Use 768 to match text-embedding-004 dimensions
     
     // Create deterministic embedding based on text content
     for (let i = 0; i < words.length; i++) {

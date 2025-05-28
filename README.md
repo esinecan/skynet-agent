@@ -22,7 +22,7 @@ Skynet Agent is an autonomous AI assistant built with Node.js and TypeScript. It
 
 * Node.js >= 18.x
 * npm >= 8.x
-* A valid Gemini API key (`GEMINI_API_KEY`)
+* A valid Gemini API key (`GOOGLE_API_KEY`)
 * **Optional**: Milvus vector database for production memory storage
 
 ## Installation
@@ -56,7 +56,7 @@ Copy `.env.example` to `.env` and set the following variables:
 
 ```env
 # LLM API Keys
-GEMINI_API_KEY=your_gemini_api_key_here
+GOOGLE_API_KEY=your_gemini_api_key_here
 
 # Server Configuration
 PORT=3000
@@ -421,7 +421,7 @@ client/
 ### 📋 **Quick Start Checklist**
 
 1. ✅ Clone repository and install dependencies (`npm run install:all`)
-2. ✅ Copy `.env.example` to `.env` and configure your `GEMINI_API_KEY`
+2. ✅ Copy `.env.example` to `.env` and configure your `GOOGLE_API_KEY`
 3. ✅ Set up Milvus
 4. ✅ Start development: `npm run dev:gui`
 5. ✅ Access GUI at http://localhost:3000 (opens automatically)

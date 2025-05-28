@@ -1,15 +1,15 @@
-/**
+  /**
  * Long-term memory implementation for the Skynet Agent
- * Provides vector storage and retrieval of memories using Milvus
+ * Provides vector storage and retrieval of memories using ChromaDB
  */
 
 import { createLogger } from '../utils/logger';
-import { milvusMemoryManager } from './milvus';
+import { chromaMemoryManager } from './chroma';
 
 const logger = createLogger('memory');
 
-// Re-export the Milvus memory manager as the main memory interface
-export const memoryManager = milvusMemoryManager;
+// Re-export the ChromaDB memory manager as the main memory interface
+export const memoryManager = chromaMemoryManager;
 
 // Keep the interface compatible with existing code
 export class MemoryManager {

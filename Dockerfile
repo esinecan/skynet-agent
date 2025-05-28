@@ -1,8 +1,6 @@
 # Multi-stage build for optimal image size
-FROM node:18-alpine AS base
+FROM node:24-slim AS base
 
-# Install dependencies needed for runtime
-RUN apk add --no-cache curl
 
 # Set working directory
 WORKDIR /app

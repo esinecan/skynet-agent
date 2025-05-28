@@ -11,6 +11,7 @@ import * as path from 'node:path';
 import { createLogger } from './utils/logger';
 import { setupGlobalErrorHandlers } from './utils/errorHandler';
 import { initializeAgent } from './agent';
+import { memoryManager } from './memory'; // Add this import
 import { startApiServer } from './server/api';
 import { loadMcpServerConfigs } from './utils/configLoader';
 import * as fs from 'node:fs';
@@ -33,7 +34,7 @@ setupGlobalErrorHandlers();
 function checkEnvironment(): boolean {
   logger.info('Checking environment configuration...');
   
-  const requiredVars = ['GEMINI_API_KEY'];
+  const requiredVars = ['GOOGLE_API_KEY'];
   const missingVars = requiredVars.filter(varName => !process.env[varName] || process.env[varName] === `your_${varName.toLowerCase()}_here`);
   
   if (missingVars.length > 0) {
@@ -68,7 +69,8 @@ async function main() {
   
   try {
     // Initialize the agent and workflow
-    const { agentWorkflow, mcpManager } = await initializeAgent();    logger.info('Agent initialized successfully', {
+    const { agentWorkflow, mcpManager } = await initializeAgent();
+    logger.info('Agent initialized successfully', {
       workflowAvailable: !!agentWorkflow,
       mcpAvailable: !!mcpManager
     });
@@ -92,11 +94,24 @@ async function main() {
       }
     }
     
+    // Test memory system
+    logger.info('Testing memory system...');
+    try {
+      const memoryTestResult = await memoryManager.testMemorySystem();
+      if (memoryTestResult) {
+        logger.info('✅ Memory system test passed');
+      } else {
+        logger.warn('⚠️ Memory system test failed');
+      }
+    } catch (error) {
+      logger.error('Error testing memory system', error instanceof Error ? error : new Error(String(error)));
+    }
+    
     logger.info('Skynet Agent is ready for interaction', {
       port,
       guiMode: enableGUI,
       envValid,
-      googleApiKey: process.env.GEMINI_API_KEY ? 'configured' : 'missing',
+      googleApiKey: process.env.GOOGLE_API_KEY ? 'configured' : 'missing',
       idleThreshold: process.env.IDLE_THRESHOLD_MINUTES || '10',
       memoryConsolidation: process.env.MEMORY_CONSOLIDATION_SCHEDULE || '0 2 * * *'
     });  } catch (error) {

@@ -256,9 +256,9 @@ export function initializeHealthMonitoring(): void {
     updateMetrics();
     
     // Check Milvus health every minute
-    checkMilvusHealth().catch(error => {
+    /*checkMilvusHealth().catch(error => {
       logger.error('Milvus health check failed', error);
-    });
+    });*/
     
     // Log periodic health status
     logger.debug('Health status update', {
@@ -273,4 +273,34 @@ export function initializeHealthMonitoring(): void {
   }, 60000); // Check every minute
   
   logger.info('Health monitoring initialized');
+}
+
+
+/**
+ * Perform health check on memory system
+ */
+export async function checkMemoryHealth(): Promise<void> {
+  try {
+    // Import here to avoid circular dependencies
+    const { memoryManager } = await import('../memory/index.js');
+    
+    const isHealthy = await memoryManager.healthCheck();
+    const memoryCount = await memoryManager.getMemoryCount();
+    
+    if (isHealthy) {
+      updateComponentHealth('memory', HealthStatus.HEALTHY, 'Memory system active', {
+        memoryCount,
+        lastCheck: new Date().toISOString()
+      });
+    } else {
+      updateComponentHealth('memory', HealthStatus.UNHEALTHY, 'Memory system connection failed', {
+        lastCheck: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    updateComponentHealth('memory', HealthStatus.UNHEALTHY, 'Memory health check error', {
+      error: error instanceof Error ? error.message : String(error),
+      lastCheck: new Date().toISOString()
+    });
+  }
 }
