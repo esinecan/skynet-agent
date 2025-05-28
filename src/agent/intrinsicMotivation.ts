@@ -111,6 +111,7 @@ export function getRecentIntrinsicTasks(): TaskRecord[] {
 async function checkIdleTime(): Promise<void> {
   // Don't check if a task is already running
   if (isTaskRunning) {
+    logger.debug('Skipping idle check - intrinsic task already running');
     return;
   }
   
@@ -118,9 +119,20 @@ async function checkIdleTime(): Promise<void> {
   const idleTimeMs = now.getTime() - lastUserInteraction.getTime();
   const idleTimeMinutes = idleTimeMs / (1000 * 60);
   
+  logger.debug('Checking idle time', {
+    idleTimeMinutes: Math.round(idleTimeMinutes * 100) / 100,
+    thresholdMinutes: IDLE_THRESHOLD_MINUTES,
+    lastInteraction: lastUserInteraction.toISOString(),
+    shouldTriggerTask: idleTimeMinutes >= IDLE_THRESHOLD_MINUTES,
+    recentTaskCount: recentTasks.length
+  });
+  
   // If we've been idle for longer than the threshold, trigger a task
-  if (idleTimeMinutes >= IDLE_THRESHOLD_MINUTES) {
-    logger.info(`System has been idle for ${idleTimeMinutes.toFixed(2)} minutes, triggering intrinsic task`);
+  if (idleTimeMinutes >= IDLE_THRESHOLD_MINUTES) {    logger.debug('System idle threshold exceeded', {
+      idleTimeMinutes: Math.round(idleTimeMinutes * 100) / 100,
+      thresholdMinutes: IDLE_THRESHOLD_MINUTES,
+      triggeringTask: 'reflection'
+    });
     
     // For now, just trigger a simple reflection task
     await executeIntrinsicTask('reflection');
@@ -131,8 +143,13 @@ async function checkIdleTime(): Promise<void> {
  * Execute an intrinsic task
  */
 async function executeIntrinsicTask(taskType: string): Promise<void> {
+  const startTime = Date.now();
+  
   if (isTaskRunning) {
-    logger.warn('Attempted to execute intrinsic task while another task is running');
+    logger.debug('Attempted to execute intrinsic task while another task is running', {
+      requestedTaskType: taskType,
+      currentlyRunning: true
+    });
     return;
   }
   
@@ -140,6 +157,13 @@ async function executeIntrinsicTask(taskType: string): Promise<void> {
   
   try {
     isTaskRunning = true;
+    
+    logger.debug('Starting intrinsic task execution', {
+      taskId,
+      taskType,
+      recentTaskCount: recentTasks.length,
+      startTime: new Date().toISOString()
+    });
     
     // Record task start
     const taskRecord: TaskRecord = {
@@ -152,9 +176,8 @@ async function executeIntrinsicTask(taskType: string): Promise<void> {
     recentTasks.unshift(taskRecord);
     if (recentTasks.length > 10) {
       recentTasks.pop(); // Keep only the 10 most recent tasks
+      logger.debug('Pruned task history', { keptTaskCount: recentTasks.length });
     }
-    
-    logger.info(`Starting intrinsic task: ${taskType}`, { taskId });
     
     // Update health status
     updateComponentHealth(
@@ -165,16 +188,27 @@ async function executeIntrinsicTask(taskType: string): Promise<void> {
     
     // Execute the specific task type
     if (taskType === 'reflection') {
+      logger.debug('Executing reflection task', { taskId });
       await executeReflectionTask(taskId);
     } else {
-      logger.warn(`Unknown intrinsic task type: ${taskType}`);
+      logger.error('Unknown intrinsic task type', {
+        taskType,
+        taskId,
+        supportedTypes: ['reflection']
+      });
     }
     
     // Record task completion
+    const executionTime = Date.now() - startTime;
     taskRecord.endTime = new Date().toISOString();
     taskRecord.success = true;
     
-    logger.info(`Completed intrinsic task: ${taskType}`, { taskId });
+    logger.debug('Completed intrinsic task successfully', {
+      taskId,
+      taskType,
+      executionTimeMs: executionTime,
+      success: true
+    });
     
     // Update health status
     updateComponentHealth(
@@ -183,8 +217,15 @@ async function executeIntrinsicTask(taskType: string): Promise<void> {
       'Intrinsic task completed successfully'
     );
   } catch (error) {
+    const executionTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error('Failed to execute intrinsic task', err);
+    logger.error('Failed to execute intrinsic task', {
+      error: err,
+      taskId,
+      taskType,
+      executionTimeMs: executionTime,
+      errorType: err.constructor.name
+    });
     
     // Update health status
     updateComponentHealth(

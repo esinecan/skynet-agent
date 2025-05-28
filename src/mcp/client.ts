@@ -18,16 +18,52 @@ export class McpClientManager {
   constructor(serverConfigs: McpServerConfig[] = []) {
     this.serverConfigs = serverConfigs;
   }
-
   async initialize(): Promise<void> {
+    logger.debug('Starting MCP client manager initialization', {
+      serverCount: this.serverConfigs.length,
+      servers: this.serverConfigs.map(s => ({ name: s.name, transport: s.transport }))
+    });
+    
+    const connectionResults = [];
     for (const config of this.serverConfigs) {
+      const startTime = Date.now();
       try {
+        logger.debug(`Attempting to connect to MCP server: ${config.name}`, {
+          transport: config.transport,
+          command: config.command,
+          url: config.url,
+          args: config.args
+        });
+        
         await this.connectToServer(config);
+        const connectionTime = Date.now() - startTime;
+        connectionResults.push({ name: config.name, success: true, timeMs: connectionTime });
+        
+        logger.debug(`Successfully connected to ${config.name}`, {
+          connectionTimeMs: connectionTime
+        });
       } catch (error) {
+        const connectionTime = Date.now() - startTime;
         const err = error instanceof Error ? error : new Error(String(error));
-        logger.error(`Failed to connect to MCP server ${config.name}:`, err);
+        connectionResults.push({ name: config.name, success: false, timeMs: connectionTime, error: err.message });
+        
+        logger.error(`Failed to connect to MCP server ${config.name}:`, {
+          error: err,
+          connectionTimeMs: connectionTime,
+          transport: config.transport,
+          errorType: err.constructor.name
+        });
       }
     }
+    
+    const successfulConnections = connectionResults.filter(r => r.success).length;
+    logger.debug('MCP client manager initialization completed', {
+      totalServers: this.serverConfigs.length,
+      successfulConnections,
+      failedConnections: this.serverConfigs.length - successfulConnections,
+      connectionResults,
+      totalConnectionTime: connectionResults.reduce((sum, r) => sum + r.timeMs, 0)
+    });
   }
 
   private async connectToServer(config: McpServerConfig): Promise<void> {
@@ -100,22 +136,74 @@ export class McpClientManager {
   getAllClients(): McpClient[] {
     return Array.from(this.clients.values());
   }
-
   async callTool(serverName: string, toolName: string, args: Record<string, any>): Promise<any> {
+    const startTime = Date.now();
+    logger.debug('Starting tool call', {
+      serverName,
+      toolName,
+      argsCount: Object.keys(args).length,
+      argKeys: Object.keys(args),
+      argsSize: JSON.stringify(args).length
+    });
+    
     const client = this.getClient(serverName);
     if (!client) {
+      logger.error('No MCP client found for server', {
+        requestedServer: serverName,
+        availableServers: Array.from(this.clients.keys())
+      });
       throw new Error(`No MCP client found for server: ${serverName}`);
     }
 
     try {
+      logger.debug('Calling tool on MCP client', {
+        serverName,
+        toolName,
+        clientConnected: !!client
+      });
+      
       const result = await client.callTool({
         name: toolName,
         params: args
+      });      const callTime = Date.now() - startTime;
+      let resultSize = 0;
+      let resultPreview = 'null';
+      
+      try {
+        if (result && typeof result === 'string') {
+          resultSize = (result as string).length;
+          resultPreview = (result as string).substring(0, 200) + ((result as string).length > 200 ? "..." : "");
+        } else if (result !== null && result !== undefined) {
+          const jsonStr = JSON.stringify(result);
+          resultSize = jsonStr.length;
+          resultPreview = jsonStr.substring(0, 200) + (jsonStr.length > 200 ? "..." : "");
+        }
+      } catch (e) {
+        resultPreview = '[Error serializing result]';
+      }
+      
+      logger.debug('Tool call completed successfully', {
+        serverName,
+        toolName,
+        callTimeMs: callTime,
+        resultSize,
+        resultType: typeof result,
+        resultPreview
       });
+      
       return result;
     } catch (error) {
+      const callTime = Date.now() - startTime;
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`Error calling tool ${toolName} on ${serverName}:`, err);
+      logger.error(`Error calling tool ${toolName} on ${serverName}:`, {
+        error: err,
+        callTimeMs: callTime,
+        serverName,
+        toolName,
+        argsProvided: Object.keys(args).length,
+        errorType: err.constructor.name,
+        errorMessage: err.message
+      });
       throw err;
     }
   }

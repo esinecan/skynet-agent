@@ -1,6 +1,8 @@
 # Multi-stage build for optimal image size
 FROM node:24-slim AS base
 
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app

@@ -1,7 +1,7 @@
 {
   "name": "skynet-agent",
   "version": "0.1.0",
-  "description": "A cognitive AI agent with short-term and long-term memory capabilities",
+  "description": "A cognitive AI agent with comprehensive debug logging, semantic memory, intrinsic motivation, and MCP tool integration",
   "main": "dist/index.js",
   "scripts": {
     "build": "npm run build:server && npm run build:client && npm run sentry:sourcemaps",

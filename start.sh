@@ -44,12 +44,12 @@ docker-compose up --build -d
 
 echo "⏳ Waiting for services to be healthy..."
 
-# Wait for Milvus to be healthy
+# Wait for ChromaDB to be healthy
 max_attempts=30
 attempt=0
 while [ $attempt -lt $max_attempts ]; do
-    if docker-compose ps milvus | grep -q "healthy"; then
-        echo "✅ Milvus is healthy"
+    if docker-compose ps chromadb | grep -q "healthy"; then
+        echo "✅ ChromaDB is healthy"
         break
     fi
     sleep 10
@@ -57,15 +57,15 @@ while [ $attempt -lt $max_attempts ]; do
 done
 
 if [ $attempt -eq $max_attempts ]; then
-    echo "❌ Milvus failed to become healthy"
-    docker-compose logs milvus
+    echo "❌ ChromaDB failed to become healthy"
+    docker-compose logs chromadb
     exit 1
 fi
 
 # Wait for Skynet Agent to be healthy
 attempt=0
 while [ $attempt -lt $max_attempts ]; do
-    if curl -f http://localhost:3000/health > /dev/null 2>&1; then
+    if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
         echo "✅ Skynet Agent is healthy"
         break
     fi
@@ -85,9 +85,11 @@ echo "🎉 Skynet Agent is now running!"
 echo ""
 echo "📊 Service URLs:"
 echo "   • Skynet Agent:    http://localhost:3000"
-echo "   • Health Check:    http://localhost:3000/health"
-echo "   • Milvus WebUI:    http://localhost:9091"
-echo "   • Minio Console:   http://localhost:9001 (admin/admin)"
+echo "   • Health Check:    http://localhost:3000/api/health"
+echo "   • ChromaDB API:    http://localhost:8000"
+echo ""
+echo "💡 For standalone ChromaDB (development):"
+echo "   docker run -v ./data/chroma:/chroma/chroma -p 8000:8000 chromadb/chroma"
 echo ""
 echo "📋 Useful commands:"
 echo "   • View logs:       docker-compose logs -f"

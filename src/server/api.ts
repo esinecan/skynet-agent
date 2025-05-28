@@ -41,26 +41,78 @@ const upload = multer({
 
 // Request logging middleware
 app.use((req, res, next) => {
+  const startTime = Date.now();
+  
   // Add correlation ID to Sentry scope for this request
   const span = Sentry.getActiveSpan();
   if (span) {
     const spanContext = Sentry.spanToTraceHeader(span);
     Sentry.setTag("correlation_id", spanContext);
   }
+  
+  logger.debug('Incoming request', {
+    method: req.method,
+    path: req.path,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    contentType: req.get('Content-Type'),
+    contentLength: req.get('Content-Length'),
+    query: Object.keys(req.query).length > 0 ? req.query : undefined,
+    timestamp: new Date().toISOString()
+  });
+  
   logger.info(`${req.method} ${req.path}`, {
     ip: req.ip,
     userAgent: req.get('User-Agent')
   });
+  
+  // Add response timing
+  const originalSend = res.send;
+  res.send = function(body) {
+    const responseTime = Date.now() - startTime;
+    logger.debug('Response completed', {
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      responseTimeMs: responseTime,
+      contentLength: body ? body.length : 0,
+      requestDurationBreakdown: {
+        totalTime: responseTime,
+        avgResponseSpeed: body ? Math.round((body.length / responseTime) * 1000) : 0 // bytes per second
+      }
+    });
+    return originalSend.call(this, body);
+  };
+  
   next();
 });
 
 // Simple endpoint for user queries
 app.post('/query', async (req, res) => {
+  const startTime = Date.now();
+  let sessionId = 'default';
+  let queryLength = 0;
+  
   try {
     Sentry.setTag("api.route", "/query");
-    const { query, sessionId = 'default' } = req.body;
+    const { query, sessionId: reqSessionId = 'default' } = req.body;
+    sessionId = reqSessionId;
+    queryLength = query?.length || 0;
+    
+    logger.debug('Processing query request', {
+      sessionId,
+      queryLength,
+      hasQuery: !!query,
+      bodyKeys: Object.keys(req.body),
+      requestId: req.get('X-Request-ID') || 'unknown'
+    });
     
     if (!query) {
+      const responseTime = Date.now() - startTime;
+      logger.debug('Query validation failed - missing query', {
+        sessionId,
+        responseTimeMs: responseTime
+      });
       return res.status(400).json({ error: 'Query is required' });
     }
     
@@ -70,7 +122,22 @@ app.post('/query', async (req, res) => {
     Sentry.setTag("sessionId", sessionId);
     Sentry.setExtra("query_length", query.length);
     
+    const agentStartTime = Date.now();
     const response = await processQuery(query, sessionId);
+    const agentTime = Date.now() - agentStartTime;
+    
+    const totalTime = Date.now() - startTime;
+    logger.debug('Query processed successfully', {
+      sessionId,
+      queryLength,
+      responseLength: response.length,
+      agentProcessingTimeMs: agentTime,
+      totalRequestTimeMs: totalTime,
+      efficiency: {
+        charsPerSecond: Math.round((queryLength / agentTime) * 1000),
+        responseCharsPerSecond: Math.round((response.length / agentTime) * 1000)
+      }
+    });
     
     logger.info('Query processed successfully', {
       sessionId,
@@ -79,8 +146,17 @@ app.post('/query', async (req, res) => {
     Sentry.addBreadcrumb({ category: 'api', message: 'Query processed successfully', level: 'info', data: { sessionId, responseLength: response.length } });
       return res.json({ response });
   } catch (error) {
+    const totalTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error processing query:', err);
+    logger.debug('Query processing failed', {
+      sessionId,
+      queryLength,
+      processingTimeMs: totalTime,
+      errorType: err.constructor.name,
+      errorMessage: err.message
+    });
+    
     const errorResponse = handleApiError(error); // This will also send to Sentry
     // Sentry.Handlers.errorHandler will pick this up if not caught before
     return res.status(errorResponse.status).json(errorResponse.body);
@@ -108,9 +184,25 @@ app.get('/health/report', (req, res) => {
 
 // Memory status endpoint
 app.get('/memory/status', async (req, res) => {
+  const startTime = Date.now();
+  
   try {
+    logger.debug('Getting memory status');
+    
+    const memoryCountStartTime = Date.now();
     const memoryCount = await memoryManager.getMemoryCount();
+    const memoryCountTime = Date.now() - memoryCountStartTime;
+    
     const consolidationStatus = getConsolidationStatus();
+    const responseTime = Date.now() - startTime;
+    
+    logger.debug('Memory status retrieved successfully', {
+      memoryCount,
+      memoryCountTimeMs: memoryCountTime,
+      consolidationActive: consolidationStatus.isRunning,
+      responseTimeMs: responseTime
+    });
+    
     Sentry.addBreadcrumb({ category: 'memory', message: 'Memory status accessed', level: 'info', data: { memoryCount, consolidationStatus } });
     
     res.json({
@@ -119,8 +211,15 @@ app.get('/memory/status', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    const responseTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error getting memory status:', err);
+    logger.debug('Memory status request failed', {
+      responseTimeMs: responseTime,
+      errorType: err.constructor.name,
+      errorMessage: err.message
+    });
+    
     const errorResponse = handleApiError(error);
     return res.status(errorResponse.status).json(errorResponse.body);
   }
@@ -128,8 +227,21 @@ app.get('/memory/status', async (req, res) => {
 
 // Intrinsic motivation status endpoint
 app.get('/intrinsic/status', (req, res) => {
+  const startTime = Date.now();
+  
+  logger.debug('Getting intrinsic motivation status');
+  
   const status = getIntrinsicMotivationStatus();
   const recentTasks = getRecentIntrinsicTasks();
+  const responseTime = Date.now() - startTime;
+  
+  logger.debug('Intrinsic motivation status retrieved', {
+    isTaskRunning: status.isTaskRunning,
+    taskCount: recentTasks.length,
+    responseTimeMs: responseTime,
+    idleTimeMinutes: status.idleTimeMinutes,
+    lastInteraction: status.lastInteraction
+  });
   
   res.json({
     status,
@@ -186,52 +298,155 @@ app.post('/mcp/reload', async (req, res) => {
 
 // Sessions endpoints
 app.get('/api/sessions', async (req, res) => {
+  const startTime = Date.now();
+  
   try {
+    logger.debug('Getting all sessions', {
+      requestOrigin: req.get('Origin'),
+      userAgent: req.get('User-Agent')
+    });
+    
     const sessions = await sessionManager.getAllSessions();
+    const responseTime = Date.now() - startTime;
+    
+    logger.debug('All sessions retrieved successfully', {
+      sessionCount: sessions.length,
+      responseTimeMs: responseTime,
+      avgTimePerSession: sessions.length > 0 ? Math.round(responseTime / sessions.length) : 0
+    });
+    
     res.json(sessions);
   } catch (error) {
+    const responseTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error retrieving sessions:', err);
+    logger.debug('Session retrieval failed', {
+      responseTimeMs: responseTime,
+      errorType: err.constructor.name,
+      errorMessage: err.message
+    });
+    
     const errorResponse = handleApiError(error);
     res.status(errorResponse.status).json(errorResponse.body);
   }
 });
 
 app.post('/api/sessions', async (req, res) => {
+  const startTime = Date.now();
+  let title = 'Unknown';
+  
   try {
-    const { title } = req.body;
+    title = req.body.title || 'Untitled Session';
+    logger.debug('Creating new session', {
+      title,
+      titleLength: title.length,
+      hasCustomTitle: !!req.body.title
+    });
+    
     const session = await sessionManager.createSession(title);
+    const responseTime = Date.now() - startTime;
+    
+    logger.debug('Session created successfully', {
+      sessionId: session.id,
+      title: session.title,
+      creationTimeMs: responseTime,
+      createdAt: session.createdAt
+    });
+    
     res.json(session);
   } catch (error) {
+    const responseTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error creating session:', err);
+    logger.debug('Session creation failed', {
+      title,
+      creationTimeMs: responseTime,
+      errorType: err.constructor.name,
+      errorMessage: err.message
+    });
+    
     const errorResponse = handleApiError(error);
     res.status(errorResponse.status).json(errorResponse.body);
   }
 });
 
 app.get('/api/sessions/:id', async (req, res) => {
+  const startTime = Date.now();
+  const sessionId = req.params.id;
+  
   try {
-    const session = await sessionManager.getSession(req.params.id);
+    logger.debug('Getting specific session', {
+      sessionId,
+      requestPath: req.path
+    });
+    
+    const session = await sessionManager.getSession(sessionId);
+    const responseTime = Date.now() - startTime;
+    
     if (!session) {
+      logger.debug('Session not found', {
+        sessionId,
+        responseTimeMs: responseTime
+      });
       return res.status(404).json({ error: 'Session not found' });
     }
+    
+    logger.debug('Session retrieved successfully', {
+      sessionId,
+      title: session.title,
+      messageCount: session.messages?.length || 0,
+      responseTimeMs: responseTime,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt
+    });
+    
     res.json(session);
   } catch (error) {
+    const responseTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error retrieving session:', err);
+    logger.debug('Session retrieval failed', {
+      sessionId,
+      responseTimeMs: responseTime,
+      errorType: err.constructor.name,
+      errorMessage: err.message
+    });
+    
     const errorResponse = handleApiError(error);
     res.status(errorResponse.status).json(errorResponse.body);
   }
 });
 
 app.delete('/api/sessions/:id', async (req, res) => {
+  const startTime = Date.now();
+  const sessionId = req.params.id;
+  
   try {
-    await sessionManager.deleteSession(req.params.id);
+    logger.debug('Deleting session', {
+      sessionId,
+      requestPath: req.path
+    });
+    
+    await sessionManager.deleteSession(sessionId);
+    const responseTime = Date.now() - startTime;
+    
+    logger.debug('Session deleted successfully', {
+      sessionId,
+      deleteTimeMs: responseTime
+    });
+    
     res.json({ success: true });
   } catch (error) {
+    const responseTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error deleting session:', err);
+    logger.debug('Session deletion failed', {
+      sessionId,
+      deleteTimeMs: responseTime,
+      errorType: err.constructor.name,
+      errorMessage: err.message
+    });
+    
     const errorResponse = handleApiError(error);
     res.status(errorResponse.status).json(errorResponse.body);
   }
@@ -239,12 +454,25 @@ app.delete('/api/sessions/:id', async (req, res) => {
 
 // Streaming chat endpoint
 app.post('/api/chat/stream', async (req, res) => {
+  const startTime = Date.now();
+  let sessionId = 'unknown';
+  let messageLength = 0;
+  
   // Set headers for SSE
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   
-  const { sessionId, message, attachments } = req.body;
+  const { sessionId: reqSessionId, message, attachments } = req.body;
+  sessionId = reqSessionId || 'default';
+  messageLength = message?.length || 0;
+  
+  logger.debug('Starting streaming chat', {
+    sessionId,
+    messageLength,
+    hasAttachments: !!attachments?.length,
+    attachmentCount: attachments?.length || 0
+  });
   
   try {
     // Add user message to session
@@ -256,16 +484,31 @@ app.post('/api/chat/stream', async (req, res) => {
       attachments
     };
     
+    const addMessageStartTime = Date.now();
     await sessionManager.addMessage(sessionId, userMessage);
+    const addMessageTime = Date.now() - addMessageStartTime;
+    
+    logger.debug('User message added to session', {
+      sessionId,
+      messageId: userMessage.id,
+      addMessageTimeMs: addMessageTime
+    });
     
     // Send initial acknowledgment
     res.write(`data: ${JSON.stringify({ type: 'start' })}\n\n`);
     
     // Get streaming response from agent
+    const streamStartTime = Date.now();
     const responseStream = await processQueryStream(message, sessionId);
     const reader = responseStream.getReader();
     const decoder = new TextDecoder();
     let fullResponse = '';
+    let chunkCount = 0;
+    
+    logger.debug('Started processing stream', {
+      sessionId,
+      streamSetupTimeMs: Date.now() - streamStartTime
+    });
     
     // Stream the response chunks
     while (true) {
@@ -274,8 +517,19 @@ app.post('/api/chat/stream', async (req, res) => {
       
       const chunk = decoder.decode(value, { stream: true });
       fullResponse += chunk;
+      chunkCount++;
       res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
+      
+      if (chunkCount % 10 === 0) { // Log every 10th chunk to avoid spam
+        logger.debug('Streaming progress', {
+          sessionId,
+          chunksProcessed: chunkCount,
+          totalCharsStreamed: fullResponse.length
+        });
+      }
     }
+    
+    const streamTime = Date.now() - streamStartTime;
     
     // Add assistant message to session
     const assistantMessage = {
@@ -285,15 +539,41 @@ app.post('/api/chat/stream', async (req, res) => {
       timestamp: new Date().toISOString()
     };
     
+    const saveAssistantStartTime = Date.now();
     await sessionManager.addMessage(sessionId, assistantMessage);
+    const saveAssistantTime = Date.now() - saveAssistantStartTime;
     
     // Send completion event
     res.write(`data: ${JSON.stringify({ type: 'end' })}\n\n`);
     res.end();
     
+    const totalTime = Date.now() - startTime;
+    logger.debug('Streaming chat completed successfully', {
+      sessionId,
+      totalTimeMs: totalTime,
+      streamTimeMs: streamTime,
+      saveAssistantTimeMs: saveAssistantTime,
+      chunksStreamed: chunkCount,
+      inputChars: messageLength,
+      outputChars: fullResponse.length,
+      efficiency: {
+        charsPerSecond: Math.round((fullResponse.length / streamTime) * 1000),
+        chunksPerSecond: Math.round((chunkCount / streamTime) * 1000)
+      }
+    });
+    
   } catch (error) {
+    const totalTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error processing streaming chat:', err);
+    logger.debug('Streaming chat failed', {
+      sessionId,
+      totalTimeMs: totalTime,
+      errorType: err.constructor.name,
+      errorMessage: err.message,
+      messageLength
+    });
+    
     res.write(`data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`);
     res.end();
   }
@@ -301,21 +581,54 @@ app.post('/api/chat/stream', async (req, res) => {
 
 // File upload endpoint
 app.post('/api/upload', upload.array('files', 10), async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const files = req.files as Express.Multer.File[];
-    const uploadedFiles = files.map(file => ({
-      name: file.originalname,
-      type: file.mimetype,
-      data: file.buffer.toString('base64')
-    }));
+    
+    logger.debug('Processing file upload', {
+      fileCount: files?.length || 0,
+      totalSize: files?.reduce((sum, file) => sum + file.size, 0) || 0,
+      fileTypes: files?.map(f => f.mimetype) || []
+    });
+    
+    const uploadedFiles = files.map(file => {
+      logger.debug('Processing individual file', {
+        fileName: file.originalname,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        encoding: file.encoding
+      });
+      
+      return {
+        name: file.originalname,
+        type: file.mimetype,
+        data: file.buffer.toString('base64')
+      };
+    });
+    
+    const responseTime = Date.now() - startTime;
+    logger.debug('File upload completed successfully', {
+      filesProcessed: uploadedFiles.length,
+      totalSizeBytes: files?.reduce((sum, file) => sum + file.size, 0) || 0,
+      processingTimeMs: responseTime,
+      bytesPerSecond: files?.length ? Math.round((files.reduce((sum, file) => sum + file.size, 0) / responseTime) * 1000) : 0
+    });
     
     res.json({
       success: true,
       files: uploadedFiles
     });
   } catch (error) {
+    const responseTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error handling file upload:', err);
+    logger.debug('File upload failed', {
+      processingTimeMs: responseTime,
+      errorType: err.constructor.name,
+      errorMessage: err.message
+    });
+    
     const errorResponse = handleApiError(error);
     res.status(errorResponse.status).json(errorResponse.body);  }
 });
@@ -389,52 +702,127 @@ app.get("/debug-sentry", (req, res) => {
 
 export function startApiServer(port = 3000, maxRetries = 5): Promise<Server> {
   return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+    
+    logger.debug('Starting API server initialization', {
+      targetPort: port,
+      maxRetries,
+      nodeEnv: process.env.NODE_ENV,
+      processId: process.pid
+    });
+    
     // Initialize all subsystems
     try {
+      const subsystemStartTime = Date.now();
+      
       // Initialize health monitoring
+      logger.debug('Initializing health monitoring');
       initializeHealthMonitoring();
       
       // Initialize memory manager
-      memoryManager.initialize().catch(error => {
+      logger.debug('Initializing memory manager');
+      memoryManager.initialize().catch((error: unknown) => {
         const err = error instanceof Error ? error : new Error(String(error));
         logger.error('Failed to initialize memory manager:', err);
+        logger.debug('Memory manager initialization failed', {
+          errorType: err.constructor.name,
+          errorMessage: err.message
+        });
       });
       
       // Initialize memory consolidation
+      logger.debug('Initializing memory consolidation', {
+        schedule: process.env.MEMORY_CONSOLIDATION_SCHEDULE || 'default'
+      });
       initializeMemoryConsolidation(process.env.MEMORY_CONSOLIDATION_SCHEDULE);
       
       // Initialize intrinsic motivation
+      logger.debug('Initializing intrinsic motivation');
       initializeIntrinsicMotivation();
       
       // Initialize self-reflection
+      logger.debug('Initializing self-reflection');
       initializeSelfReflection();
+      
+      const subsystemTime = Date.now() - subsystemStartTime;
+      logger.debug('All subsystems initialized successfully', {
+        initializationTimeMs: subsystemTime
+      });
       
       logger.info('All subsystems initialized');
     } catch (error) {
+      const initTime = Date.now() - startTime;
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Error initializing subsystems:', err);
+      logger.debug('Subsystem initialization failed', {
+        initializationTimeMs: initTime,
+        errorType: err.constructor.name,
+        errorMessage: err.message
+      });
     }
     
     // Recursive function to try different ports
     const attemptListen = (currentPort: number, retriesLeft: number) => {
+      const attemptStartTime = Date.now();
+      
+      logger.debug('Attempting to start server', {
+        port: currentPort,
+        retriesLeft,
+        attemptNumber: maxRetries - retriesLeft + 1
+      });
+      
       const server = app.listen(currentPort)
         .on('listening', () => {
+          const totalStartTime = Date.now() - startTime;
+          const listenTime = Date.now() - attemptStartTime;
+          
+          logger.debug('Server started successfully', {
+            port: currentPort,
+            totalStartTimeMs: totalStartTime,
+            listenTimeMs: listenTime,
+            attemptsUsed: maxRetries - retriesLeft + 1
+          });
+          
           logger.info(`API server listening on port ${currentPort}`);
           resolve(server);
         })
         .on('error', (err: NodeJS.ErrnoException) => {
+          const attemptTime = Date.now() - attemptStartTime;
+          
           if (err.code === 'EADDRINUSE') {
+            logger.debug('Port already in use', {
+              port: currentPort,
+              retriesLeft,
+              attemptTimeMs: attemptTime
+            });
+            
             logger.warn(`Port ${currentPort} is already in use`);
             if (retriesLeft > 0) {
               logger.info(`Trying port ${currentPort + 1}...`);
               server.close();
               attemptListen(currentPort + 1, retriesLeft - 1);
             } else {
+              const totalTime = Date.now() - startTime;
               const error = new Error(`Unable to find available port after ${maxRetries} attempts`);
+              logger.debug('Server startup failed - no available ports', {
+                totalTimeMs: totalTime,
+                attemptsUsed: maxRetries,
+                finalPort: currentPort
+              });
+              
               logger.error(error.message);
               reject(error);
             }
           } else {
+            const totalTime = Date.now() - startTime;
+            logger.debug('Server startup failed with error', {
+              port: currentPort,
+              totalTimeMs: totalTime,
+              errorCode: err.code,
+              errorType: err.constructor.name,
+              errorMessage: err.message
+            });
+            
             logger.error('Server error:', err);
             reject(err);
           }

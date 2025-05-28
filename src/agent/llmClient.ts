@@ -19,8 +19,16 @@ export class LLMService {
   private modelId: string;
 
   constructor(private mcpClientManager: McpClientManager, modelId: string = 'google:gemini-2.0-flash') {
+    const startTime = Date.now();
     this.modelId = modelId;
     const [provider, modelName] = modelId.split(':');
+    
+    logger.debug(`LLMService construction started`, {
+      modelId,
+      provider,
+      modelName: modelName || 'default',
+      mcpClientManagerAvailable: !!mcpClientManager
+    });
 
     try {
       switch (provider) {
@@ -28,6 +36,7 @@ export class LLMService {
           if (!process.env.GOOGLE_API_KEY) {
             throw new Error('GOOGLE_API_KEY environment variable is required for Google models');
           }
+          logger.debug(`Initializing Google Generative AI with model: ${modelName || 'gemini-2.0-flash'}`);
           this.llm = createGoogleGenerativeAI({ 
             apiKey: process.env.GOOGLE_API_KEY 
           })(modelName || 'gemini-2.0-flash');
@@ -37,6 +46,7 @@ export class LLMService {
           if (!process.env.OPENAI_API_KEY) {
             throw new Error('OPENAI_API_KEY environment variable is required for OpenAI models');
           }
+          logger.debug(`Initializing OpenAI with model: ${modelName || 'gpt-4o'}`);
           this.llm = createOpenAI({ 
             apiKey: process.env.OPENAI_API_KEY 
           })(modelName || 'gpt-4o');
@@ -46,6 +56,7 @@ export class LLMService {
           if (!process.env.ANTHROPIC_API_KEY) {
             throw new Error('ANTHROPIC_API_KEY environment variable is required for Anthropic models');
           }
+          logger.debug(`Initializing Anthropic with model: ${modelName || 'claude-3-5-sonnet-20241022'}`);
           this.llm = createAnthropic({ 
             apiKey: process.env.ANTHROPIC_API_KEY 
           })(modelName || 'claude-3-5-sonnet-20241022');
@@ -53,6 +64,11 @@ export class LLMService {
         
         default:
           logger.warn(`Unknown provider '${provider}', defaulting to Google Gemini`);
+          logger.debug('Provider fallback details', {
+            originalProvider: provider,
+            fallbackProvider: 'google',
+            fallbackModel: 'gemini-2.0-flash'
+          });
           if (!process.env.GOOGLE_API_KEY) {
             throw new Error('GOOGLE_API_KEY environment variable is required for default Google models');
           }
@@ -62,10 +78,24 @@ export class LLMService {
           break;
       }
       
+      const initTime = Date.now() - startTime;
       logger.info(`LLMService initialized with model: ${this.modelId}`);
+      logger.debug('LLMService construction completed', {
+        modelId: this.modelId,
+        provider,
+        initializationTimeMs: initTime,
+        llmInstanceCreated: !!this.llm
+      });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`Failed to initialize LLMService: ${err.message}`);
+      const initTime = Date.now() - startTime;
+      logger.error(`Failed to initialize LLMService: ${err.message}`, {
+        modelId: this.modelId,
+        provider,
+        initializationTimeMs: initTime,
+        error: err.message,
+        stack: err.stack
+      });
       throw err;
     }
   }
@@ -74,7 +104,13 @@ export class LLMService {
    * Convert internal message format to Vercel AI SDK format
    */
   private convertMessages(messages: InternalMessage[]): CoreMessage[] {
-    return messages.map(msg => {
+    const startTime = Date.now();
+    logger.debug('Converting messages for LLM processing', {
+      messageCount: messages.length,
+      messageTypes: messages.map(m => m.role)
+    });
+
+    const converted = messages.map(msg => {
       let role: 'user' | 'assistant' | 'system';
       
       switch (msg.role) {
@@ -96,18 +132,53 @@ export class LLMService {
         content: msg.content
       };
     });
+
+    const conversionTime = Date.now() - startTime;
+    logger.debug('Message conversion completed', {
+      originalCount: messages.length,
+      convertedCount: converted.length,
+      conversionTimeMs: conversionTime,
+      totalContentLength: messages.reduce((sum, msg) => sum + msg.content.length, 0)
+    });
+
+    return converted;
   }
 
   /**
    * Prepare tools from MCP clients for Vercel AI SDK
    */
   private async prepareTools() {
+    const startTime = Date.now();
+    logger.debug('Starting tool preparation from MCP clients');
+
     try {
       const allToolsData = await this.mcpClientManager.listAllTools();
-      const tools: Record<string, any> = {};
+      const toolDiscoveryTime = Date.now() - startTime;
+      
+      logger.debug('MCP tools discovered', {
+        serverCount: allToolsData.length,
+        discoveryTimeMs: toolDiscoveryTime,
+        servers: allToolsData.map(s => ({ name: s.serverName, toolCount: s.tools.length }))
+      });
+
+      const tools: Record<string, {
+        description: string;
+        parameters: {
+          type: string;
+          properties: Record<string, unknown>;
+          required: string[];
+        };
+        execute: (args: { args: Record<string, unknown> }) => Promise<unknown>;
+      }> = {};
 
       for (const serverData of allToolsData) {
         const { serverName, tools: serverTools } = serverData;
+        
+        logger.debug('Processing tools from server', {
+          serverName,
+          toolCount: serverTools.length,
+          toolNames: serverTools.map(t => t.name)
+        });
         
         for (const tool of serverTools) {
           const toolId = `${serverName}:${tool.name}`;
@@ -124,15 +195,35 @@ export class LLMService {
               },
               required: ['args']
             },
-            execute: async (args: { args: any }) => {
+            execute: async (args: { args: Record<string, unknown> }) => {
+              const execStartTime = Date.now();
               try {
-                logger.debug(`Executing tool ${toolId} with args:`, args.args);
+                logger.debug('Executing tool', {
+                  toolId,
+                  argsKeys: Object.keys(args.args),
+                  argsSize: JSON.stringify(args.args).length
+                });
+                
                 const result = await this.mcpClientManager.callTool(serverName, tool.name, args.args);
-                logger.debug(`Tool ${toolId} result:`, result);
+                const execTime = Date.now() - execStartTime;
+                
+                logger.debug('Tool execution completed', {
+                  toolId,
+                  executionTimeMs: execTime,
+                  resultType: typeof result,
+                  resultSize: JSON.stringify(result).length
+                });
+                
                 return result;
               } catch (error) {
                 const err = error instanceof Error ? error : new Error(String(error));
-                logger.error(`Tool execution failed for ${toolId}:`, err);
+                const execTime = Date.now() - execStartTime;
+                logger.error('Tool execution failed', {
+                  toolId,
+                  executionTimeMs: execTime,
+                  error: err.message,
+                  args: args.args
+                });
                 throw err;
               }
             }
@@ -140,11 +231,26 @@ export class LLMService {
         }
       }
 
-      logger.info(`Prepared ${Object.keys(tools).length} tools for LLM`);
+      const totalPrepTime = Date.now() - startTime;
+      const toolCount = Object.keys(tools).length;
+      
+      logger.info(`Prepared ${toolCount} tools for LLM`);
+      logger.debug('Tool preparation completed', {
+        totalToolCount: toolCount,
+        totalPrepTimeMs: totalPrepTime,
+        avgTimePerTool: toolCount > 0 ? totalPrepTime / toolCount : 0,
+        toolIds: Object.keys(tools)
+      });
+      
       return tools;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error('Failed to prepare tools:', err);
+      const totalPrepTime = Date.now() - startTime;
+      logger.error('Failed to prepare tools', {
+        prepTimeMs: totalPrepTime,
+        error: err.message,
+        stack: err.stack
+      });
       return {};
     }
   }
@@ -156,9 +262,21 @@ export class LLMService {
     messages: InternalMessage[],
     systemPrompt?: string
   ): Promise<ReadableStream> {
+    const startTime = Date.now();
+    const requestId = Math.random().toString(36).substring(7);
+    
+    logger.debug('LLM response generation started', {
+      requestId,
+      messageCount: messages.length,
+      hasSystemPrompt: !!systemPrompt,
+      systemPromptLength: systemPrompt?.length || 0,
+      totalInputLength: messages.reduce((sum, msg) => sum + msg.content.length, 0) + (systemPrompt?.length || 0)
+    });
+
     try {
       // Convert messages to CoreMessage format
       const coreMessages = this.convertMessages(messages);
+      const conversionTime = Date.now() - startTime;
       
       // Add system message if provided
       if (systemPrompt) {
@@ -166,14 +284,37 @@ export class LLMService {
           role: 'system',
           content: systemPrompt
         });
+        logger.debug('System prompt added to conversation', {
+          requestId,
+          systemPromptLength: systemPrompt.length,
+          totalMessages: coreMessages.length
+        });
       }
 
       // Prepare tools from MCP clients
+      const toolPrepStartTime = Date.now();
       const tools = await this.prepareTools();
+      const toolPrepTime = Date.now() - toolPrepStartTime;
+      const toolCount = Object.keys(tools).length;
 
-      logger.debug(`Generating response with ${coreMessages.length} messages and ${Object.keys(tools).length} tools`);
+      logger.debug('Tools prepared for LLM request', {
+        requestId,
+        toolCount,
+        toolPrepTimeMs: toolPrepTime,
+        toolNames: Object.keys(tools)
+      });
+
+      logger.debug('Generating LLM response', {
+        requestId,
+        messageCount: coreMessages.length,
+        toolCount,
+        modelId: this.modelId,
+        maxTokens: 4000,
+        temperature: 0.7
+      });
 
       // Stream response from AI SDK
+      const streamStartTime = Date.now();
       const result = await streamText({
         model: this.llm,
         messages: coreMessages,
@@ -182,16 +323,62 @@ export class LLMService {
         temperature: 0.7
       });
 
-      return result.toDataStream();
+      const streamSetupTime = Date.now() - streamStartTime;
+      const totalSetupTime = Date.now() - startTime;
+      
+      logger.debug('LLM stream initialized', {
+        requestId,
+        streamSetupTimeMs: streamSetupTime,
+        totalSetupTimeMs: totalSetupTime,
+        efficiency: `${Math.round((messages.reduce((sum, msg) => sum + msg.content.length, 0) / totalSetupTime) * 1000)} chars/sec setup`
+      });
+
+      const stream = result.toDataStream();
+      
+      // Wrap stream to add logging
+      const transformStream = new TransformStream({
+        transform(chunk, controller) {
+          logger.debug('Stream chunk received', {
+            requestId,
+            chunkSize: chunk.byteLength,
+            totalTimeMs: Date.now() - startTime
+          });
+          controller.enqueue(chunk);
+        },
+        flush() {
+          const totalTime = Date.now() - startTime;
+          logger.debug('LLM response stream completed', {
+            requestId,
+            totalTimeMs: totalTime
+          });
+        }
+      });
+
+      return stream.pipeThrough(transformStream);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`Error in LLMService.generateResponse: ${err.message}`);
+      const totalTime = Date.now() - startTime;
+      
+      logger.error('Error in LLM response generation', {
+        requestId,
+        totalTimeMs: totalTime,
+        error: err.message,
+        messageCount: messages.length,
+        modelId: this.modelId,
+        stack: err.stack
+      });
       
       // Return error stream
       const encoder = new TextEncoder();
       return new ReadableStream({
         start(controller) {
-          controller.enqueue(encoder.encode(`Error: ${err.message}`));
+          const errorMessage = `Error: ${err.message}`;
+          logger.debug('Returning error stream', {
+            requestId,
+            errorMessage,
+            errorLength: errorMessage.length
+          });
+          controller.enqueue(encoder.encode(errorMessage));
           controller.close();
         }
       });
@@ -205,22 +392,67 @@ export class LLMService {
     messages: InternalMessage[],
     systemPrompt?: string
   ): Promise<string> {
+    const startTime = Date.now();
+    const requestId = Math.random().toString(36).substring(7);
+    
+    logger.debug('Legacy LLM response generation started', {
+      requestId,
+      messageCount: messages.length,
+      hasSystemPrompt: !!systemPrompt,
+      totalInputLength: messages.reduce((sum, msg) => sum + msg.content.length, 0) + (systemPrompt?.length || 0)
+    });
+
     try {
       const stream = await this.generateResponse(messages, systemPrompt);
+      const streamTime = Date.now() - startTime;
+      
+      logger.debug('Stream obtained for legacy response', {
+        requestId,
+        streamObtainTimeMs: streamTime
+      });
+
       const reader = stream.getReader();
       const decoder = new TextDecoder();
       let result = '';
+      let chunkCount = 0;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        result += decoder.decode(value, { stream: true });
+        
+        chunkCount++;
+        const decodedChunk = decoder.decode(value, { stream: true });
+        result += decodedChunk;
+        
+        logger.debug('Legacy response chunk processed', {
+          requestId,
+          chunkNumber: chunkCount,
+          chunkLength: decodedChunk.length,
+          totalLength: result.length
+        });
       }
+
+      const totalTime = Date.now() - startTime;
+      logger.debug('Legacy LLM response completed', {
+        requestId,
+        totalTimeMs: totalTime,
+        chunkCount,
+        resultLength: result.length,
+        efficiency: `${Math.round((result.length / totalTime) * 1000)} chars/sec`
+      });
 
       return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`Error in legacy response generation: ${err.message}`);
+      const totalTime = Date.now() - startTime;
+      
+      logger.error('Error in legacy response generation', {
+        requestId,
+        totalTimeMs: totalTime,
+        error: err.message,
+        messageCount: messages.length
+      });
+      
       return `Error: ${err.message}`;
     }
   }
@@ -230,11 +462,14 @@ export class LLMService {
    */
   getModelInfo(): { id: string; provider: string; model: string } {
     const [provider, model] = this.modelId.split(':');
-    return {
+    const modelInfo = {
       id: this.modelId,
       provider: provider || 'unknown',
       model: model || 'unknown'
     };
+    
+    logger.debug('Model information requested', modelInfo);
+    return modelInfo;
   }
 }
 

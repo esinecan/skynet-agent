@@ -88,18 +88,10 @@ const entryPointNode = async (state: AppState, context: unknown): Promise<Partia
 const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
   return Sentry.startSpan({ name: 'workflow.memory_retrieval' }, async (span) => {
     try {
-      span?.setAttribute('has_input', !!state.input);
-      span?.setAttribute('message_count', state.messages?.length || 0);
-      
-      Sentry.addBreadcrumb({
-        message: 'Memory retrieval evaluation',
-        category: 'workflow',
-        level: 'info'
-      });
-
-      logger.info('Evaluating memory retrieval need', { 
+      logger.debug('Memory retrieval node started', {
         hasInput: !!state.input,
-        messageCount: state.messages?.length || 0
+        messageCount: state.messages?.length || 0,
+        stateKeys: Object.keys(state)
       });
     
       // Get the latest user message
@@ -109,6 +101,11 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
       
       if (!latestUserMessage) {
         logger.warn('No user message found for memory retrieval');
+        logger.debug('Message analysis for memory retrieval', {
+          totalMessages: state.messages?.length || 0,
+          messageRoles: state.messages?.map(m => m.role) || [],
+          hasHumanMessages: state.messages?.some(m => m.role === "human") || false
+        });
         return {
           retrievalEvaluation: {
             shouldRetrieve: false,
@@ -119,15 +116,29 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
       }
 
       const query = latestUserMessage.content;
+      logger.debug('Extracted query from user message', {
+        messageRole: latestUserMessage.role,
+        queryLength: query.length,
+        queryPreview: query.substring(0, 100),
+        messageTimestamp: 'user_message'
+      });
+      
       const retrieveDecision = shouldRetrieve(query);
       
-      logger.info('Memory retrieval decision', { 
+      logger.debug('Memory retrieval decision analysis', { 
         query: query.slice(0, 50), 
-        shouldRetrieve: retrieveDecision 
+        shouldRetrieve: retrieveDecision,
+        queryLength: query.length,
+        decisionReason: retrieveDecision ? 'Complex query requiring context' : 'Simple query, skipping retrieval'
       });
       
       if (!retrieveDecision) {
         logger.info('Skipping memory retrieval for simple query', { query: query.slice(0, 50) });
+        logger.debug('Simple query patterns matched', {
+          query: query.slice(0, 100),
+          queryType: 'simple',
+          skipReason: 'Matches simple pattern (greeting, basic math, etc.)'
+        });
         return {
           retrievalEvaluation: {
             shouldRetrieve: false,
@@ -145,12 +156,30 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
       }
       
       logger.info('Retrieving relevant memories', { query: query.slice(0, 50) });
+      logger.debug('Starting memory retrieval process', {
+        query: query.substring(0, 100),
+        retrievalLimit: 3,
+        memorySystemInitialized: true
+      });
       
       // Retrieve relevant memories
+      const retrievalStartTime = Date.now();
       const relevantMemories = await memoryManager.retrieveMemories(query, 3);
+      const retrievalDuration = Date.now() - retrievalStartTime;
+      
+      logger.debug('Memory retrieval completed', {
+        memoriesFound: relevantMemories.length,
+        retrievalTimeMs: retrievalDuration,
+        query: query.substring(0, 50)
+      });
       
       if (relevantMemories.length === 0) {
         logger.info('No relevant memories found');
+        logger.debug('Empty memory retrieval result', {
+          query: query.substring(0, 100),
+          retrievalTimeMs: retrievalDuration,
+          possibleReasons: ['No memories stored yet', 'Query too specific', 'Low similarity scores']
+        });
         return {
           retrievalEvaluation: {
             shouldRetrieve: true,
@@ -163,11 +192,25 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
       logger.info(`Found ${relevantMemories.length} relevant memories`, {
         topMemoryScore: relevantMemories[0].score
       });
+      
+      // Log detailed memory analysis
+      logger.debug('Retrieved memories analysis', {
+        memoryCount: relevantMemories.length,
+        scores: relevantMemories.map(m => ({ id: m.id, score: m.score.toFixed(4) })),
+        topMemoryPreview: relevantMemories[0].text.substring(0, 100),
+        averageScore: (relevantMemories.reduce((sum, m) => sum + m.score, 0) / relevantMemories.length).toFixed(4)
+      });
 
       // Format memories for inclusion in the context
       const memoryContext = relevantMemories.map(mem => 
         `[Memory ${mem.id}]: ${mem.text}`
       ).join('\n\n');
+
+      logger.debug('Memory context prepared', {
+        contextLength: memoryContext.length,
+        memoriesIncluded: relevantMemories.length,
+        contextPreview: memoryContext.substring(0, 200)
+      });
 
       // Add memory context as a system message
       return {
@@ -187,6 +230,13 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error('Error in memory retrieval node', err);
+      logger.debug('Memory retrieval node failure details', {
+        errorMessage: err.message,
+        errorStack: err.stack,
+        stateKeys: Object.keys(state),
+        hasInput: !!state.input,
+        messageCount: state.messages?.length || 0
+      });
       Sentry.captureException(err, {
         tags: { operation: 'memory_retrieval' },
         extra: { query: state.input }
@@ -204,18 +254,33 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
 };
 
 const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
+  const startTime = Date.now();
   try {
-    logger.info('Generating LLM response', { messageCount: state.messages?.length || 0 });
+    logger.debug('Starting LLM query node', { 
+      messageCount: state.messages?.length || 0,
+      hasRetrievalEvaluation: !!state.retrievalEvaluation,
+      retrievedDocsCount: state.retrievalEvaluation?.retrievedDocs?.length || 0,
+      userInput: state.input.substring(0, 100) + (state.input.length > 100 ? "..." : "")
+    });
     
     // Get MCP manager from context or from global context (workaround)
     const contextObj = context as WorkflowContext;
     const mcpManager = (contextObj?.mcpManager || global.mcpManagerContext) as McpClientManager;
     let toolsPrompt = "You are a helpful AI assistant with advanced cognitive capabilities. Respond to the user's queries in a helpful and informative way.";
+    let availableToolsCount = 0;
     
     // Only attempt to list tools if mcpManager is available
     if (mcpManager) {
+      logger.debug('MCP manager available, listing tools');
       try {
         const toolsList = await mcpManager.listAllTools();
+        availableToolsCount = toolsList.reduce((total, server) => total + (server.tools?.length || 0), 0);
+        
+        logger.debug('Tools retrieved from MCP manager', {
+          serverCount: toolsList.length,
+          totalToolsCount: availableToolsCount,
+          servers: toolsList.map(s => ({ name: s.serverName, toolCount: s.tools?.length || 0 }))
+        });
         
         // Format tools for the system prompt
         if (toolsList.length > 0) {
@@ -240,9 +305,18 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         logger.error("Error listing tools:", err);
+        logger.debug('Continuing with default prompt due to tools error');
         // Continue with default prompt if error occurs
       }
+    } else {
+      logger.debug('No MCP manager available, using default prompt');
     }
+    
+    logger.debug('Prepared system prompt for LLM', {
+      promptLength: toolsPrompt.length,
+      includesTools: availableToolsCount > 0,
+      availableToolsCount
+    });
     
     // Track LLM call for metrics
     incrementMetric('llmCallsMade');
@@ -252,16 +326,32 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
     if (!llmService) {
       throw new WorkflowError('LLMService not available in global context');
     }
+    
+    logger.debug('Sending request to LLM service', {
+      messageCount: state.messages?.length || 0,
+      systemPromptLength: toolsPrompt.length
+    });
+    
     const response = await llmService.generateResponseLegacy(state.messages, toolsPrompt);
+    
+    const processingTime = Date.now() - startTime;
+    logger.debug('Received response from LLM service', {
+      processingTimeMs: processingTime,
+      responseLength: response.length,
+      responsePreview: response.substring(0, 200) + (response.length > 200 ? "..." : ""),
+      avgCharsPerSecond: Math.round(response.length / (processingTime / 1000))
+    });
     
     // Check if the response contains a tool call
     const toolCall = extractToolCall(response);
     
     if (toolCall) {
       // If tool call is detected, we'll process it in the tool node
-      logger.info('Tool call detected in LLM response', { 
+      logger.debug('Tool call detected in LLM response', { 
         server: toolCall.server, 
-        tool: toolCall.tool 
+        tool: toolCall.tool,
+        hasArgs: !!toolCall.args,
+        argCount: toolCall.args ? Object.keys(toolCall.args).length : 0
       });
       
       return {
@@ -271,15 +361,25 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
     }
     
     // No tool call, just return the response
-    logger.info('LLM response generated successfully', { responseLength: response.length });
+    logger.debug('No tool call detected, returning direct response', { 
+      responseLength: response.length,
+      processingTimeMs: processingTime
+    });
     
     return {
       aiResponse: response,
       messages: [...state.messages, { role: "ai", content: response }]
     };
   } catch (error) {
+    const processingTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error('Error in LLM query node', err);
+    logger.error('Error in LLM query node', {
+      error: err,
+      processingTimeMs: processingTime,
+      messageCount: state.messages?.length || 0,
+      userInput: state.input.substring(0, 100) + (state.input.length > 100 ? "..." : ""),
+      errorType: err.constructor.name
+    });
     throw new WorkflowError('Error generating AI response', { cause: err });
   }
 };
@@ -310,14 +410,21 @@ function extractToolCall(response: string): ToolCall | null {
 }
 
 const toolExecutionNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
+  const startTime = Date.now();
   const toolCall = state.toolCall;
-  if (!toolCall) return {};
+  
+  if (!toolCall) {
+    logger.debug('No tool call in state, skipping tool execution');
+    return {};
+  }
   
   try {
-    logger.info('Executing tool call', { 
+    logger.debug('Starting tool execution', { 
       server: toolCall.server, 
       tool: toolCall.tool,
-      args: JSON.stringify(toolCall.args)
+      argsCount: Object.keys(toolCall.args || {}).length,
+      argsSample: Object.keys(toolCall.args || {}).slice(0, 3),
+      argsSize: JSON.stringify(toolCall.args).length
     });
     
     // Get MCP manager from context or from global context (workaround)
@@ -328,6 +435,7 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
     if (!mcpManager) {
       const errorMsg = `Error: No MCP Manager available to execute tool ${toolCall.tool}`;
       logger.error(errorMsg);
+      logger.debug('MCP manager not available in context or global scope');
       
       return {
         messages: [...state.messages, 
@@ -337,6 +445,11 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
       };
     }
     
+    logger.debug('MCP manager available, calling tool', {
+      server: toolCall.server,
+      tool: toolCall.tool
+    });
+    
     // Track tool call for metrics
     incrementMetric('toolCallsMade');
     
@@ -345,12 +458,28 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
       toolCall.tool, 
       toolCall.args
     );
-      logger.info('Tool execution successful', { 
-      resultSize: typeof result === 'string' ? result.length : JSON.stringify(result).length
+    
+    const executionTime = Date.now() - startTime;
+    const resultSize = typeof result === 'string' ? result.length : JSON.stringify(result).length;
+    
+    logger.debug('Tool execution completed successfully', { 
+      executionTimeMs: executionTime,
+      resultSize: resultSize,
+      resultType: typeof result,
+      resultPreview: typeof result === 'string' 
+        ? result.substring(0, 200) + (result.length > 200 ? "..." : "")
+        : JSON.stringify(result).substring(0, 200) + (JSON.stringify(result).length > 200 ? "..." : ""),
+      server: toolCall.server,
+      tool: toolCall.tool
     });
     
     // Format tool result for the LLM
     const toolResultMsg = `I called the tool ${toolCall.tool} from ${toolCall.server} with the arguments ${JSON.stringify(toolCall.args)}. The result was: ${JSON.stringify(result)}`;
+    
+    logger.debug('Formatted tool result for conversation', {
+      toolResultMsgLength: toolResultMsg.length,
+      conversationLength: state.messages?.length || 0
+    });
     
     return {
       toolResults: {...(state.toolResults || {}), [toolCall.tool]: result},
@@ -360,9 +489,23 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
       ]
     };
   } catch (error) {
+    const executionTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error(`Error executing tool ${toolCall.tool}:`, err);
+    logger.error(`Error executing tool ${toolCall.tool}:`, {
+      error: err,
+      executionTimeMs: executionTime,
+      server: toolCall.server,
+      tool: toolCall.tool,
+      argsProvided: Object.keys(toolCall.args || {}).length,
+      errorType: err.constructor.name,
+      errorMessage: err.message
+    });
+    
     const errorMsg = `Error calling tool ${toolCall.tool}: ${err.message}`;
+    
+    logger.debug('Returning error response to conversation', {
+      errorMsgLength: errorMsg.length
+    });
     
     return {
       messages: [...state.messages, 
@@ -374,13 +517,21 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
 };
 
 const selfReflectionNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
+  const startTime = Date.now();
+  
   // Only perform self-reflection if we have an AI response
   if (!state.aiResponse) {
+    logger.debug('Skipping self-reflection - no AI response available');
     return {};
   }
   
   try {
-    logger.info('Performing self-reflection on AI response');
+    logger.debug('Starting self-reflection process', {
+      aiResponseLength: state.aiResponse.length,
+      messageCount: state.messages?.length || 0,
+      hasToolResults: !!state.toolResults,
+      toolResultsCount: state.toolResults ? Object.keys(state.toolResults).length : 0
+    });
     
     // Get the latest user message
     const latestUserMessage = state.messages
@@ -388,14 +539,30 @@ const selfReflectionNode = async (state: AppState, context: unknown): Promise<Pa
       .pop();
     
     if (!latestUserMessage) {
-      logger.warn('No user message found for self-reflection');
+      logger.debug('No user message found for self-reflection, skipping');
       return {};
     }
+    
+    logger.debug('Found user message for reflection', {
+      userMessageLength: latestUserMessage.content.length,
+      userMessagePreview: latestUserMessage.content.substring(0, 100) + (latestUserMessage.content.length > 100 ? "..." : "")
+    });
     
     // Determine if this needs thorough reflection based on complexity
     // For simplicity in MVP, we'll use message length as a proxy for complexity
     const isComplex = latestUserMessage.content.length > 100 || state.aiResponse.length > 500;
     const mode = isComplex ? ReflectionMode.THOROUGH : ReflectionMode.QUICK;
+    
+    logger.debug('Determined reflection mode', {
+      mode: mode,
+      isComplex,
+      userMessageLength: latestUserMessage.content.length,
+      aiResponseLength: state.aiResponse.length,
+      complexity: {
+        userLong: latestUserMessage.content.length > 100,
+        responseLong: state.aiResponse.length > 500
+      }
+    });
     
     //TODO: Eren: Enable self-reflection
     /*
@@ -406,20 +573,34 @@ const selfReflectionNode = async (state: AppState, context: unknown): Promise<Pa
       true // Enable improved response generation
     );
     
-    logger.info('Self-reflection completed', { 
+    const processingTime = Date.now() - startTime;
+    logger.debug('Self-reflection completed', { 
+      processingTimeMs: processingTime,
       score: reflectionResult.score,
-      critiqueLength: reflectionResult.critique.length
+      critiqueLength: reflectionResult.critique.length,
+      hasImprovedResponse: !!reflectionResult.improvedResponse,
+      improvedResponseLength: reflectionResult.improvedResponse?.length || 0
     });
     
     let finalAiResponse = state.aiResponse;
     if (reflectionResult.improvedResponse && reflectionResult.score !== undefined && reflectionResult.score < 7) {
-      logger.info('Using improved response due to low quality score', {
+      logger.debug('Using improved response due to low quality score', {
         originalScore: reflectionResult.score,
-        improvedResponseLength: reflectionResult.improvedResponse.length
+        threshold: 7,
+        originalResponseLength: state.aiResponse.length,
+        improvedResponseLength: reflectionResult.improvedResponse.length,
+        improvement: reflectionResult.improvedResponse.length - state.aiResponse.length
       });
       finalAiResponse = reflectionResult.improvedResponse;
       */
      const finalAiResponse = state.aiResponse;
+     const processingTime = Date.now() - startTime;
+
+     logger.debug('Using placeholder reflection result (reflection disabled)', {
+       processingTimeMs: processingTime,
+       placeholderScore: 10,
+       reflectionEnabled: false
+     });
 
       // Update the messages array with the improved response
       const updatedMessages = [...state.messages];
@@ -439,6 +620,13 @@ const selfReflectionNode = async (state: AppState, context: unknown): Promise<Pa
       };
     }*/
 
+    logger.debug('Self-reflection node completed', {
+      processingTimeMs: processingTime,
+      finalResponseLength: finalAiResponse.length,
+      scoreAssigned: 10,
+      improved: false
+    });
+
     return {
       aiResponse: finalAiResponse,
       reflectionResult: {
@@ -450,8 +638,14 @@ const selfReflectionNode = async (state: AppState, context: unknown): Promise<Pa
       }
     };
   } catch (error) {
+    const processingTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error('Error in self-reflection node', err);
+    logger.error('Error in self-reflection node', {
+      error: err,
+      processingTimeMs: processingTime,
+      aiResponseLength: state.aiResponse?.length || 0,
+      errorType: err.constructor.name
+    });
     // Continue without reflection rather than failing the workflow
     return {};
   }
@@ -460,11 +654,23 @@ const selfReflectionNode = async (state: AppState, context: unknown): Promise<Pa
 const memoryStorageNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
   // Only store in memory if we have an AI response
   if (!state.aiResponse) {
+    logger.debug('Skipping memory storage - no AI response available', {
+      hasAiResponse: !!state.aiResponse,
+      messageCount: state.messages?.length || 0
+    });
     return {};
   }
   
   try {
-    logger.info('Storing conversation in long-term memory');
+    logger.debug('Memory storage node started', {
+      aiResponseLength: state.aiResponse.length,
+      messageCount: state.messages?.length || 0,
+      hasToolCall: !!state.toolCall,
+      toolCallDetails: state.toolCall ? {
+        server: state.toolCall.server,
+        tool: state.toolCall.tool
+      } : null
+    });
     
     // Get the latest user message and AI response
     const latestUserMessage = state.messages
@@ -477,18 +683,45 @@ const memoryStorageNode = async (state: AppState, context: unknown): Promise<Par
     
     if (!latestUserMessage || !latestAiMessage) {
       logger.warn('Incomplete conversation for memory storage');
+      logger.debug('Message analysis for memory storage', {
+        hasUserMessage: !!latestUserMessage,
+        hasAiMessage: !!latestAiMessage,
+        totalMessages: state.messages?.length || 0,
+        messageRoles: state.messages?.map(m => m.role) || [],
+        userMessages: state.messages?.filter(m => m.role === "human").length || 0,
+        aiMessages: state.messages?.filter(m => m.role === "ai").length || 0
+      });
       return {};
     }
     
     // Store the conversation exchange
     const memoryText = `User: ${latestUserMessage.content}\nAI: ${latestAiMessage.content}`;
-    const memoryId = await memoryManager.storeMemory(memoryText, {
+    const memoryMetadata = {
       type: 'conversation',
       timestamp: new Date().toISOString(),
       hasToolUse: !!state.toolCall
+    };
+    
+    logger.debug('Preparing conversation for memory storage', {
+      userMessageLength: latestUserMessage.content.length,
+      aiMessageLength: latestAiMessage.content.length,
+      totalMemoryTextLength: memoryText.length,
+      metadata: memoryMetadata,
+      conversationPreview: memoryText.substring(0, 150)
     });
     
+    const storageStartTime = Date.now();
+    const memoryId = await memoryManager.storeMemory(memoryText, memoryMetadata);
+    const storageDuration = Date.now() - storageStartTime;
+    
     logger.info(`Conversation stored in memory with ID: ${memoryId}`);
+    logger.debug('Memory storage completed successfully', {
+      memoryId,
+      storageTimeMs: storageDuration,
+      memoryTextLength: memoryText.length,
+      hasToolUse: !!state.toolCall,
+      toolUsed: state.toolCall?.tool || null
+    });
     
     return {
       memoryId
@@ -496,6 +729,13 @@ const memoryStorageNode = async (state: AppState, context: unknown): Promise<Par
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     logger.error('Error in memory storage node', err);
+    logger.debug('Memory storage failure details', {
+      errorMessage: err.message,
+      errorStack: err.stack,
+      aiResponseLength: state.aiResponse?.length || 0,
+      messageCount: state.messages?.length || 0,
+      hasToolCall: !!state.toolCall
+    });
     // Continue without storing memory rather than failing the workflow
     return {};
   }

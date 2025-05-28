@@ -1,4 +1,24 @@
 services:
+  # ChromaDB - Vector database for embeddings and memory storage
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: skynet-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/chroma:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=${ANONYMIZED_TELEMETRY:-TRUE}
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
   # Skynet Agent application
   skynet-agent:
     build: .
@@ -8,11 +28,15 @@ services:
     environment:
       - NODE_ENV=production
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - CHROMA_PATH=/app/data/chroma
+      - CHROMA_PATH=http://chromadb:8000
       - CHROMA_COLLECTION=skynet_memories
+      - PORT=3000
     volumes:
       - ./data:/app/data
       - ./config.json:/app/config.json:ro
+    depends_on:
+      chromadb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
