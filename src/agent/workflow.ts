@@ -145,13 +145,7 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
             query,
             retrievedDocs: []
           },
-          messages: [
-            ...state.messages,
-            { 
-              role: "system", 
-              content: "This appears to be a simple query that doesn't require memory context."
-            }
-          ]
+          memoryContext: null
         };
       }
       
@@ -212,20 +206,14 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
         contextPreview: memoryContext.substring(0, 200)
       });
 
-      // Add memory context as a system message
+      // Store memory context to be included in system prompt later
       return {
         retrievalEvaluation: {
           shouldRetrieve: true,
           query,
           retrievedDocs: relevantMemories
         },
-        messages: [
-          ...state.messages,
-          { 
-            role: "system", 
-            content: `Relevant information from your memory:\n\n${memoryContext}`
-          }
-        ]
+        memoryContext: memoryContext
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -331,6 +319,16 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
       availableToolsCount
     });
     
+    // Combine memory context with tools prompt for single system message
+    let systemPrompt = toolsPrompt;
+    if (state.memoryContext) {
+      systemPrompt += `\n\nRelevant information from your memory:\n\n${state.memoryContext}`;
+      logger.debug('Added memory context to system prompt', {
+        memoryContextLength: state.memoryContext.length,
+        totalSystemPromptLength: systemPrompt.length
+      });
+    }
+    
     // Track LLM call for metrics
     incrementMetric('llmCallsMade');
     
@@ -347,14 +345,14 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
     
     logger.debug('LLM service found, preparing request', {
       messageCount: state.messages?.length || 0,
-      systemPromptLength: toolsPrompt.length,
+      systemPromptLength: systemPrompt.length,
       llmServiceAvailable: !!llmService,
       modelInfo: llmService.getModelInfo()
     });
     
     logger.debug('Sending request to LLM service', {
       messageCount: state.messages?.length || 0,
-      systemPromptLength: toolsPrompt.length,
+      systemPromptLength: systemPrompt.length,
       requestStartTime: Date.now()
     });
     
@@ -362,7 +360,7 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
     
     // Generate complete response synchronously
     logger.debug('Using synchronous mode for LLM response');
-    const response = await llmService.generateCompleteResponse(state.messages, toolsPrompt);
+    const response = await llmService.generateCompleteResponse(state.messages, systemPrompt);
     
     const llmCallTime = Date.now() - llmCallStartTime;
     
@@ -821,6 +819,7 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
         reflectionResult: { value: null },
         memoryId: { value: null },
         retrievalEvaluation: { value: null },
+        memoryContext: { value: null },
         streamCallback: { value: null }
       }
     });
