@@ -1,5 +1,4 @@
-# Skynet Agent
-
+# MCP Compatible TypeScript and Next.js LLM Chat Client That Also Has Passive RAG for Long Term Memory Purposes
 Skynet Agent is an autonomous AI assistant built with Node.js and TypeScript. It features **multi-LLM provider support** via the Vercel AI SDK, enabling seamless switching between OpenAI, Google Gemini, Anthropic Claude, and more. The agent includes intrinsic motivation, self-reflection, semantic memory management, and external tool execution via the Model Context Protocol (MCP). It exposes a modern streaming HTTP API and includes a React-based web GUI. See "Tutorial.md" for detailed information.
 
 ## Features
