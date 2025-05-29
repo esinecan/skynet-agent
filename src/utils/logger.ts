@@ -3,9 +3,9 @@
  */
 
 import * as Sentry from "@sentry/node";
-import * as fs from 'fs';
-import * as path from 'path';
-import * as util from 'util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as util from 'node:util';
 
 // Log levels
 export enum LogLevel {
@@ -16,19 +16,30 @@ export enum LogLevel {
 }
 
 // Configuration
-const LOG_LEVEL = process.env.LOG_LEVEL ? 
+/*const LOG_LEVEL = process.env.LOG_LEVEL ? 
   (LogLevel[process.env.LOG_LEVEL as keyof typeof LogLevel] || LogLevel.INFO) : 
-  LogLevel.INFO;
+  LogLevel.INFO;*/
+  const LOG_LEVEL = LogLevel.INFO;
 
 const LOG_TO_CONSOLE = process.env.LOG_TO_CONSOLE !== 'false';
 const LOG_TO_FILE = process.env.LOG_TO_FILE === 'true';
 const LOG_FILE_PATH = process.env.LOG_FILE_PATH || path.join(process.cwd(), 'logs', 'skynet-agent.log');
+const IDLE_LOGS_PATH = path.join(process.cwd(), 'idle-logs.txt');
 
 // Ensure log directory exists if logging to file
 if (LOG_TO_FILE) {
   const logDir = path.dirname(LOG_FILE_PATH);
   if (!fs.existsSync(logDir)) {
     fs.mkdirSync(logDir, { recursive: true });
+  }
+}
+
+// Function to clear idle logs (called when starting dev:gui)
+export function clearIdleLogs() {
+  try {
+    fs.writeFileSync(IDLE_LOGS_PATH, '');
+  } catch (error) {
+    console.warn('Failed to clear idle-logs.txt:', error);
   }
 }
 
@@ -129,9 +140,15 @@ function log(level: LogLevel, module: string, message: string, context?: Error |
                          console.debug;
     consoleMethod(logString);
   }
-  
-  // Write to file if enabled
+    // Write to file if enabled
   if (LOG_TO_FILE) {
-    fs.appendFileSync(LOG_FILE_PATH, legacyLogString + '\n');
+    fs.appendFileSync(LOG_FILE_PATH, `${legacyLogString}\n`);
+  }
+  
+  // Always write to idle-logs.txt for dev:gui mode
+  try {
+    fs.appendFileSync(IDLE_LOGS_PATH, `${legacyLogString}\n`);
+  } catch (error) {
+    // Silently fail if we can't write to idle-logs.txt
   }
 }

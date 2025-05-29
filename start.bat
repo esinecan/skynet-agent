@@ -14,17 +14,17 @@ if not exist .env (
     echo 📋 Copying .env.example to .env...
     copy .env.example .env
     echo ⚠️  Please edit .env file with your API keys before continuing
-    echo    Required: GEMINI_API_KEY or other LLM provider API key
+    echo    Required: GOOGLE_API_KEY or other LLM provider API key
     exit /b 1
 )
 
 REM Check if API key is configured (basic check)
-findstr /B "GEMINI_API_KEY=.*[^=]" .env >nul
+findstr /B "GOOGLE_API_KEY=.*[^=]" .env >nul
 if errorlevel 1 (
     findstr /B "OPENAI_API_KEY=.*[^=]" .env >nul
     if errorlevel 1 (
         echo ⚠️  No API key found in .env file
-        echo    Please set GEMINI_API_KEY or OPENAI_API_KEY in .env file
+        echo    Please set GOOGLE_API_KEY or OPENAI_API_KEY in .env file
         exit /b 1
     )
 )
@@ -50,22 +50,22 @@ docker-compose up --build -d
 
 echo ⏳ Waiting for services to be healthy...
 
-REM Wait for Milvus to be healthy
+REM Wait for ChromaDB to be healthy
 set max_attempts=30
 set attempt=0
 
-:wait_milvus
-docker-compose ps milvus | findstr "healthy" >nul
+:wait_chromadb
+docker-compose ps chromadb | findstr "healthy" >nul
 if not errorlevel 1 (
-    echo ✅ Milvus is healthy
+    echo ✅ ChromaDB is healthy
     goto wait_agent
 )
 timeout /t 10 >nul
 set /a attempt+=1
-if %attempt% lss %max_attempts% goto wait_milvus
+if %attempt% lss %max_attempts% goto wait_chromadb
 
-echo ❌ Milvus failed to become healthy
-docker-compose logs milvus
+echo ❌ ChromaDB failed to become healthy
+docker-compose logs chromadb
 exit /b 1
 
 :wait_agent
@@ -73,7 +73,7 @@ REM Wait for Skynet Agent to be healthy
 set attempt=0
 
 :wait_agent_loop
-curl -f http://localhost:3000/health >nul 2>&1
+curl -f http://localhost:3000/api/health >nul 2>&1
 if not errorlevel 1 (
     echo ✅ Skynet Agent is healthy
     goto success
@@ -93,9 +93,11 @@ echo 🎉 Skynet Agent is now running!
 echo.
 echo 📊 Service URLs:
 echo    • Skynet Agent:    http://localhost:3000
-echo    • Health Check:    http://localhost:3000/health
-echo    • Milvus WebUI:    http://localhost:9091
-echo    • Minio Console:   http://localhost:9001 (admin/admin)
+echo    • Health Check:    http://localhost:3000/api/health
+echo    • ChromaDB API:    http://localhost:8000
+echo.
+echo 💡 For standalone ChromaDB (development):
+echo    docker run -v ./data/chroma:/chroma/chroma -p 8000:8000 chromadb/chroma
 echo.
 echo 📋 Useful commands:
 echo    • View logs:       docker-compose logs -f

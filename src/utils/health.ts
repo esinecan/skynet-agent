@@ -22,7 +22,7 @@ interface ComponentHealth {
   status: HealthStatus;
   message: string;
   lastChecked: Date;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 // System metrics
@@ -70,8 +70,21 @@ export function updateComponentHealth(
   component: string,
   status: HealthStatus,
   message: string,
-  details?: Record<string, any>
+  details?: Record<string, unknown>
 ): void {
+  const updateTime = Date.now();
+  const healthId = Math.random().toString(36).substring(7);
+  
+  logger.debug('Component health update started', {
+    healthId,
+    component,
+    newStatus: status,
+    previousStatus: healthState.components[component]?.status,
+    message,
+    hasDetails: !!details
+  });
+
+  const previousStatus = healthState.components[component]?.status;
   const healthData = {
     status,
     message,
@@ -81,49 +94,130 @@ export function updateComponentHealth(
 
   healthState.components[component] = healthData;
   
+  logger.debug('Component health data updated', {
+    healthId,
+    component,
+    statusChanged: previousStatus !== status,
+    updateTimeMs: Date.now() - updateTime
+  });
+  
   // Send to Sentry
   Sentry.setTag(`component.${component}.status`, status);
   Sentry.addBreadcrumb({
     message: `Component health updated: ${component}`,
     category: 'health',
     level: status === HealthStatus.HEALTHY ? 'info' : 'warning',
-    data: { status, message, details }
+    data: { status, message, details, healthId }
   });
 
   // Log critical status changes
   if (status === HealthStatus.UNHEALTHY) {
+    logger.error(`Component ${component} is unhealthy`, {
+      healthId,
+      component,
+      message,
+      details,
+      previousStatus
+    });
     Sentry.captureMessage(`Component ${component} is unhealthy: ${message}`, 'warning');
   }
 
   // Recalculate overall health
+  const recalcStartTime = Date.now();
+  const previousOverallStatus = healthState.overall;
   calculateOverallHealth();
+  const recalcTime = Date.now() - recalcStartTime;
+  
+  logger.debug('Overall health recalculated', {
+    healthId,
+    component,
+    previousOverallStatus,
+    newOverallStatus: healthState.overall,
+    overallStatusChanged: previousOverallStatus !== healthState.overall,
+    recalcTimeMs: recalcTime
+  });
   
   // Log significant health changes
   if (status === HealthStatus.DEGRADED || status === HealthStatus.UNHEALTHY) {
-    logger.warn(`Component ${component} health changed to ${status}: ${message}`, details);
+    logger.warn(`Component ${component} health changed to ${status}: ${message}`, {
+      healthId,
+      component,
+      status,
+      message,
+      details,
+      overallStatus: healthState.overall
+    });
   } else {
-    logger.info(`Component ${component} health: ${status}`, details);
+    logger.debug('Component health status logged', {
+      healthId,
+      component,
+      status,
+      message,
+      details
+    });
   }
+  
+  const totalUpdateTime = Date.now() - updateTime;
+  logger.debug('Component health update completed', {
+    healthId,
+    component,
+    totalUpdateTimeMs: totalUpdateTime,
+    finalStatus: status,
+    finalOverallStatus: healthState.overall
+  });
 }
 
 /**
  * Calculate the overall system health based on component statuses
  */
 function calculateOverallHealth(): void {
+  const startTime = Date.now();
   const components = Object.values(healthState.components);
+  const componentCount = components.length;
+  
+  logger.debug('Overall health calculation started', {
+    componentCount,
+    componentStatuses: components.map(c => c.status),
+    currentOverallStatus: healthState.overall
+  });
   
   if (components.length === 0) {
     healthState.overall = HealthStatus.STARTING;
+    logger.debug('Overall health set to STARTING - no components', {
+      calculationTimeMs: Date.now() - startTime
+    });
     return;
   }
   
-  if (components.some(c => c.status === HealthStatus.UNHEALTHY)) {
+  const statusCounts = {
+    [HealthStatus.UNHEALTHY]: components.filter(c => c.status === HealthStatus.UNHEALTHY).length,
+    [HealthStatus.DEGRADED]: components.filter(c => c.status === HealthStatus.DEGRADED).length,
+    [HealthStatus.HEALTHY]: components.filter(c => c.status === HealthStatus.HEALTHY).length,
+    [HealthStatus.BUSY]: components.filter(c => c.status === HealthStatus.BUSY).length,
+    [HealthStatus.STARTING]: components.filter(c => c.status === HealthStatus.STARTING).length
+  };
+  
+  const previousStatus = healthState.overall;
+  
+  if (statusCounts[HealthStatus.UNHEALTHY] > 0) {
     healthState.overall = HealthStatus.UNHEALTHY;
-  } else if (components.some(c => c.status === HealthStatus.DEGRADED)) {
+  } else if (statusCounts[HealthStatus.DEGRADED] > 0) {
     healthState.overall = HealthStatus.DEGRADED;
+  } else if (statusCounts[HealthStatus.STARTING] > 0) {
+    healthState.overall = HealthStatus.STARTING;
   } else {
     healthState.overall = HealthStatus.HEALTHY;
   }
+  
+  const calculationTime = Date.now() - startTime;
+  
+  logger.debug('Overall health calculation completed', {
+    previousStatus,
+    newStatus: healthState.overall,
+    statusChanged: previousStatus !== healthState.overall,
+    statusCounts,
+    calculationTimeMs: calculationTime
+  });
 }
 
 /**
@@ -131,13 +225,37 @@ function calculateOverallHealth(): void {
  * @param metric Metric name
  */
 export function incrementMetric(metric: keyof SystemMetrics): void {
+  const metricId = Math.random().toString(36).substring(7);
+  
+  logger.debug('Metric increment started', {
+    metricId,
+    metric,
+    currentValue: typeof healthState.metrics[metric] === 'number' ? healthState.metrics[metric] : 'N/A'
+  });
+
   Sentry.addBreadcrumb({
     message: `Incrementing metric: ${metric}`,
     category: 'metrics',
-    level: 'debug'
+    level: 'debug',
+    data: { metricId, metric }
   });
 
-  healthState.metrics[metric]++;
+  if (typeof healthState.metrics[metric] === 'number') {
+    (healthState.metrics[metric] as number)++;
+    
+    logger.debug('Metric incremented successfully', {
+      metricId,
+      metric,
+      newValue: healthState.metrics[metric]
+    });
+  } else {
+    logger.warn('Attempted to increment non-numeric metric', {
+      metricId,
+      metric,
+      currentType: typeof healthState.metrics[metric],
+      currentValue: healthState.metrics[metric]
+    });
+  }
 }
 
 /**
@@ -145,7 +263,23 @@ export function incrementMetric(metric: keyof SystemMetrics): void {
  * @param errorType Error type or code
  */
 export function recordError(errorType: string): void {
-  healthState.metrics.errors[errorType] = (healthState.metrics.errors[errorType] || 0) + 1;
+  const errorId = Math.random().toString(36).substring(7);
+  const previousCount = healthState.metrics.errors[errorType] || 0;
+  
+  logger.debug('Error recording started', {
+    errorId,
+    errorType,
+    previousCount
+  });
+
+  healthState.metrics.errors[errorType] = previousCount + 1;
+  
+  logger.debug('Error recorded', {
+    errorId,
+    errorType,
+    newCount: healthState.metrics.errors[errorType],
+    totalErrorTypes: Object.keys(healthState.metrics.errors).length
+  });
 }
 
 /**
@@ -230,19 +364,18 @@ function getStatusMessage(): string {
     case HealthStatus.HEALTHY:
       return 'All systems operational';
     case HealthStatus.BUSY:
-      return 'System is busy processing tasks';
-    case HealthStatus.DEGRADED:
+      return 'System is busy processing tasks';    case HealthStatus.DEGRADED: {
       const degraded = Object.entries(healthState.components)
         .filter(([_, c]) => c.status === HealthStatus.DEGRADED)
         .map(([name, _]) => name);
       return `System is degraded. Affected components: ${degraded.join(', ')}`;
-    case HealthStatus.UNHEALTHY:
+    }
+    case HealthStatus.UNHEALTHY: {
       const unhealthy = Object.entries(healthState.components)
         .filter(([_, c]) => c.status === HealthStatus.UNHEALTHY)
         .map(([name, _]) => name);
       return `System is unhealthy. Affected components: ${unhealthy.join(', ')}`;
-    default:
-      return 'Unknown system status';
+    }
   }
 }
 
@@ -256,21 +389,50 @@ export function initializeHealthMonitoring(): void {
     updateMetrics();
     
     // Check Milvus health every minute
-    checkMilvusHealth().catch(error => {
+    /*checkMilvusHealth().catch(error => {
       logger.error('Milvus health check failed', error);
-    });
+    });*/
     
     // Log periodic health status
     logger.debug('Health status update', {
       status: healthState.overall,
-      uptime: healthState.metrics.uptime,
-      memory: {
-        rss: Math.round(healthState.metrics.memoryUsage.rss / 1024 / 1024) + 'MB',
-        heapUsed: Math.round(healthState.metrics.memoryUsage.heapUsed / 1024 / 1024) + 'MB'
+      uptime: healthState.metrics.uptime,      memory: {
+        rss: `${Math.round(healthState.metrics.memoryUsage.rss / 1024 / 1024)}MB`,
+        heapUsed: `${Math.round(healthState.metrics.memoryUsage.heapUsed / 1024 / 1024)}MB`
       },
       components: Object.keys(healthState.components).length
     });
   }, 60000); // Check every minute
   
   logger.info('Health monitoring initialized');
+}
+
+
+/**
+ * Perform health check on memory system
+ */
+export async function checkMemoryHealth(): Promise<void> {
+  try {
+    // Import here to avoid circular dependencies
+    const { memoryManager } = await import('../memory/index.js');
+    
+    const isHealthy = await memoryManager.healthCheck();
+    const memoryCount = await memoryManager.getMemoryCount();
+    
+    if (isHealthy) {
+      updateComponentHealth('memory', HealthStatus.HEALTHY, 'Memory system active', {
+        memoryCount,
+        lastCheck: new Date().toISOString()
+      });
+    } else {
+      updateComponentHealth('memory', HealthStatus.UNHEALTHY, 'Memory system connection failed', {
+        lastCheck: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    updateComponentHealth('memory', HealthStatus.UNHEALTHY, 'Memory health check error', {
+      error: error instanceof Error ? error.message : String(error),
+      lastCheck: new Date().toISOString()
+    });
+  }
 }

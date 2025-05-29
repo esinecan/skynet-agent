@@ -30,8 +30,7 @@
         ]
       }
     }
-  },
-  "agent": {
+  },  "agent": {
     "model": "gemini-2.5-flash-preview-05-20",
     "maxTokens": 8192,
     "temperature": 0.7

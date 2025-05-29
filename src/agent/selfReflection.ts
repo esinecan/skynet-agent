@@ -72,10 +72,16 @@ export async function performSelfReflection(
   critique: string;
   improvedResponse?: string;
 }> {
+  const startTime = Date.now();
+  
   try {
-    logger.info(`Performing ${mode} self-reflection`, {
+    logger.debug('Starting self-reflection process', {
+      mode,
+      generateImprovement,
       queryLength: userQuery.length,
-      responseLength: aiResponse.length
+      responseLength: aiResponse.length,
+      queryPreview: userQuery.substring(0, 100) + (userQuery.length > 100 ? "..." : ""),
+      responsePreview: aiResponse.substring(0, 200) + (aiResponse.length > 200 ? "..." : "")
     });
     
     // Update health status
@@ -87,17 +93,29 @@ export async function performSelfReflection(
     
     // Choose reflection method based on mode
     let result;
+    const reflectionStartTime = Date.now();
+    
     if (mode === ReflectionMode.THOROUGH) {
+      logger.debug('Executing thorough reflection');
       result = await performThoroughReflection(userQuery, aiResponse, generateImprovement);
     } else {
+      logger.debug('Executing quick reflection');
       result = await performQuickReflection(userQuery, aiResponse, generateImprovement);
     }
     
+    const reflectionTime = Date.now() - reflectionStartTime;
+    const totalTime = Date.now() - startTime;
+    
     // Log the result
-    logger.info('Self-reflection completed', {
+    logger.debug('Self-reflection completed successfully', {
+      mode,
       score: result.score,
       critiqueLength: result.critique.length,
-      hasImprovedResponse: !!result.improvedResponse
+      hasImprovedResponse: !!result.improvedResponse,
+      improvedResponseLength: result.improvedResponse?.length || 0,
+      reflectionTimeMs: reflectionTime,
+      totalTimeMs: totalTime,
+      efficiency: Math.round((userQuery.length + aiResponse.length) / (totalTime / 1000)) // chars per second
     });
     
     // Update health status
@@ -109,8 +127,17 @@ export async function performSelfReflection(
     
     return result;
   } catch (error) {
+    const totalTime = Date.now() - startTime;
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error('Self-reflection failed', err);
+    logger.error('Self-reflection failed', {
+      error: err,
+      mode,
+      generateImprovement,
+      queryLength: userQuery.length,
+      responseLength: aiResponse.length,
+      totalTimeMs: totalTime,
+      errorType: err.constructor.name
+    });
     
     // Update health status
     updateComponentHealth(

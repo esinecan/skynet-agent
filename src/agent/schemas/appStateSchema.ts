@@ -44,7 +44,8 @@ export const AppStateSchema = z.object({
   toolResults: z.record(z.string(), z.any()).optional().describe("Results from tool calls"),
   reflectionResult: ReflectionResultSchema.optional().describe("Self-reflection results"),
   memoryId: z.string().optional().describe("ID of stored memory"),
-  retrievalEvaluation: RetrievalEvaluationSchema.optional().describe("Memory retrieval evaluation results")
+  retrievalEvaluation: RetrievalEvaluationSchema.optional().describe("Memory retrieval evaluation results"),
+  memoryContext: z.string().optional().describe("Retrieved memory context to include in system prompt")
 });
 
 export type AppState = z.infer<typeof AppStateSchema>;
