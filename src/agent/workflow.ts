@@ -256,11 +256,12 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
 const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<AppState>> => {
   const startTime = Date.now();
   try {
-    logger.debug('Starting LLM query node', { 
+    logger.debug('LLM query node started', { 
       messageCount: state.messages?.length || 0,
       hasRetrievalEvaluation: !!state.retrievalEvaluation,
       retrievedDocsCount: state.retrievalEvaluation?.retrievedDocs?.length || 0,
-      userInput: state.input.substring(0, 100) + (state.input.length > 100 ? "..." : "")
+      userInput: state.input.substring(0, 100) + (state.input.length > 100 ? "..." : ""),
+      nodeStartTime: Date.now()
     });
     
     // Get MCP manager from context or from global context (workaround)
@@ -269,16 +270,25 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
     let toolsPrompt = "You are a helpful AI assistant with advanced cognitive capabilities. Respond to the user's queries in a helpful and informative way.";
     let availableToolsCount = 0;
     
+    logger.debug('Checking MCP manager availability', {
+      hasMcpManager: !!mcpManager,
+      globalMcpAvailable: !!global.mcpManagerContext,
+      contextMcpAvailable: !!contextObj?.mcpManager
+    });
+    
     // Only attempt to list tools if mcpManager is available
     if (mcpManager) {
       logger.debug('MCP manager available, listing tools');
       try {
+        const toolsListStartTime = Date.now();
         const toolsList = await mcpManager.listAllTools();
+        const toolsListTime = Date.now() - toolsListStartTime;
         availableToolsCount = toolsList.reduce((total, server) => total + (server.tools?.length || 0), 0);
         
         logger.debug('Tools retrieved from MCP manager', {
           serverCount: toolsList.length,
           totalToolsCount: availableToolsCount,
+          toolsListTimeMs: toolsListTime,
           servers: toolsList.map(s => ({ name: s.serverName, toolCount: s.tools?.length || 0 }))
         });
         
@@ -305,14 +315,17 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         logger.error("Error listing tools:", err);
-        logger.debug('Continuing with default prompt due to tools error');
+        logger.debug('Continuing with default prompt due to tools error', {
+          errorType: err.constructor.name,
+          errorMessage: err.message
+        });
         // Continue with default prompt if error occurs
       }
     } else {
       logger.debug('No MCP manager available, using default prompt');
     }
     
-    logger.debug('Prepared system prompt for LLM', {
+    logger.debug('System prompt prepared for LLM', {
       promptLength: toolsPrompt.length,
       includesTools: availableToolsCount > 0,
       availableToolsCount
@@ -324,26 +337,61 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
     // Generate response using new LLMService
     const llmService = global.llmServiceContext;
     if (!llmService) {
+      const error = new Error('LLMService not available in global context');
+      logger.error('LLM service not found', {
+        hasGlobalLlmService: !!global.llmServiceContext,
+        globalKeys: Object.keys(global).filter(k => k.includes('llm'))
+      });
       throw new WorkflowError('LLMService not available in global context');
     }
     
-    logger.debug('Sending request to LLM service', {
+    logger.debug('LLM service found, preparing request', {
       messageCount: state.messages?.length || 0,
-      systemPromptLength: toolsPrompt.length
+      systemPromptLength: toolsPrompt.length,
+      llmServiceAvailable: !!llmService,
+      modelInfo: llmService.getModelInfo()
     });
     
-    const response = await llmService.generateResponseLegacy(state.messages, toolsPrompt);
+    logger.debug('Sending request to LLM service', {
+      messageCount: state.messages?.length || 0,
+      systemPromptLength: toolsPrompt.length,
+      requestStartTime: Date.now()
+    });
+    
+    const llmCallStartTime = Date.now();
+    
+    // Generate complete response synchronously
+    logger.debug('Using synchronous mode for LLM response');
+    const response = await llmService.generateCompleteResponse(state.messages, toolsPrompt);
+    
+    const llmCallTime = Date.now() - llmCallStartTime;
     
     const processingTime = Date.now() - startTime;
     logger.debug('Received response from LLM service', {
       processingTimeMs: processingTime,
+      llmCallTimeMs: llmCallTime,
       responseLength: response.length,
       responsePreview: response.substring(0, 200) + (response.length > 200 ? "..." : ""),
-      avgCharsPerSecond: Math.round(response.length / (processingTime / 1000))
+      avgCharsPerSecond: Math.round(response.length / (llmCallTime / 1000)),
+      responseType: typeof response,
+      hasResponse: !!response
     });
     
     // Check if the response contains a tool call
+    const toolCallCheckStartTime = Date.now();
     const toolCall = extractToolCall(response);
+    const toolCallCheckTime = Date.now() - toolCallCheckStartTime;
+    
+    logger.debug('Tool call extraction completed', {
+      toolCallCheckTimeMs: toolCallCheckTime,
+      hasToolCall: !!toolCall,
+      toolCall: toolCall ? {
+        server: toolCall.server,
+        tool: toolCall.tool,
+        hasArgs: !!toolCall.args,
+        argCount: toolCall.args ? Object.keys(toolCall.args).length : 0
+      } : null
+    });
     
     if (toolCall) {
       // If tool call is detected, we'll process it in the tool node
@@ -352,6 +400,12 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
         tool: toolCall.tool,
         hasArgs: !!toolCall.args,
         argCount: toolCall.args ? Object.keys(toolCall.args).length : 0
+      });
+      
+      logger.debug('Returning state with tool call', {
+        hasAiResponse: !!response,
+        aiResponseLength: response.length,
+        hasToolCall: !!toolCall
       });
       
       return {
@@ -363,7 +417,15 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
     // No tool call, just return the response
     logger.debug('No tool call detected, returning direct response', { 
       responseLength: response.length,
-      processingTimeMs: processingTime
+      processingTimeMs: processingTime,
+      finalMessageCount: state.messages.length + 1
+    });
+    
+    logger.debug('Returning final state', {
+      hasAiResponse: !!response,
+      aiResponseLength: response.length,
+      addingAiMessage: true,
+      finalMessageCount: state.messages.length + 1
     });
     
     return {
@@ -378,7 +440,9 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
       processingTimeMs: processingTime,
       messageCount: state.messages?.length || 0,
       userInput: state.input.substring(0, 100) + (state.input.length > 100 ? "..." : ""),
-      errorType: err.constructor.name
+      errorType: err.constructor.name,
+      errorMessage: err.message,
+      errorStack: err.stack
     });
     throw new WorkflowError('Error generating AI response', { cause: err });
   }
@@ -756,7 +820,8 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
         toolResults: { value: null },
         reflectionResult: { value: null },
         memoryId: { value: null },
-        retrievalEvaluation: { value: null }
+        retrievalEvaluation: { value: null },
+        streamCallback: { value: null }
       }
     });
 
@@ -765,7 +830,7 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
     logger.info("MCPManager availability:", { available: !!manager });
 
     // Create LLM service instance
-    const llmService = new LLMService(manager, process.env.AGENT_MODEL || 'google:gemini-2.0-flash');
+    const llmService = new LLMService(manager, process.env.AGENT_MODEL || 'google:gemini-2.5-flash-preview-05-20');
     logger.info("LLMService created with model:", llmService.getModelInfo());
 
     // Add nodes

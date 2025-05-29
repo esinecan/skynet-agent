@@ -4,7 +4,7 @@
  * with multi-provider support and MCP tool integration.
  */
 
-import { streamText, CoreMessage, LanguageModelV1 } from 'ai';
+import { streamText, generateText, CoreMessage, LanguageModelV1 } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -18,7 +18,7 @@ export class LLMService {
   private llm: LanguageModelV1;
   private modelId: string;
 
-  constructor(private mcpClientManager: McpClientManager, modelId: string = 'google:gemini-2.0-flash') {
+  constructor(private mcpClientManager: McpClientManager, modelId: string = 'google:gemini-2.5-flash-preview-05-20') {
     const startTime = Date.now();
     this.modelId = modelId;
     const [provider, modelName] = modelId.split(':');
@@ -152,82 +152,119 @@ export class LLMService {
     logger.debug('Starting tool preparation from MCP clients');
 
     try {
-      const allToolsData = await this.mcpClientManager.listAllTools();
-      const toolDiscoveryTime = Date.now() - startTime;
-      
-      logger.debug('MCP tools discovered', {
-        serverCount: allToolsData.length,
-        discoveryTimeMs: toolDiscoveryTime,
-        servers: allToolsData.map(s => ({ name: s.serverName, toolCount: s.tools.length }))
-      });
-
+      // Get tools from MCP clients by calling each client directly
       const tools: Record<string, {
         description: string;
-        parameters: {
-          type: string;
-          properties: Record<string, unknown>;
-          required: string[];
-        };
-        execute: (args: { args: Record<string, unknown> }) => Promise<unknown>;
+        parameters: any;
+        execute: (args: any) => Promise<any>;
       }> = {};
 
-      for (const serverData of allToolsData) {
-        const { serverName, tools: serverTools } = serverData;
-        
-        logger.debug('Processing tools from server', {
-          serverName,
-          toolCount: serverTools.length,
-          toolNames: serverTools.map(t => t.name)
-        });
-        
-        for (const tool of serverTools) {
-          const toolId = `${serverName}:${tool.name}`;
+      // Get all connected MCP clients
+      const clientCount = this.mcpClientManager.getAllClients().length;
+      logger.debug('Processing MCP clients for tools', { clientCount });
+
+      for (const [serverName, client] of (this.mcpClientManager as any).clients.entries()) {
+        try {
+          logger.debug(`Fetching tools from server: ${serverName}`);
           
-          tools[toolId] = {
-            description: tool.description || `Tool ${tool.name} from ${serverName}`,
-            parameters: {
-              type: 'object',
-              properties: {
-                args: {
-                  type: 'object',
-                  description: 'Arguments for the tool'
-                }
-              },
-              required: ['args']
-            },
-            execute: async (args: { args: Record<string, unknown> }) => {
-              const execStartTime = Date.now();
-              try {
-                logger.debug('Executing tool', {
-                  toolId,
-                  argsKeys: Object.keys(args.args),
-                  argsSize: JSON.stringify(args.args).length
-                });
-                
-                const result = await this.mcpClientManager.callTool(serverName, tool.name, args.args);
-                const execTime = Date.now() - execStartTime;
-                
-                logger.debug('Tool execution completed', {
-                  toolId,
-                  executionTimeMs: execTime,
-                  resultType: typeof result,
-                  resultSize: JSON.stringify(result).length
-                });
-                
-                return result;
-              } catch (error) {
-                const err = error instanceof Error ? error : new Error(String(error));
-                const execTime = Date.now() - execStartTime;
-                logger.error('Tool execution failed', {
-                  toolId,
-                  executionTimeMs: execTime,
-                  error: err.message,
-                  args: args.args
-                });
-                throw err;
-              }
+          // Get tools directly from client.listTools()
+          const serverTools = await client.listTools();
+          logger.debug('Raw tools from MCP client', {
+            serverName,
+            toolsType: typeof serverTools,
+            isArray: Array.isArray(serverTools),
+            toolsData: serverTools
+          });
+
+          if (!Array.isArray(serverTools)) {
+            logger.warn(`Server ${serverName} returned non-array tools response`, { serverTools });
+            continue;
+          }
+
+          logger.debug(`Processing ${serverTools.length} tools from ${serverName}`);
+
+          for (const tool of serverTools) {
+            const toolId = `${serverName}:${tool.name}`;
+            logger.debug('Processing tool', {
+              toolId,
+              toolName: tool.name,
+              hasInputSchema: !!tool.inputSchema,
+              inputSchemaType: typeof tool.inputSchema,
+              toolKeys: Object.keys(tool)
+            });
+
+            // Create a safe copy of the inputSchema
+            let parameters;
+            if (tool.inputSchema && typeof tool.inputSchema === 'object') {
+              // Use the MCP inputSchema directly as a JSON schema
+              parameters = { ...tool.inputSchema };
+            } else {
+              // Fallback to empty object schema
+              parameters = { 
+                type: 'object', 
+                properties: {},
+                additionalProperties: false
+              };
             }
-          };
+
+            logger.debug('Tool parameters prepared', {
+              toolId,
+              parametersType: typeof parameters,
+              hasType: !!parameters.type,
+              hasProperties: !!parameters.properties,
+              schema: parameters
+            });
+
+            tools[toolId] = {
+              description: tool.description || `Tool ${tool.name} from ${serverName}`,
+              parameters: parameters,
+              execute: async (args: any) => {
+                const execStartTime = Date.now();
+                try {
+                  logger.debug('Executing tool', {
+                    toolId,
+                    argsKeys: Object.keys(args || {}),
+                    argsSize: JSON.stringify(args).length
+                  });
+                  
+                  const result = await this.mcpClientManager.callTool(serverName, tool.name, args);
+                  const execTime = Date.now() - execStartTime;
+                  
+                  logger.debug('Tool execution completed', {
+                    toolId,
+                    executionTimeMs: execTime,
+                    resultType: typeof result,
+                    resultSize: JSON.stringify(result).length
+                  });
+                  
+                  return result;
+                } catch (error) {
+                  const err = error instanceof Error ? error : new Error(String(error));
+                  const execTime = Date.now() - execStartTime;
+                  logger.error('Tool execution failed', {
+                    toolId,
+                    executionTimeMs: execTime,
+                    error: err.message,
+                    args: args
+                  });
+                  throw err;
+                }
+              }
+            };
+          }
+
+          logger.debug(`Successfully processed tools from ${serverName}`, {
+            toolCount: serverTools.length,
+            toolNames: serverTools.map(t => t.name)
+          });
+
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          logger.error(`Error processing tools from server ${serverName}`, {
+            error: err.message,
+            stack: err.stack
+          });
+          // Continue with other servers
         }
       }
 
@@ -265,12 +302,20 @@ export class LLMService {
     const startTime = Date.now();
     const requestId = Math.random().toString(36).substring(7);
     
+    // Create a preview for each message: take the first 10 characters and append an ellipsis.
+    const messagesPreview = `[${messages
+      .map(msg => `{${msg.content.substring(0, 10)}...}`)
+      .join(', ')}]`;
+
     logger.debug('LLM response generation started', {
       requestId,
       messageCount: messages.length,
       hasSystemPrompt: !!systemPrompt,
       systemPromptLength: systemPrompt?.length || 0,
-      totalInputLength: messages.reduce((sum, msg) => sum + msg.content.length, 0) + (systemPrompt?.length || 0)
+      totalInputLength:
+        messages.reduce((sum, msg) => sum + msg.content.length, 0) +
+        (systemPrompt?.length || 0),
+      messagesPreview,
     });
 
     try {
@@ -308,9 +353,7 @@ export class LLMService {
         requestId,
         messageCount: coreMessages.length,
         toolCount,
-        modelId: this.modelId,
-        maxTokens: 4000,
-        temperature: 0.7
+        modelId: this.modelId
       });
 
       // Stream response from AI SDK
@@ -318,9 +361,7 @@ export class LLMService {
       const result = await streamText({
         model: this.llm,
         messages: coreMessages,
-        tools: Object.keys(tools).length > 0 ? tools : undefined,
-        maxTokens: 4000,
-        temperature: 0.7
+        tools: Object.keys(tools).length > 0 ? tools : undefined
       });
 
       const streamSetupTime = Date.now() - streamStartTime;
@@ -333,28 +374,24 @@ export class LLMService {
         efficiency: `${Math.round((messages.reduce((sum, msg) => sum + msg.content.length, 0) / totalSetupTime) * 1000)} chars/sec setup`
       });
 
-      const stream = result.toDataStream();
-      
-      // Wrap stream to add logging
-      const transformStream = new TransformStream({
-        transform(chunk, controller) {
-          logger.debug('Stream chunk received', {
-            requestId,
-            chunkSize: chunk.byteLength,
-            totalTimeMs: Date.now() - startTime
-          });
-          controller.enqueue(chunk);
-        },
-        flush() {
-          const totalTime = Date.now() - startTime;
-          logger.debug('LLM response stream completed', {
-            requestId,
-            totalTimeMs: totalTime
-          });
-        }
+      // Log the actual request being sent to the model
+      logger.debug('LLM request details', {
+        requestId,
+        modelId: this.modelId,
+        messageCount: coreMessages.length,
+        messages: coreMessages.map(msg => ({
+          role: msg.role,
+          contentLength: typeof msg.content === 'string' ? msg.content.length : 'non-string',
+          contentPreview: typeof msg.content === 'string' ? 
+            `${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}` : 
+            'non-string content'
+        })),
+        hasTools: Object.keys(tools).length > 0,
+        toolCount: Object.keys(tools).length
       });
 
-      return stream.pipeThrough(transformStream);
+      logger.info('LLM response stream initiated.');
+      return result.textStream;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       const totalTime = Date.now() - startTime;
@@ -386,6 +423,77 @@ export class LLMService {
   }
 
   /**
+   * Generate complete text response synchronously
+   */
+  async generateCompleteResponse(
+    messages: InternalMessage[],
+    systemPrompt?: string
+  ): Promise<string> {
+    const startTime = Date.now();
+    const requestId = Math.random().toString(36).substring(7);
+    
+    logger.debug('Synchronous LLM response generation started', {
+      requestId,
+      messageCount: messages.length,
+      hasSystemPrompt: !!systemPrompt
+    });
+
+    try {
+      // Convert messages to CoreMessage format
+      const coreMessages = this.convertMessages(messages);
+      
+      // Add system message if provided
+      if (systemPrompt) {
+        coreMessages.unshift({
+          role: 'system',
+          content: systemPrompt
+        });
+      }
+
+      // Prepare tools from MCP clients
+      const tools = await this.prepareTools();
+      const toolCount = Object.keys(tools).length;
+
+      logger.debug('Generating complete LLM response', {
+        requestId,
+        messageCount: coreMessages.length,
+        toolCount,
+        modelId: this.modelId
+      });
+
+      // Generate complete response from AI SDK
+      const result = await generateText({
+        model: this.llm,
+        messages: coreMessages,
+        tools: Object.keys(tools).length > 0 ? tools : undefined
+      });
+
+      const totalTime = Date.now() - startTime;
+      
+      logger.debug('Complete LLM response generated', {
+        requestId,
+        responseLength: result.text.length,
+        totalTimeMs: totalTime,
+        efficiency: `${Math.round((result.text.length / totalTime) * 1000)} chars/sec`
+      });
+
+      return result.text;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      const totalTime = Date.now() - startTime;
+      
+      logger.error('Error in complete LLM response generation', {
+        requestId,
+        errorMessage: err.message,
+        totalTimeMs: totalTime
+      });
+      
+      throw err;
+    }
+  }
+
+
+  /**
    * Legacy compatibility method for non-streaming responses
    */
   async generateResponseLegacy(
@@ -403,45 +511,36 @@ export class LLMService {
     });
 
     try {
-      const stream = await this.generateResponse(messages, systemPrompt);
-      const streamTime = Date.now() - startTime;
-      
-      logger.debug('Stream obtained for legacy response', {
-        requestId,
-        streamObtainTimeMs: streamTime
-      });
-
-      const reader = stream.getReader();
-      const decoder = new TextDecoder();
-      let result = '';
-      let chunkCount = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        chunkCount++;
-        const decodedChunk = decoder.decode(value, { stream: true });
-        result += decodedChunk;
-        
-        logger.debug('Legacy response chunk processed', {
-          requestId,
-          chunkNumber: chunkCount,
-          chunkLength: decodedChunk.length,
-          totalLength: result.length
+      // Convert messages to CoreMessage format
+      const coreMessages = this.convertMessages(messages);
+      if (systemPrompt) {
+        coreMessages.unshift({
+          role: 'system',
+          content: systemPrompt
         });
       }
 
+      // Prepare tools
+      const tools = await this.prepareTools();
+      
+      // Use streamText directly for legacy mode
+      const result = await streamText({
+        model: this.llm,
+        messages: coreMessages,
+        tools: Object.keys(tools).length > 0 ? tools : undefined
+      });
+
+      // Get the full text response
+      const fullText = await result.text;
+      
       const totalTime = Date.now() - startTime;
       logger.debug('Legacy LLM response completed', {
         requestId,
         totalTimeMs: totalTime,
-        chunkCount,
-        resultLength: result.length,
-        efficiency: `${Math.round((result.length / totalTime) * 1000)} chars/sec`
+        resultLength: fullText.length
       });
 
-      return result;
+      return fullText;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       const totalTime = Date.now() - startTime;

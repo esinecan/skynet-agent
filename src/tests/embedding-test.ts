@@ -3,7 +3,7 @@
  * Tests the real embedding integration with Gemini API
  */
 
-import { embeddingService } from '../utils/embeddings';
+import { getEmbeddingService } from '../utils/embeddings';
 import { memoryManager } from '../memory';
 import { createLogger } from '../utils/logger';
 
@@ -17,8 +17,8 @@ async function testEmbeddingService() {
     const text1 = "The quick brown fox jumps over the lazy dog";
     const text2 = "A fox that is quick and brown jumps over a dog that is lazy";
     const text3 = "Artificial intelligence is transforming the world";
-    
-    logger.info('Generating embeddings for test texts');
+      logger.info('Generating embeddings for test texts');
+    const embeddingService = getEmbeddingService();
     const embedding1 = await embeddingService.generateEmbedding(text1);
     const embedding2 = await embeddingService.generateEmbedding(text2);
     const embedding3 = await embeddingService.generateEmbedding(text3);

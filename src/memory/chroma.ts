@@ -7,7 +7,7 @@ import { ChromaClient } from 'chromadb';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger } from '../utils/logger';
-import { embeddingService } from '../utils/embeddings';
+import { getEmbeddingService } from '../utils/embeddings';
 import { incrementMetric } from '../utils/health';
 
 const logger = createLogger('chroma-memory');
@@ -140,11 +140,10 @@ export class ChromaMemoryManager {
         metadataKeys: Object.keys(metadata),
         hasMetadata: Object.keys(metadata).length > 0
       });
-      
-      // Generate embedding for the text
+        // Generate embedding for the text
       logger.debug('Generating embedding for memory text...');
       const embeddingStartTime = Date.now();
-      const embedding = await embeddingService.generateEmbedding(text);
+      const embedding = await getEmbeddingService().generateEmbedding(text);
       const embeddingDuration = Date.now() - embeddingStartTime;
       
       logger.debug('Embedding generated successfully', {
@@ -211,7 +210,7 @@ export class ChromaMemoryManager {
   /**
    * Retrieve similar memories based on query text
    */
-  async retrieveMemories(query: string, limit: number = 5): Promise<SearchResult[]> {
+  async retrieveMemories(query: string, limit = 5): Promise<SearchResult[]> {
     if (!this.initialized) {
       logger.debug('Memory manager not initialized for retrieval, initializing now...');
       await this.initialize();
@@ -225,11 +224,10 @@ export class ChromaMemoryManager {
         limit,
         collectionName: this.collectionName
       });
-      
-      // Generate embedding for the query
+        // Generate embedding for the query
       logger.debug('Generating embedding for query...');
       const embeddingStartTime = Date.now();
-      const embedding = await embeddingService.generateEmbedding(query);
+      const embedding = await getEmbeddingService().generateEmbedding(query);
       const embeddingDuration = Date.now() - embeddingStartTime;
       
       logger.debug('Query embedding generated', {

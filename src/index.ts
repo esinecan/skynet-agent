@@ -8,7 +8,7 @@ import "./instrument"; // This executes Sentry.init()
 import * as Sentry from "@sentry/node";
 import * as dotenv from 'dotenv';
 import * as path from 'node:path';
-import { createLogger } from './utils/logger';
+import { createLogger, clearIdleLogs } from './utils/logger';
 import { setupGlobalErrorHandlers } from './utils/errorHandler';
 import { initializeAgent } from './agent';
 import { memoryManager } from './memory'; // Add this import
@@ -26,6 +26,12 @@ dotenv.config({ path: envPath });
 
 // Initialize logger
 const logger = createLogger('main');
+
+// Clear idle logs if GUI mode is enabled
+if (enableGUI) {
+  clearIdleLogs();
+  logger.info('GUI mode enabled - cleared idle-logs.txt');
+}
 
 // Set up global error handlers
 setupGlobalErrorHandlers();
@@ -156,27 +162,28 @@ async function main() {
     });
     
     Sentry.setTag("server_port", port);
-    
-    // If GUI mode is enabled, open the browser
+      // If GUI mode is enabled, open the browser
     if (enableGUI) {
-      const guiStartTime = Date.now();
-      const url = `http://localhost:${port}`;
-      logger.info(`GUI mode enabled, access Skynet at ${url}`);
+      const guiStartTime = Date.now();      // Open frontend URL (port 3000) instead of API URL (port 9000)
+      const frontendUrl = 'http://localhost:3000';
+      const apiUrl = `http://localhost:${port}`;
+      logger.info(`GUI mode enabled, API server running at ${apiUrl}, frontend at ${frontendUrl}`);
       
       logger.debug('Attempting to open browser for GUI mode', {
-        url,
+        frontendUrl,
+        apiUrl,
         platform: process.platform
       });
       
       // Try to open the browser if running in a desktop environment
       try {
         const { default: open } = await import('open');
-        await open(url);
+        await open(frontendUrl);
         const guiTime = Date.now() - guiStartTime;
         
         logger.debug('Browser opened successfully', {
           openTimeMs: guiTime,
-          url
+          url: frontendUrl
         });
       } catch (error) {
         const guiTime = Date.now() - guiStartTime;
@@ -185,10 +192,10 @@ async function main() {
           openTimeMs: guiTime,
           errorType: err.constructor.name,
           errorMessage: err.message,
-          url
+          url: frontendUrl
         });
         
-        logger.info(`Browser auto-open not available. Please navigate to ${url} manually.`);
+        logger.info(`Browser auto-open not available. Please navigate to ${frontendUrl} manually.`);
       }
     }
     

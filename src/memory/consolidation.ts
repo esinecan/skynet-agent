@@ -209,7 +209,7 @@ export async function runMemoryConsolidation(): Promise<void> {
     // Generate consolidation using LLMService (without MCP tools for memory consolidation)
     const llmStartTime = Date.now();
     const mcpManager = new McpClientManager([]); // Empty MCP manager for consolidation
-    const llmService = new LLMService(mcpManager, process.env.AGENT_MODEL || 'google:gemini-2.0-flash');
+    const llmService = new LLMService(mcpManager, process.env.AGENT_MODEL || 'google:gemini-2.5-flash-preview-05-20');
     
     logger.debug('Calling LLM for memory consolidation', {
       model: process.env.AGENT_MODEL || 'google:gemini-2.0-flash',

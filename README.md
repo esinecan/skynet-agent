@@ -14,7 +14,6 @@ Skynet Agent is an autonomous AI assistant built with Node.js and TypeScript. It
 ### 🧠 **Advanced Memory System**
 * **Real embeddings**: Uses Google's latest text-embedding-004 model for semantic memory
 * **ChromaDB integration**: Lightweight, high-performance vector database (primary)
-* **Milvus support**: Enterprise-grade vector database alternative
 * **Semantic similarity search** with configurable similarity thresholds
 * **Memory consolidation**: Scheduled summarization and cleanup of stored memories
 
@@ -40,7 +39,6 @@ Skynet Agent is an autonomous AI assistant built with Node.js and TypeScript. It
   - **OpenAI**: `OPENAI_API_KEY` (for GPT models)
   - **Anthropic**: `ANTHROPIC_API_KEY` (for Claude models)
 * **ChromaDB**: Primary vector database for semantic memory storage
-* **Optional**: Milvus vector database as an enterprise alternative
 
 ## Installation
 
@@ -91,12 +89,6 @@ MCP_SERVER_PORT=8081
 # ChromaDB Configuration (Primary vector database)
 CHROMA_PATH=./data/chroma
 CHROMA_COLLECTION=skynet_memories
-
-# Alternative: Milvus Vector Database (Enterprise option)
-MILVUS_ADDRESS=localhost:19530
-MILVUS_USERNAME=
-MILVUS_PASSWORD=
-MILVUS_COLLECTION=skynet_memories
 
 # Memory & Autonomous Behavior
 MEMORY_CONSOLIDATION_SCHEDULE="0 2 * * *"  # Daily at 2 AM
@@ -352,7 +344,7 @@ Skynet Agent is built with a **modular, event-driven architecture** that separat
 
 * **LLM Service** (`llmClient.ts`): **Vercel AI SDK integration** with unified interface for multiple providers (OpenAI, Google, Anthropic). Supports streaming responses and tool integration.
 * **Workflow Engine** (`workflow.ts`): **LangGraph-based state machine** orchestrating perception, decision, action, and reflection loops with integrated error recovery.
-* **Memory System** (`memory/`): **Hybrid semantic memory** using ChromaDB/Milvus for long-term storage and real-time embedding search via Google's text-embedding-004 model.
+* **Memory System** (`memory/`): **Hybrid semantic memory** using ChromaDB for long-term storage and real-time embedding search via Google's text-embedding-004 model.
 * **MCP Integration** (`mcp/client.ts`): **Model Context Protocol client** managing dynamic connections to external tool servers with automatic tool discovery.
 * **API Server** (`server/api.ts`): **Express-based streaming API** with RESTful endpoints, Server-Sent Events, file upload, and static React GUI serving.
 * **Session Management** (`db/sessions.ts`): **Persistent conversation storage** with file-based session persistence and CRUD operations.
@@ -381,7 +373,6 @@ src/
 │   └── schemas/appStateSchema.ts
 ├── memory/
 │   ├── index.ts
-│   ├── milvus.ts
 │   └── consolidation.ts
 ├── mcp/
 │   └── client.ts
@@ -415,10 +406,10 @@ client/
 
 ### **Features**
 
-1. **RAG via Gemini** - Memory system now uses Gemini's embedding-001 model. **buggy**
+1. **RAG via Google Embeddings** - Memory system uses Google's text-embedding-004 model for semantic search.
 2. **Self-Reflection System** - **Temporarily turned off**
 3. **Multi-Step Reasoning** - Implemented in selfReflection.ts with performMultiStepReasoning function.
-4. **Milvus Vector Database** - Production-ready vector storage with automatic fallback to in-memory storage.
+4. **ChromaDB Vector Database** - Primary vector storage with automatic fallback to in-memory storage.
 5. **Docker Support** - Complete containerization with health checks.
 6. **Modern React GUI** - Complete web interface with session management, streaming responses, and file uploads.
 7. **Session Management System** - Persistent conversation storage with CRUD operations.
@@ -434,7 +425,7 @@ client/
   - `@ai-sdk/google` - Google Gemini models
   - `@ai-sdk/openai` - OpenAI GPT models  
   - `@ai-sdk/anthropic` - Anthropic Claude models
-- **Vector Database**: ChromaDB (primary), Milvus (enterprise alternative)
+- **Vector Database**: ChromaDB (primary)
 - **Embeddings**: Google text-embedding-004 for semantic memory
 - **Workflow**: LangGraph for stateful agent orchestration
 - **Tools**: Model Context Protocol (MCP) for external integrations
@@ -467,7 +458,6 @@ client/
 
 - **Functional Memory**: Real embeddings replaced mock random vectors for semantic search
 - **Adaptive Intelligence**: Self-reflection system generates and uses improved responses automatically
-- **Production Scalability**: Milvus database support for large-scale deployments
 - **Modern UX**: Complete React-based web GUI with session persistence and streaming
 - **Enhanced API**: RESTful endpoints for sessions, streaming chat, and file uploads
 - **Better Development Experience**: Hot-reload, concurrent development, and automatic browser opening

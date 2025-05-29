@@ -213,4 +213,12 @@ export class EmbeddingService {
 }
 
 // Export a singleton instance
-export const embeddingService = new EmbeddingService();
+// Lazy initialization to ensure environment variables are loaded
+let _embeddingService: EmbeddingService | null = null;
+
+export function getEmbeddingService(): EmbeddingService {
+  if (!_embeddingService) {
+    _embeddingService = new EmbeddingService();
+  }
+  return _embeddingService;
+}

@@ -1,159 +1,741 @@
-# Skynet Agent Overview
+# Skynet Agent - Complete Tutorial
 
-Skynet Agent is an autonomous AI assistant written in Node.js/TypeScript, designed for efficient, single-agent operation (no multi-agent orchestration). It integrates with Google Gemini and supports **intrinsic motivation**, **self-reflection**, **semantic memory**, and external tool execution. In practice, the agent maintains conversational continuity by storing memories (using real embeddings and a vector database) and can proactively initiate tasks after idle periods. Its core goals are robustness and explainability: instead of brute-forcing with massive models, Skynet Agent uses structured code and memories to achieve smart behavior with relatively small LLMs. Key features include:
+This comprehensive tutorial will guide you through setting up, configuring, and using Skynet Agent - an autonomous AI assistant with multi-LLM provider support, semantic memory, and external tool integration.
 
-* **Multi-step reasoning & self-reflection:** The agent can evaluate and refine its answers through multi-hop reasoning loops (see `selfReflection.ts`).
-* **Intrinsic motivation:** A background monitor (`intrinsicMotivation.ts`) triggers user-defined tasks when the agent is idle for a configured time.
-* **Memory management:** Long-term memories are stored semantically (using Gemini’s `embedding-001`) in Milvus or in-memory as a fallback. A scheduled “consolidation” task periodically summarizes old memories to keep storage manageable.
-* **Tool execution (MCP):** The agent uses the [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/typescript-sdk) to call external tools (e.g. a browser via Playwright, filesystem ops, or custom services). MCP clients are configured via `.env` or a `config.json`, letting the agent invoke tools like a human would.
-* **API & GUI:** An Express server exposes REST/streaming chat endpoints (`/api/query`, `/api/stream`, session management, file upload, etc.) and serves a React/Tailwind GUI.
+## Overview
 
-In effect, Skynet Agent is a sophisticated state machine under the hood: prompts and actions flow through a directed **state graph** that manages tasks, tools, and memory, ensuring the agent proceeds step-by-step in its control flow while remaining transparent to the developer.
+Skynet Agent is designed as a **cognitive AI prosthetic** that extends a single LLM with:
 
-## Architecture
+* **Multi-Provider LLM Support**: Seamlessly switch between OpenAI GPT, Google Gemini, and Anthropic Claude models
+* **Semantic Memory System**: Long-term memory using vector embeddings with ChromaDB/Milvus storage
+* **Autonomous Behavior**: Intrinsic motivation system that triggers self-initiated tasks during idle periods
+* **Tool Integration**: Model Context Protocol (MCP) for dynamic external tool execution
+* **Real-time Interface**: Modern React GUI with streaming responses and session management
+* **Self-Reflection**: Multi-step reasoning with adaptive response improvement
 
-Skynet Agent’s architecture is modular and extensible. Its main components include:
+Instead of orchestrating multiple LLMs, Skynet Agent surrounds a single LLM with intelligent **structured state management**, making it both powerful and debuggable.
 
-* **LLM Client:** Wraps Google Gemini API calls (`llmClient.ts`) and feeds the agent’s planning, reflection, and summarization modules.
-* **Workflow Engine:** Defines the control flow (a LangGraph workflow) that orchestrates perception, decision, action, and reflection loops. The workflow integrates self-reflection and error-recovery strategies.
-* **Intrinsic Motivation:** A background monitor (`intrinsicMotivation.ts`) tracks user inactivity. After a set idle threshold (configurable in `.env`), the agent autonomously asks Gemini for new tasks or ideas.
-* **Memory Layers:** The agent uses a **hybrid memory** system. Short-term context (current session history) is maintained in memory structures, while **long-term memory** is stored in Milvus (via `memoryManager.storeMemory` and `retrieveMemories`) using real embeddings. A cron-driven consolidation module (`consolidation.ts`) periodically abstracts and summarizes older memories to save space.
-* **Tool/MCP Integration:** The `mcp/client.ts` module manages connections to MCP servers. Developers can configure MCP servers (Playwright, filesystem, CLI, etc.) in `.env` or `config.json`. At runtime, the agent treats each tool as a callable service: it can dynamically decide *when* to fetch data or perform an action with a tool, integrating the results back into its reasoning loop.
-* **Session & API Layer:** An Express app (`src/server/api.ts`) handles HTTP/streaming chat. Endpoints include `POST /api/query` for sending user prompts, `GET /api/stream/:sessionId` for live streaming replies, session CRUD (`/api/sessions`), and file upload. A modern React GUI (served at `/`) provides user-friendly conversation management with session history, streaming responses, and markdown formatting.
+## Architecture Deep Dive
 
-This design achieves an “LLM prosthetic” model: instead of adding more LLMs, Skynet Agent surrounds a single LLM with rich state and tools, following intelligent behavior patterns. All core logic (question answering, planning, action) happens through structured code calls and controlled prompts, making the system both powerful and debuggable.
+### Core Philosophy
 
-## Setup & Configuration
+Skynet Agent follows an **"LLM Prosthetic"** model rather than brute-forcing with massive models. It achieves sophisticated behavior through:
 
-To run Skynet Agent, you need:
+1. **Structured Memory**: Vector-based semantic storage for context continuity
+2. **Tool Augmentation**: Dynamic external capabilities via MCP integration  
+3. **State Management**: LangGraph workflow orchestrating perception → decision → action → reflection loops
+4. **Multi-Provider Flexibility**: Provider-agnostic LLM interface using Vercel AI SDK
 
-* **Node.js 18+** and npm.
-* A **Gemini API key** (set `GOOGLE_API_KEY` in your `.env`).
-* (Optional) **Milvus** vector database for persistent memory (otherwise it falls back to in-memory vectors).
-* (Optional) Tools you want to use via MCP (e.g. Playwright installed, filesystem server, etc.).
+### System Components
 
-**1. Clone and install:**
+#### LLM Service (`llmClient.ts`)
+- **Vercel AI SDK Integration**: Unified interface across providers
+- **Streaming Support**: Real-time response generation with Server-Sent Events
+- **Provider Support**: OpenAI, Google Gemini, Anthropic Claude
+- **Tool Integration**: Seamless MCP tool calling within LLM conversations
+
+#### Memory System (`memory/`)
+- **Hybrid Architecture**: Short-term (session) + long-term (vector) memory
+- **Real Embeddings**: Google text-embedding-004 for semantic similarity
+- **Vector Storage**: ChromaDB (primary) with Milvus enterprise alternative
+- **Consolidation**: Scheduled memory summarization and cleanup
+
+#### Workflow Engine (`workflow.ts`)
+- **LangGraph State Machine**: Directed workflow with error recovery
+- **Self-Reflection**: Adaptive response improvement and multi-step reasoning
+- **Tool Orchestration**: Dynamic tool selection and execution
+- **Context Management**: Intelligent memory retrieval and integration
+
+#### MCP Integration (`mcp/client.ts`)
+- **Dynamic Tool Discovery**: Automatic server connection and tool listing
+- **Hot Reload**: Runtime configuration updates without restart
+- **Popular Tools**: Playwright (web automation), filesystem, CLI access
+- **Custom Extensions**: Easy integration of new MCP-compliant servers
+
+## Step-by-Step Setup
+
+### Prerequisites
+
+Ensure you have the following installed:
+
+- **Node.js 18+** with npm
+- **Docker** for vector database services
+- **Git** for repository cloning
+
+### 1. Project Installation
 
 ```bash
-git clone https://github.com/esinecan/skynet-agent.git
+# Clone the repository
+git clone <repository-url>
 cd skynet-agent
-npm install
-cd client && npm install && cd ..
+
+# Install all dependencies (server + client)
+npm run install:all
 ```
 
-**2. Configure environment:** Copy `.env.example` to `.env` and set your values, e.g.:
+### 2. Environment Configuration
 
-```dotenv
-GOOGLE_API_KEY=<your-gemini-key>
-PORT=3000
-# MCP Server config (JSON string or use config.json)
-# Example to use Playwright MCP:
-SKYNET_MCP_SERVERS_JSON='{"playwright":{"command":"npx","args":["@playwright/mcp@latest"]}}'
-# Milvus (if used):
-MILVUS_ADDRESS=localhost:19530
-MILVUS_COLLECTION=skynet_memories
-# Memory consolidation schedule (cron format):
-MEMORY_CONSOLIDATION_SCHEDULE="0 2 * * *"
-# Idle time (minutes) before agent auto-triggers tasks:
-IDLE_THRESHOLD_MINUTES=10
-```
-
-Environment variables like `SKYNET_MCP_SERVERS_JSON` or a `config.json` let you specify which MCP servers to run (e.g. browser automation, file server, CLI). See the README [52](#) for full `.env` docs.
-
-**3. Milvus (optional):** For production memory, run Milvus (e.g. via Docker Compose). Configure the host/port in `.env` as above. If Milvus isn’t available, Skynet Agent will use an in-memory fallback store.
-
-**4. Run the agent:**
-
-* **Development mode (with GUI):**
-
-  ```bash
-  npm run dev:gui
-  ```
-
-  This starts backend and frontend with hot-reload and opens the browser at [http://localhost:3000\:contentReference\[oaicite:24\]{index=24}\:contentReference\[oaicite:25\]{index=25}](http://localhost:3000:contentReference[oaicite:24]{index=24}:contentReference[oaicite:25]{index=25}).
-
-* **Production build:**
-
-  ```bash
-  npm run build
-  npm run gui    # or just `npm start` for backend only
-  ```
-
-  This compiles both server and React app, then serves the UI at port 3000.
-
-After starting, the GUI is available in any browser (Chrome/Firefox/Edge/Safari) and provides real-time chat, file uploads, and session management.
-
-## Retrieval-Augmented Memory
-
-Skynet Agent’s memory system is **retrieval-augmented**. All stored memories are embedded via Gemini’s `embedding-001` model and indexed in Milvus for semantic search. When the agent needs context, it queries relevant memories by similarity. For example, after storing a note ("Alice's favorite color is blue"), a later retrieval for “favorite color” would return that memory with a high score. Developers use the `MemoryManager` interface to interact with memory:
-
-```ts
-import { MemoryManager } from './src/memory';
-const memoryMgr = new MemoryManager();
-await memoryMgr.initialize();
-
-// Store a memory snippet
-await memoryMgr.storeMemory("Alice's favorite color is blue", {author: "user"});
-
-// Retrieve relevant memories
-const found = await memoryMgr.retrieveMemories("favorite color");
-console.log(found);  // e.g. [{ id: "...", text: "Alice's favorite color is blue", score: 0.97, metadata: {...} }]
-```
-
-This hybrid design blends a **short-term working memory** (current session history, easily held in variables or chat logs) with a **long-term semantic store** (Milvus). A nightly cron job summarizes or prunes old memories (`consolidation.ts`), keeping the knowledge base concise. Because vectors capture semantic meaning, the agent can recall facts even if phrased differently. All of this occurs behind a clean API: the agent simply asks the memory manager for the “top N” related memories for its current query, and integrates the results into its next reasoning step.
-
-## Agentic-RAG vs. Self-RAG/Corrective-RAG
-
-Skynet Agent’s memory system is conceptually an **“Agentic RAG”** approach. Traditional *Self-RAG* and *Corrective-RAG* use iterative self-evaluation to improve retrieval accuracy, but they require multiple LLM calls per query. For example, Corrective RAG adds a feedback step to re-check retrieved documents, and Self-RAG trains with a “reflection” token to iteratively refine retrievals. These methods boost accuracy but incur *call explosion* — far more computation and latency from extra LLM queries. The ThoughtWorks analysis notes that Corrective RAG **“inevitably impacts latency”** and adds pipeline complexity.
-
-In contrast, Agentic RAG treats the retriever as a dynamic tool the agent calls on demand. The LLM keeps track of what it has already fetched in short-term and long-term memory, avoiding redundant searches. This way, it achieves most of the benefit (around 80% of improved accuracy) with far fewer model calls. The agent proactively decides *when* to search and *what* to search, chaining sub-queries or deferring retrievals as needed, instead of blindly iterating. In effect, Agentic RAG’s memory acts like an ongoing knowledge graph: it stores evidence of past findings and user context, letting the agent recall or re-evaluate facts without repeatedly querying the LLM. This keeps the system fast enough for real-time use while still mitigating hallucinations.
-
-## Usage Examples
-
-Below are illustrative examples of how Skynet Agent exhibits memory continuity, intrinsic motivation, and self-reflection:
-
-* **Memory Continuity:** Suppose a user tells the agent “My favorite movie is *Inception*.” The agent stores this fact. Later in the conversation, the user asks, “What’s my favorite movie?” The agent retrieves the stored memory (“favorite movie: Inception”) and answers accordingly. Over multiple sessions, this persistence ensures continuity of context.
-* **Intrinsic Motivation:** If the user is idle for more than the configured threshold (e.g. 10 minutes), the agent might say **“Since you seem free, perhaps I could plan our next steps?”** or suggest a relevant task. For instance, it could propose researching upcoming events or summarizing something it noticed in past sessions — all triggered autonomously via `intrinsicMotivation.ts`.
-* **Self-Reflection:** After generating an answer, the agent runs a *self-reflection* step. For example, it may review its own response for completeness. If the initial answer was short, the agent might say, “On second thought, I should add more details,” and regenerate with more information. This is implemented in `selfReflection.ts`, which can call Gemini again to refine the response.
-
-These behaviors are encapsulated in high-level functions, but can also be driven via the HTTP API. For instance, to chat programmatically:
+Copy the example environment file and configure your settings:
 
 ```bash
+# Copy environment template
+cp .env.example .env
+```
+
+Edit `.env` with your preferred configuration:
+
+```env
+# === LLM Provider Configuration ===
+# Choose your primary LLM provider (you can configure multiple)
+
+# Google Gemini (recommended for embeddings)
+GOOGLE_API_KEY=your_gemini_api_key_here
+
+# OpenAI (for GPT models)  
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Anthropic (for Claude models)
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# === Model Selection ===
+# Default model (can be changed at runtime)
+LLM_MODEL=google:gemini-2.0-flash
+
+# Available options:
+# Google: google:gemini-2.0-flash, google:gemini-1.5-pro, google:gemini-1.5-flash
+# OpenAI: openai:gpt-4o, openai:gpt-4o-mini, openai:gpt-3.5-turbo
+# Anthropic: anthropic:claude-3-5-sonnet-20241022, anthropic:claude-3-5-haiku-20241022
+
+# === Server Configuration ===
+PORT=3000
+MCP_SERVER_PORT=8081
+
+# === Vector Database (ChromaDB - Primary) ===
+CHROMA_PATH=./data/chroma
+CHROMA_COLLECTION=skynet_memories
+
+# === Alternative: Milvus (Enterprise) ===
+# MILVUS_ADDRESS=localhost:19530
+# MILVUS_COLLECTION=skynet_memories
+
+# === Memory & Behavior ===
+MEMORY_CONSOLIDATION_SCHEDULE="0 2 * * *"  # Daily at 2 AM
+IDLE_THRESHOLD_MINUTES=10
+MEMORY_DIR=./data/memory
+
+# === MCP Tool Configuration ===
+# Basic Playwright setup (browser automation)
+SKYNET_MCP_SERVERS_JSON='{"playwright":{"command":"npx","args":["@playwright/mcp@latest"]}}'
+```
+
+### 3. API Key Setup
+
+#### Google Gemini (Recommended)
+
+1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Create a new API key
+3. Add to your `.env` file:
+   ```env
+   GOOGLE_API_KEY=your_actual_api_key_here
+   LLM_MODEL=google:gemini-2.0-flash
+   ```
+
+#### OpenAI (Optional)
+
+1. Visit [OpenAI Platform](https://platform.openai.com/api-keys)  
+2. Create a new API key
+3. Add to your `.env` file:
+   ```env
+   OPENAI_API_KEY=your_actual_api_key_here
+   LLM_MODEL=openai:gpt-4o
+   ```
+
+#### Anthropic Claude (Optional)
+
+1. Visit [Anthropic Console](https://console.anthropic.com/)
+2. Create a new API key  
+3. Add to your `.env` file:
+   ```env
+   ANTHROPIC_API_KEY=your_actual_api_key_here
+   LLM_MODEL=anthropic:claude-3-5-sonnet-20241022
+   ```
+
+### 4. Vector Database Setup
+
+#### Option A: ChromaDB (Recommended)
+
+ChromaDB is lightweight and perfect for development and small-to-medium production deployments:
+
+```bash
+# Start ChromaDB in Docker (required for memory to work)
+docker run -v ./data/chroma:/chroma/chroma -p 8000:8000 chromadb/chroma
+```
+
+#### Option B: Milvus (Enterprise)
+
+For high-performance production environments:
+
+```bash
+# Download Milvus standalone
+wget https://github.com/milvus-io/milvus/releases/download/v2.4.15/milvus-standalone-docker-compose.yml
+
+# Start Milvus
+docker-compose -f milvus-standalone-docker-compose.yml up -d
+
+# Update .env to use Milvus
+# Uncomment the MILVUS_* variables in your .env file
+```
+
+### 5. MCP Tool Configuration
+
+Configure external tools using the Model Context Protocol:
+
+#### Basic Setup (Environment Variable)
+```env
+SKYNET_MCP_SERVERS_JSON='{"playwright":{"command":"npx","args":["@playwright/mcp@latest"]}}'
+```
+
+#### Advanced Setup (config.json)
+
+Create a `config.json` file in the project root:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "playwright": {
+        "command": "npx",
+        "args": ["@playwright/mcp@latest"]
+      },
+      "filesystem": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
+      },
+      "windows-cli": {
+        "command": "npx", 
+        "args": ["-y", "@simonb97/server-win-cli"]
+      }
+    }
+  }
+}
+```
+
+Popular MCP servers you can add:
+- **`@playwright/mcp`**: Web browser automation and scraping
+- **`@modelcontextprotocol/server-filesystem`**: File system operations
+- **`@simonb97/server-win-cli`**: Windows command-line access
+- **`@modelcontextprotocol/server-sequential-thinking`**: Step-by-step reasoning
+
+## Running the Agent
+
+### Development Mode (Recommended)
+
+Start both backend and frontend with hot-reload:
+
+```bash
+# Start everything (auto-opens browser)
+npm run dev:gui
+```
+
+This will:
+1. Start the Express API server on port 3000
+2. Start the React development server with proxy
+3. Automatically open your browser to http://localhost:3000
+4. Enable hot-reload for both backend and frontend changes
+
+### Production Mode
+
+Build and run the production version:
+
+```bash
+# Build both server and client
+npm run build
+
+# Start production server (serves built React app)
+npm run gui
+```
+
+### Docker Deployment
+
+Use the included Docker setup for production deployment:
+
+```bash
+# Full deployment with ChromaDB
+docker-compose up -d
+
+# Or use the startup scripts
+./start.sh    # Linux/macOS
+start.bat     # Windows
+```
+
+### Individual Services
+
+For debugging or development:
+
+```bash
+# Backend API only
+npm run dev
+
+# Frontend only (requires backend running)
+npm run dev:client
+```
+
+## Using the Web Interface
+
+The React-based GUI provides a modern chat interface with advanced features:
+
+### Key Features
+
+1. **Session Management**: Create, switch, and delete conversation sessions
+2. **Real-time Streaming**: Watch responses generate in real-time  
+3. **File Upload**: Drag-and-drop files for the agent to process
+4. **Markdown Rendering**: Rich text with syntax highlighting
+5. **Memory Integration**: Context continuity across sessions
+6. **Tool Visualization**: See when and how tools are used
+
+### Interface Overview
+
+- **Left Sidebar**: Session list with create/delete options
+- **Main Chat Area**: Conversation with streaming responses
+- **Bottom Input**: Message composition with file upload
+- **Top Bar**: Current session info and model status
+
+### Chat Features
+
+#### Basic Interaction
+```
+User: Hello! What can you help me with?
+Agent: [Streams response in real-time describing capabilities]
+```
+
+#### Memory Continuity
+```
+Session 1:
+User: My favorite programming language is TypeScript
+Agent: I'll remember that you prefer TypeScript...
+
+[Later in same session or new session]
+User: What's my favorite language?
+Agent: You mentioned that TypeScript is your favorite programming language.
+```
+
+#### File Upload
+Drag and drop files or click the upload button to share:
+- **Text files**: Direct content analysis
+- **Documents**: Parsing and memory storage
+- **Code files**: Syntax analysis and suggestions
+
+#### Tool Usage
+The agent automatically uses tools when needed:
+```
+User: Can you check the weather in New York?
+Agent: I'll use the browser tool to get current weather information...
+[Tool execution visible in interface]
+```
+
+## Memory System Deep Dive
+
+### How Memory Works
+
+Skynet Agent uses a **hybrid memory architecture**:
+
+1. **Short-term Memory**: Current session context (held in variables)
+2. **Long-term Memory**: Vector-embedded storage in ChromaDB/Milvus
+3. **Consolidation**: Periodic summarization to prevent information overload
+
+### Memory Storage Process
+
+```typescript
+// Example of how memories are stored
+const memory = {
+  text: "User prefers TypeScript for backend development",
+  metadata: {
+    timestamp: "2025-01-28T10:30:00Z", 
+    session: "session_123",
+    type: "preference"
+  },
+  embedding: [0.1, 0.3, -0.2, ...] // 768-dimensional vector
+};
+```
+
+### Memory Retrieval
+
+When you ask a question, the agent:
+
+1. **Generates query embedding** using text-embedding-004
+2. **Searches vector database** for similar memories  
+3. **Ranks by similarity score** (0.0 to 1.0)
+4. **Integrates relevant memories** into response context
+
+### Memory Consolidation
+
+The system automatically consolidates memories:
+
+- **Schedule**: Daily at 2 AM (configurable via `MEMORY_CONSOLIDATION_SCHEDULE`)
+- **Process**: Summarizes related memories to prevent duplication
+- **Cleanup**: Removes outdated or redundant information
+
+## Advanced Usage Examples
+
+### Multi-Provider Testing
+
+Test different LLM providers by updating the model:
+
+```bash
+# Test Google Gemini
 curl -X POST http://localhost:3000/api/query \
   -H "Content-Type: application/json" \
-  -d '{"query": "Hello, tell me a fun fact", "sessionId": "my-session"}'
+  -d '{"query": "Solve this step by step: What is 25% of 144?", "modelId": "google:gemini-2.0-flash"}'
+
+# Test OpenAI GPT-4o  
+curl -X POST http://localhost:3000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Explain quantum computing in simple terms", "modelId": "openai:gpt-4o"}'
+
+# Test Anthropic Claude
+curl -X POST http://localhost:3000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Write a Python function to calculate Fibonacci numbers", "modelId": "anthropic:claude-3-5-sonnet-20241022"}'
 ```
 
-The response streams back as the agent works, integrating memory and reflection. In code, you could simulate an idle trigger by waiting and observing the agent’s **/api/stream** output, which may include an autonomous query like “What should we do next?” when it decides to self-motivate.
+### Memory Interaction Examples
 
-## Extending the Agent
+#### Storing Personal Preferences
+```
+User: I'm working on a React project using TypeScript and Tailwind CSS
+Agent: I'll remember your current tech stack for future reference...
+[Memory stored: "User working on React + TypeScript + Tailwind CSS project"]
 
-Developers can customize Skynet Agent extensively:
+User: What database should I use for my project?
+Agent: Based on your React/TypeScript project, I'd recommend...
+[Agent retrieves stored project context]
+```
 
-* **Add memory operations:** You can call `memoryManager.storeMemory()` yourself to record events or definitions, and use `retrieveMemories()` in your own logic. Because the memory interface is modular, you could even implement other store (e.g. Qdrant) by swapping `src/memory/index.ts`.
-* **Customize the state graph:** The control flow is defined in `src/agent/workflow.ts`. You can modify or replace this LangGraph workflow to change how the agent reasons (e.g. insert new reflection or tool-invocation steps). The Zod schemas (`appStateSchema.ts`) ensure any custom state changes remain valid.
-* **Integrate new tools:** To add a tool, write an MCP-compatible server. For example, you could create a new CLI tool or web scraper. Then add its config to `config.json` (or `.env`) under `"mcp.servers"`. The agent will automatically list the new tool and allow the language model to call it when needed.
-* **Memory layering:** If you want multi-tier memory (e.g. separate short-term vs long-term APIs), you could extend `memoryManager` to first check an “episodic” store (just this session) before Milvus, or to push certain memories to a fast cache.
-* **GUI and API:** The front-end (in `client/`) can be modified to add features or customize the UI. All API endpoints are under `/api/*` (listed in the README), and you can add new routes in `src/server/api.ts` as needed. The session-based backend (in `src/db/sessions.ts`) uses a simple file DB, so you could replace that with Redis or another store if needed.
+#### Long-term Context
+```
+Session 1:
+User: I'm learning machine learning with Python
+Agent: Great! I'll help you with your ML journey...
 
-The project is MIT-licensed and designed to be developer-friendly. All core modules are documented in the code and the README. For detailed guidance, refer to the repository’s [README](https://github.com/esinecan/skynet-agent/blob/master/README.md) and developer notes (e.g. comments in `src/agent/*` and `src/memory/*`), which explain each component’s role.
+[Days later, new session]
+User: Can you help me with my studies?
+Agent: Of course! I remember you're learning machine learning with Python. What specific topic would you like to explore?
+```
 
-## GUI & API Endpoints
+### Tool Integration Examples
 
-Skynet Agent includes a built-in chat interface. By running in “GUI” mode, a React-based UI is served at `http://localhost:3000`, featuring:
+#### Web Browsing with Playwright
+```
+User: What's the latest news about AI from TechCrunch?
+Agent: I'll browse TechCrunch to get the latest AI news for you...
 
-* **Live chat streaming:** Messages from the agent appear in real-time.
-* **Session management:** You can create, switch, and delete conversation sessions via the sidebar.
-* **File upload:** Drag-and-drop a file to let the agent ingest documents into memory.
-* **Rich rendering:** Markdown formatting with code syntax highlighting.
-* **Automatic persistence:** Conversations are saved between restarts (session data in `./data/sessions/` by default).
+[Tool execution: playwright browser automation]
+Agent: Here are the latest AI news stories I found... [synthesized results]
+```
 
-Under the hood, the following HTTP endpoints (authenticated on localhost by default) are provided:
+#### File System Operations
+```
+User: Can you list the files in my project directory and suggest a better organization?
+Agent: I'll examine your project structure...
 
-* `POST /api/query` – send a user message (with optional `sessionId`) and get the agent’s response.
-* `GET /api/stream/:sessionId?query=...` – real-time streaming version of `/query`.
-* `GET/POST/DELETE /api/sessions` – manage conversation sessions (list, create, delete).
-* `POST /api/upload` – upload a file (PDF, text, etc.) for the agent to process and store.
-* `GET /api/health` – basic health check.
+[Tool execution: filesystem MCP server]
+Agent: I found these files in your project: [file listing and organization suggestions]
+```
 
-These APIs allow integration into other systems. For example, a script could poll `/api/stream` to chat programmatically, or even use the agent as a backend service.
+### Autonomous Behavior
+
+The agent can initiate conversations when idle:
+
+```
+[After 10 minutes of inactivity]
+Agent: Since you seem free, perhaps I could help organize your recent notes or suggest next steps for your TypeScript project?
+```
+
+## API Reference
+
+### Core Endpoints
+
+#### Chat API
+```http
+POST /api/query
+Content-Type: application/json
+
+{
+  "query": "Your message here",
+  "sessionId": "optional-session-id",
+  "modelId": "optional-model-override"
+}
+```
+
+#### Streaming Chat
+```http
+GET /api/stream/[sessionId]?query=your_message
+Accept: text/event-stream
+```
+
+Response format:
+```javascript
+data: {"type": "content", "content": "Hello"}
+data: {"type": "done"}
+```
+
+#### Session Management  
+```http
+# List all sessions
+GET /api/sessions
+
+# Get specific session
+GET /api/sessions/:sessionId
+
+# Create new session
+POST /api/sessions
+{"title": "New Conversation"}
+
+# Delete session
+DELETE /api/sessions/:sessionId
+```
+
+#### File Upload
+```http
+POST /api/upload
+Content-Type: multipart/form-data
+
+# Include file in form data with key "file"
+```
+
+#### Health & Status
+```http
+# Basic health check
+GET /api/health
+
+# MCP server status
+GET /api/mcp/status
+
+# Reload MCP configurations
+POST /api/mcp/reload
+```
+
+## Customization & Extension
+
+### Adding New LLM Providers
+
+The Vercel AI SDK makes it easy to add new providers:
+
+1. **Install provider SDK**:
+   ```bash
+   npm install @ai-sdk/provider-name
+   ```
+
+2. **Update LLM client** (`src/agent/llmClient.ts`):
+   ```typescript
+   import { createProviderName } from '@ai-sdk/provider-name';
+   
+   case 'provider-name':
+     this.llm = createProviderName({ 
+       apiKey: process.env.PROVIDER_API_KEY 
+     })(modelName);
+     break;
+   ```
+
+3. **Add environment variables**:
+   ```env
+   PROVIDER_API_KEY=your_key_here
+   LLM_MODEL=provider-name:model-name
+   ```
+
+### Custom MCP Servers
+
+Create custom tools by implementing MCP-compliant servers:
+
+1. **Create MCP server** following the [MCP specification](https://github.com/modelcontextprotocol/typescript-sdk)
+
+2. **Add to configuration**:
+   ```json
+   {
+     "mcp": {
+       "servers": {
+         "your-tool": {
+           "command": "node",
+           "args": ["path/to/your/mcp-server.js"]
+         }
+       }
+     }
+   }
+   ```
+
+3. **Agent will automatically discover and use** your tools
+
+### Memory System Extensions
+
+Extend the memory system for specific use cases:
+
+```typescript
+// Custom memory metadata
+interface CustomMemoryMetadata {
+  projectId?: string;
+  priority?: 'high' | 'medium' | 'low';
+  tags?: string[];
+}
+
+// Store with custom metadata
+await memoryManager.storeMemory(
+  "Important project requirement",
+  { 
+    projectId: "proj-123",
+    priority: "high",
+    tags: ["requirements", "critical"]
+  }
+);
+
+// Query with filters
+const memories = await memoryManager.retrieveMemories(
+  "project requirements",
+  { projectId: "proj-123" }
+);
+```
+
+### Custom Workflow Steps
+
+Modify the LangGraph workflow in `src/agent/workflow.ts`:
+
+```typescript
+// Add custom workflow nodes
+const customWorkflow = new StateGraph(AppStateSchema)
+  .addNode("perception", perceptionNode)
+  .addNode("custom_analysis", customAnalysisNode)  // Your custom step
+  .addNode("decision", decisionNode)
+  .addNode("action", actionNode)
+  .addNode("reflection", reflectionNode);
+```
+
+## Troubleshooting Guide
+
+### Common Issues
+
+#### 1. Vector Database Connection Errors
+
+**Problem**: `ChromaDB connection failed`
+```bash
+# Solution: Ensure ChromaDB is running
+docker run -v ./data/chroma:/chroma/chroma -p 8000:8000 chromadb/chroma
+
+# Check if port is available
+netstat -an | grep 8000
+```
+
+#### 2. LLM API Authentication Errors
+
+**Problem**: `Invalid API key` or `Unauthorized`
+```bash
+# Verify API key is set
+echo $GOOGLE_API_KEY
+
+# Test API key directly
+curl -H "Authorization: Bearer $GOOGLE_API_KEY" \
+  https://generativelanguage.googleapis.com/v1beta/models
+```
+
+#### 3. Memory Storage Issues
+
+**Problem**: `Failed to store memory` 
+- Check ChromaDB is running on port 8000
+- Verify `CHROMA_PATH` directory permissions
+- Check logs for embedding generation errors
+
+#### 4. MCP Tool Errors
+
+**Problem**: `MCP server connection failed`
+```bash
+# Test MCP server directly
+npx @playwright/mcp@latest
+
+# Check MCP configuration
+curl http://localhost:3000/api/mcp/status
+
+# Reload MCP servers
+curl -X POST http://localhost:3000/api/mcp/reload
+```
+
+#### 5. Frontend Build Issues
+
+**Problem**: GUI not loading or build failures
+```bash
+# Clean install
+rm -rf node_modules client/node_modules
+npm run install:all
+
+# Check if ports conflict
+PORT=3001 npm run dev:gui
+```
+
+### Debug Mode
+
+Enable detailed logging for troubleshooting:
+
+```env
+# Add to .env
+NODE_ENV=development
+LOG_LEVEL=debug
+```
+
+This provides detailed logs for:
+- LLM API calls and responses
+- Memory storage and retrieval operations  
+- MCP tool execution
+- Workflow state transitions
+
+### Performance Optimization
+
+#### Memory System
+- **ChromaDB**: Suitable for up to 100K memories
+- **Milvus**: Use for 1M+ memories or high-concurrency
+
+#### LLM Selection
+- **Gemini 2.0 Flash**: Fastest responses
+- **GPT-4o**: Best reasoning capability  
+- **Claude 3.5 Sonnet**: Best for code and analysis
+
+#### Caching
+- Enable embedding caching for repeated queries
+- Use session persistence to reduce memory lookups
+
+## Best Practices
+
+### Production Deployment
+
+1. **Environment Security**:
+   ```bash
+   # Use environment-specific files
+   .env.production
+   .env.staging
+   .env.development
+   ```
+
+2. **Database Persistence**:
+   ```yaml
+   # docker-compose.yml
+   volumes:
+     - ./data/chroma:/chroma/chroma:Z
+     - ./data/sessions:/app/data/sessions:Z
+   ```
+
+3. **Health Monitoring**:
+   ```bash
+   # Set up health checks
+   curl http://localhost:3000/api/health
+   ```
+
+### Development Workflow
+
+1. **Use hot-reload**: `npm run dev:gui`
+2. **Test multiple providers**: Switch `LLM_MODEL` in `.env`
+3. **Monitor logs**: Check console for detailed operation logs
+4. **Incremental testing**: Start with simple queries, add complexity
+
+### Memory Management
+
+1. **Structured storage**: Include relevant metadata with memories
+2. **Regular consolidation**: Monitor the consolidation schedule
+3. **Query optimization**: Use specific, contextual queries for better retrieval
+
+This comprehensive tutorial should get you up and running with Skynet Agent's full capabilities. The system is designed to be both powerful and approachable - start with basic setup and gradually explore advanced features as needed.

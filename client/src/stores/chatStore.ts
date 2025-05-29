@@ -168,36 +168,59 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // Handle SSE streaming
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
       
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n\n");
+        // Decode chunk and add to buffer
+        buffer += decoder.decode(value, { stream: true });
         
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
+        // Process complete SSE messages
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          
+          if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.substring(6));
               
-              if (data.type === "chunk") {
+              if (data.type === 'chunk') {
                 set(state => ({ 
                   streamingMessage: state.streamingMessage + data.content 
                 }));
-              } else if (data.type === "end") {
-                // Refresh the entire session to ensure consistency with server
+              } else if (data.type === 'end') {
+                // Add the complete assistant message
+                const assistantMessage = {
+                  id: `msg_${Date.now()}`,
+                  role: 'assistant' as const,
+                  content: get().streamingMessage,
+                  timestamp: new Date().toISOString()
+                };
+                
+                set(state => ({
+                  currentSession: state.currentSession ? {
+                    ...state.currentSession,
+                    messages: [...state.currentSession.messages, assistantMessage]
+                  } : state.currentSession,
+                  streamingMessage: '',
+                  isLoading: false
+                }));
+                
+                // Refresh session to sync with server
                 await get().selectSession(currentSession.id);
-                set({ isLoading: false });
-              } else if (data.type === "error") {
-                console.error("Stream error:", data.error);
+              } else if (data.type === 'error') {
+                console.error('Stream error:', data.error);
                 set({ 
                   streamingMessage: `Error: ${data.error}`,
                   isLoading: false 
                 });
               }
             } catch (e) {
-              console.error("Error parsing SSE data:", e);
+              console.error('Error parsing SSE data:', e);
             }
           }
         }
