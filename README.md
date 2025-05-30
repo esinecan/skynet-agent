@@ -9,7 +9,7 @@ Skynet Agent is an autonomous AI assistant built with Node.js and TypeScript. It
 ### 🤖 **Multi-LLM Provider Support**
 * **Vercel AI SDK integration** with unified interface for multiple providers
 * **OpenAI models**: GPT-4o, GPT-4o-mini, GPT-3.5-turbo
-* **Google Gemini models**: Gemini 2.0 Flash, Gemini 1.5 Pro, Gemini 1.5 Flash
+* **Google Gemini models**: Gemini 2.5 series
 * **Anthropic Claude models**: Claude 3.5 Sonnet, Claude 3.5 Haiku
 * **Easy provider switching** via environment configuration
 
