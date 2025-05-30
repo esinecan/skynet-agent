@@ -77,6 +77,24 @@ else
     fi
 fi
 
+# Wait for Skynet Agent to be ready
+echo "⏳ Waiting for Skynet Agent to start..."
+max_attempts=30
+attempt=0
+while [ $attempt -lt $max_attempts ]; do
+    if curl -f http://localhost:5000/health > /dev/null 2>&1; then
+        echo "✅ Skynet Agent is ready!"
+        break
+    fi
+    sleep 2
+    attempt=$((attempt + 1))
+    echo "   Attempt $attempt/$max_attempts..."
+done
+
+if [ $attempt -eq $max_attempts ]; then
+    echo "❌ Skynet Agent failed to start"
+    exit 1
+fi
 # Start the GUI
 echo "� Starting Skynet GUI..."
 npm run dev:gui
