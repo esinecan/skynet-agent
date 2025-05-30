@@ -502,7 +502,7 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
       return {
         messages: [...state.messages, 
           { role: "ai", content: state.aiResponse || "I tried to use a tool but couldn't." },
-          { role: "system", content: errorMsg }
+          { role: "ai", content: errorMsg }
         ]
       };
     }
@@ -547,7 +547,7 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
       toolResults: {...(state.toolResults || {}), [toolCall.tool]: result},
       messages: [...state.messages, 
         { role: "ai", content: state.aiResponse || "I'll use a tool to help with this." },
-        { role: "system", content: toolResultMsg }
+        { role: "ai", content: toolResultMsg }
       ]
     };
   } catch (error) {
@@ -572,7 +572,7 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
     return {
       messages: [...state.messages, 
         { role: "ai", content: state.aiResponse || "I'll use a tool to help with this." },
-        { role: "system", content: errorMsg }
+        { role: "ai", content: errorMsg }
       ]
     };
   }
@@ -860,9 +860,9 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
     );
     logger.info("Conditional edges added: llmQuery -> toolExecution/selfReflection");
     
-    // Edge from Tool Execution back to LLM Query to process results
-    workflow.addEdge("toolExecution", "llmQuery");
-    logger.info("Edge added: toolExecution -> llmQuery");
+    // Edge from Tool Execution to Self-Reflection to avoid recursion
+    workflow.addEdge("toolExecution", "selfReflection");
+    logger.info("Edge added: toolExecution -> selfReflection");
     
     // Edge from Self-Reflection to Memory Storage
     workflow.addEdge("selfReflection", "memoryStorage");

@@ -168,16 +168,27 @@ export class LLMService {
           logger.debug(`Fetching tools from server: ${serverName}`);
           
           // Get tools directly from client.listTools()
-          const serverTools = await client.listTools();
+          const serverToolsResponse = await client.listTools();
           logger.debug('Raw tools from MCP client', {
             serverName,
-            toolsType: typeof serverTools,
-            isArray: Array.isArray(serverTools),
-            toolsData: serverTools
+            toolsType: typeof serverToolsResponse,
+            isArray: Array.isArray(serverToolsResponse),
+            toolsData: serverToolsResponse
           });
 
+          // Handle both array and object with tools property
+          let serverTools: any[];
+          if (Array.isArray(serverToolsResponse)) {
+            serverTools = serverToolsResponse;
+          } else if (serverToolsResponse && typeof serverToolsResponse === 'object' && 'tools' in serverToolsResponse) {
+            serverTools = (serverToolsResponse as any).tools;
+          } else {
+            logger.warn(`Server ${serverName} returned unexpected tools response format`, { serverToolsResponse });
+            continue;
+          }
+
           if (!Array.isArray(serverTools)) {
-            logger.warn(`Server ${serverName} returned non-array tools response`, { serverTools });
+            logger.warn(`Server ${serverName} tools is not an array after extraction`, { serverTools });
             continue;
           }
 
@@ -336,32 +347,19 @@ export class LLMService {
         });
       }
 
-      // Prepare tools from MCP clients
-      const toolPrepStartTime = Date.now();
-      const tools = await this.prepareTools();
-      const toolPrepTime = Date.now() - toolPrepStartTime;
-      const toolCount = Object.keys(tools).length;
-
-      logger.debug('Tools prepared for LLM request', {
-        requestId,
-        toolCount,
-        toolPrepTimeMs: toolPrepTime,
-        toolNames: Object.keys(tools)
-      });
-
-      logger.debug('Generating LLM response', {
+      // Skip tool preparation - we handle tool calling manually in the workflow
+      logger.debug('Generating LLM response (tools handled in workflow)', {
         requestId,
         messageCount: coreMessages.length,
-        toolCount,
         modelId: this.modelId
       });
 
       // Stream response from AI SDK
+      // Don't pass tools - we'll handle tool calling manually in the workflow
       const streamStartTime = Date.now();
       const result = await streamText({
         model: this.llm,
-        messages: coreMessages,
-        tools: Object.keys(tools).length > 0 ? tools : undefined
+        messages: coreMessages
       });
 
       const streamSetupTime = Date.now() - streamStartTime;
@@ -450,22 +448,18 @@ export class LLMService {
         });
       }
 
-      // Prepare tools from MCP clients
-      const tools = await this.prepareTools();
-      const toolCount = Object.keys(tools).length;
-
-      logger.debug('Generating complete LLM response', {
+      // Skip tool preparation - we handle tool calling manually in the workflow
+      logger.debug('Generating complete LLM response (tools handled in workflow)', {
         requestId,
         messageCount: coreMessages.length,
-        toolCount,
         modelId: this.modelId
       });
 
       // Generate complete response from AI SDK
+      // Don't pass tools - we'll handle tool calling manually in the workflow
       const result = await generateText({
         model: this.llm,
-        messages: coreMessages,
-        tools: Object.keys(tools).length > 0 ? tools : undefined
+        messages: coreMessages
       });
 
       const totalTime = Date.now() - startTime;
@@ -520,14 +514,13 @@ export class LLMService {
         });
       }
 
-      // Prepare tools
-      const tools = await this.prepareTools();
+      // Skip tool preparation - we handle tool calling manually in the workflow
       
       // Use streamText directly for legacy mode
+      // Don't pass tools - we'll handle tool calling manually in the workflow
       const result = await streamText({
         model: this.llm,
-        messages: coreMessages,
-        tools: Object.keys(tools).length > 0 ? tools : undefined
+        messages: coreMessages
       });
 
       // Get the full text response
