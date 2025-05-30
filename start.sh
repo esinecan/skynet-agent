@@ -38,7 +38,7 @@ if ! command -v pip3 &> /dev/null; then
 fi
 
 # Install ChromaDB if not already installed
-echo "� Installing/updating ChromaDB..."
+echo "🔄 Installing/updating ChromaDB..."
 $PIP_CMD install chromadb
 
 # Check if ChromaDB is already running
