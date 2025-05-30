@@ -227,6 +227,13 @@ export class McpClientManager {
             const description = t?.description || t?.help || t?.doc || undefined;
             return { name, description };
           });
+        } else if (rawTools && typeof rawTools === 'object' && 'tools' in rawTools && Array.isArray((rawTools as any).tools)) {
+          // Handle object with tools property
+          tools = (rawTools as any).tools.map((t: any) => {
+            const name = t?.name || t?.function || t?.id || 'unnamed';
+            const description = t?.description || t?.help || t?.doc || undefined;
+            return { name, description };
+          });
         } else if (typeof rawTools === 'object' && rawTools !== null) {
           // Handle case where it might be an object with tool definitions as properties
           tools = Object.entries(rawTools).map(([key, value]: [string, any]) => {
