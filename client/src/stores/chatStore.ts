@@ -15,6 +15,12 @@ interface Message {
   content: string;
   timestamp: string;
   attachments?: any[];
+  toolCall?: {
+    server: string;
+    tool: string;
+    args: Record<string, any>;
+  };
+  toolResult?: any;
 }
 
 interface ChatStore {
@@ -191,6 +197,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               if (data.type === 'chunk') {
                 set(state => ({ 
                   streamingMessage: state.streamingMessage + data.content 
+                }));
+              } else if (data.type === 'tool') {
+                // Handle tool call
+                const assistantMessage = {
+                  id: `msg_${Date.now()}`,
+                  role: 'assistant' as const,
+                  content: get().streamingMessage,
+                  timestamp: new Date().toISOString(),
+                  toolCall: data.toolCall
+                };
+                
+                set(state => ({
+                  currentSession: state.currentSession ? {
+                    ...state.currentSession,
+                    messages: [...state.currentSession.messages, assistantMessage]
+                  } : state.currentSession,
+                  streamingMessage: ''
+                }));
+              } else if (data.type === 'tool_result') {
+                // Handle tool result
+                const toolResultMessage = {
+                  id: `msg_${Date.now()}`,
+                  role: 'assistant' as const,
+                  content: '',
+                  timestamp: new Date().toISOString(),
+                  toolResult: data.result
+                };
+                
+                set(state => ({
+                  currentSession: state.currentSession ? {
+                    ...state.currentSession,
+                    messages: [...state.currentSession.messages, toolResultMessage]
+                  } : state.currentSession
                 }));
               } else if (data.type === 'end') {
                 // Add the complete assistant message

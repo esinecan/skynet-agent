@@ -8,6 +8,12 @@ interface Message {
   content: string;
   timestamp: string;
   attachments?: any[];
+  toolCall?: {
+    server: string;
+    tool: string;
+    args: Record<string, any>;
+  };
+  toolResult?: any;
 }
 
 const MessageList: React.FC = () => {
@@ -29,6 +35,36 @@ const MessageList: React.FC = () => {
       </div>
     );
   }
+
+  const renderToolCall = (message: Message) => {
+    if (!message.toolCall) return null;
+
+    return (
+      <div className="mt-2 bg-gray-100 p-2 rounded-lg">
+        <div className="text-sm text-gray-600">
+          <span className="font-semibold">Tool Call:</span> {message.toolCall.server}.{message.toolCall.tool}
+        </div>
+        <div className="text-sm font-mono bg-gray-200 p-2 rounded mt-1">
+          {JSON.stringify(message.toolCall.args, null, 2)}
+        </div>
+      </div>
+    );
+  };
+
+  const renderToolResult = (message: Message) => {
+    if (!message.toolResult) return null;
+
+    return (
+      <div className="mt-2 bg-blue-50 p-2 rounded-lg">
+        <div className="text-sm text-blue-600 font-semibold">Tool Result:</div>
+        <div className="text-sm font-mono bg-white p-2 rounded mt-1">
+          {typeof message.toolResult === 'string' 
+            ? message.toolResult 
+            : JSON.stringify(message.toolResult, null, 2)}
+        </div>
+      </div>
+    );
+  };
 
   const renderAttachments = (message: Message) => {
     if (!message.attachments || message.attachments.length === 0) return null;
@@ -93,6 +129,8 @@ const MessageList: React.FC = () => {
             <ReactMarkdown>
               {message.content}
             </ReactMarkdown>
+            {renderToolCall(message)}
+            {renderToolResult(message)}
             {renderAttachments(message)}
           </div>
         </div>
