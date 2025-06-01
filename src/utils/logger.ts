@@ -19,7 +19,7 @@ export enum LogLevel {
 /*const LOG_LEVEL = process.env.LOG_LEVEL ? 
   (LogLevel[process.env.LOG_LEVEL as keyof typeof LogLevel] || LogLevel.INFO) : 
   LogLevel.INFO;*/
-  const LOG_LEVEL = LogLevel.INFO;
+  const LOG_LEVEL = LogLevel.DEBUG;
 
 const LOG_TO_CONSOLE = process.env.LOG_TO_CONSOLE !== 'false';
 const LOG_TO_FILE = process.env.LOG_TO_FILE === 'true';

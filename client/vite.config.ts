@@ -5,11 +5,10 @@ import { sentryVitePlugin } from "@sentry/vite-plugin"
 export default defineConfig({
   plugins: [
     react(),
-    // Sentry plugin for source maps and release management
     sentryVitePlugin({
-      org: "esinecan",
-      project: "skynet-agent-client",
-      authToken: process.env.VITE_SENTRY_AUTH_TOKEN,
+      org: "eren-can-sinecan",
+      project: "skynet",
+      authToken: "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",
       sourcemaps: {
         assets: "./dist/**"
       }

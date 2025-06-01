@@ -505,11 +505,85 @@ app.post('/api/chat/stream', async (req, res) => {
     const decoder = new TextDecoder();
     let fullResponse = '';
     let chunkCount = 0;
+      // Variables to track tool call information
+    let detectedToolCall: ToolCallInfo | null = null;
+    let toolCallResult: any = null;
     
     logger.debug('Started processing stream', {
       sessionId,
       streamSetupTimeMs: Date.now() - streamStartTime
-    });
+    });    // Helper function to detect tool calls in chunks
+    const detectToolCall = (chunk: string): ToolCallInfo | null => {
+      try {
+        // Look for JSON blocks that might contain tool calls
+        const jsonMatch = chunk.match(/```json\s*([\s\S]*?)\s*```/) || 
+                         chunk.match(/\{[\s\S]*"server"[\s\S]*"tool"[\s\S]*\}/);
+                         
+        if (jsonMatch) {
+          const jsonStr = jsonMatch[1] || jsonMatch[0];
+          const parsed = JSON.parse(jsonStr);
+          
+          if (parsed.server && parsed.tool) {
+            logger.debug('Tool call detected in stream', {
+              server: parsed.server,
+              tool: parsed.tool,
+              argsKeys: Object.keys(parsed.args || {})
+            });
+            
+            return {
+              server: parsed.server,
+              tool: parsed.tool,
+              args: parsed.args || {},
+              detectedAt: new Date().toISOString(),
+              inProgress: true
+            };
+          }
+        }
+      } catch (e) {
+        // Ignore parsing errors as we might be dealing with incomplete JSON
+      }
+      return null;
+    };    // Helper to detect tool results
+    const detectToolResult = (chunk: string, toolCall: ToolCallInfo): { result?: any; error?: string; detectedAt: string; success: boolean } | null => {
+      if (!toolCall) return null;
+      
+      try {
+        // Look for the standard result pattern
+        const resultPattern = new RegExp(`I called the tool ${toolCall.tool} from ${toolCall.server} with the arguments .+? The result was: (.+)`);
+        const match = chunk.match(resultPattern);
+        
+        if (match) {
+          const resultJson = JSON.parse(match[1]);
+          logger.debug('Tool call result detected', {
+            server: toolCall.server,
+            tool: toolCall.tool,
+            resultType: typeof resultJson
+          });
+          
+          return {
+            result: resultJson,
+            detectedAt: new Date().toISOString(),
+            success: true
+          };
+        }
+        
+        // Check for errors
+        if (chunk.includes(`Error executing tool ${toolCall.tool}`) || 
+            chunk.includes(`Error calling tool ${toolCall.tool}`)) {
+          return {
+            error: 'Tool execution failed',
+            detectedAt: new Date().toISOString(),
+            success: false
+          };
+        }
+      } catch (e) {
+        logger.debug('Error parsing tool result', {
+          error: e instanceof Error ? e.message : String(e)
+        });
+      }
+      
+      return null;
+    };
     
     // Stream the response chunks
     while (true) {
@@ -519,25 +593,64 @@ app.post('/api/chat/stream', async (req, res) => {
       const chunk = decoder.decode(value, { stream: true });
       fullResponse += chunk;
       chunkCount++;
+      
+      // Detect tool calls in the chunk
+      if (!detectedToolCall) {
+        const toolCall = detectToolCall(chunk);
+        if (toolCall) {
+          detectedToolCall = toolCall;
+          // Send tool call started event
+          res.write(`data: ${JSON.stringify({ 
+            type: 'toolCall', 
+            status: 'started',
+            toolCall: detectedToolCall 
+          })}\n\n`);
+        }
+      }
+      
+      // Detect tool results if we have a tool call
+      if (detectedToolCall && !toolCallResult) {
+        const result = detectToolResult(fullResponse, detectedToolCall);
+        if (result) {
+          toolCallResult = result;
+          detectedToolCall = { 
+            ...detectedToolCall, 
+            ...result, 
+            inProgress: false 
+          };
+          
+          // Send tool call completion event
+          res.write(`data: ${JSON.stringify({
+            type: 'toolCall',
+            status: result.success ? 'completed' : 'failed',
+            toolCall: detectedToolCall
+          })}\n\n`);
+        }
+      }
+      
+      // Send the chunk
       res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
       
       if (chunkCount % 10 === 0) { // Log every 10th chunk to avoid spam
         logger.debug('Streaming progress', {
           sessionId,
           chunksProcessed: chunkCount,
-          totalCharsStreamed: fullResponse.length
+          totalCharsStreamed: fullResponse.length,
+          hasToolCall: !!detectedToolCall,
+          hasToolResult: !!toolCallResult
         });
       }
     }
     
     const streamTime = Date.now() - streamStartTime;
     
-    // Add assistant message to session
+    // Add assistant message to session with tool call information if detected
     const assistantMessage = {
       id: `msg_${Date.now()}`,
       role: 'assistant' as const,
       content: fullResponse,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      toolCall: detectedToolCall
     };
     
     const saveAssistantStartTime = Date.now();
@@ -864,3 +977,15 @@ setupClientRoutes();
 
 // Sentry: Error Handler must be registered after all controllers and before any other error middleware
 Sentry.setupExpressErrorHandler(app);
+
+// Define interface for tool call information
+interface ToolCallInfo {
+  server: string;
+  tool: string;
+  args: Record<string, any>;
+  detectedAt: string;
+  inProgress: boolean;
+  result?: any;
+  error?: string;
+  success?: boolean;
+}

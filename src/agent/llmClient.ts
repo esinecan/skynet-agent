@@ -330,6 +330,9 @@ export class LLMService {
     });
 
     try {
+      // Define an empty tools object since we're handling tool calls in the workflow
+      const tools: Record<string, any> = {};
+      
       // Convert messages to CoreMessage format
       const coreMessages = this.convertMessages(messages);
       const conversionTime = Date.now() - startTime;

@@ -132,21 +132,19 @@ export class McpClientManager {
     return this.clients.get(serverName);
   }
 
+  // Check if a client exists for the given server name
+  hasClient(serverName: string): boolean {
+    return this.clients.has(serverName);
+  }
+
   // Method to get all connected clients for use with @google/genai mcpToTool
   getAllClients(): McpClient[] {
     return Array.from(this.clients.values());
   }
   async callTool(serverName: string, toolName: string, args: Record<string, any>): Promise<any> {
     const startTime = Date.now();
-    logger.debug('Starting tool call', {
-      serverName,
-      toolName,
-      argsCount: Object.keys(args).length,
-      argKeys: Object.keys(args),
-      argsSize: JSON.stringify(args).length
-    });
+    const client = this.clients.get(serverName);
     
-    const client = this.getClient(serverName);
     if (!client) {
       logger.error('No MCP client found for server', {
         requestedServer: serverName,
@@ -156,18 +154,48 @@ export class McpClientManager {
     }
 
     try {
-      logger.debug('Calling tool on MCP client', {
+      // Log detailed argument info before calling tool
+      logger.info('Calling tool on MCP client', {
         serverName,
-        toolName,
-        clientConnected: !!client
+        toolName
       });
       
-      const result = await client.callTool({
+      logger.debug('Tool call arguments details', {
+        serverName,
+        toolName,
+        argsJson: JSON.stringify(args),
+        argsKeys: Object.keys(args),
+        rawArgs: args
+      });
+      
+      // Additional validation for known tools
+      if (serverName === 'windows-cli' && toolName === 'execute_command') {
+        if (!args.command) {
+          logger.warn('execute_command missing required command parameter');
+        }
+        if (!args.shell) {
+          logger.warn('execute_command missing recommended shell parameter');
+        }
+      }
+      
+      // Log the exact tool parameters being sent
+      const toolParams = {
         name: toolName,
         params: args
-      });      const callTime = Date.now() - startTime;
+      };
+      
+      logger.debug('Sending tool parameters to MCP server', {
+        serverName,
+        toolName,
+        fullToolParams: JSON.stringify(toolParams)
+      });
+      
+      const result = await client.callTool(toolParams);
+      
+      const callTime = Date.now() - startTime;
       let resultSize = 0;
       let resultPreview = 'null';
+      let resultType = typeof result;
       
       try {
         if (result && typeof result === 'string') {
@@ -182,19 +210,28 @@ export class McpClientManager {
         resultPreview = '[Error serializing result]';
       }
       
-      logger.debug('Tool call completed successfully', {
+      logger.info('Tool call completed successfully', {
+        serverName,
+        toolName,
+        callTimeMs: callTime
+      });
+      
+      logger.debug('Tool call result details', {
         serverName,
         toolName,
         callTimeMs: callTime,
         resultSize,
-        resultType: typeof result,
-        resultPreview
+        resultType,
+        resultPreview,
+        fullResult: result
       });
       
       return result;
     } catch (error) {
       const callTime = Date.now() - startTime;
       const err = error instanceof Error ? error : new Error(String(error));
+      
+      // Log the full error information
       logger.error(`Error calling tool ${toolName} on ${serverName}:`, {
         error: err,
         callTimeMs: callTime,
@@ -202,8 +239,21 @@ export class McpClientManager {
         toolName,
         argsProvided: Object.keys(args).length,
         errorType: err.constructor.name,
-        errorMessage: err.message
+        errorMessage: err.message,
+        errorStack: err.stack,
+        rawArgs: args
       });
+      
+      // Check for known error patterns
+      if (err.message.includes('Invalid arguments')) {
+        logger.error('Invalid arguments error details', {
+          serverName,
+          toolName,
+          providedArgs: args,
+          argsKeys: Object.keys(args)
+        });
+      }
+      
       throw err;
     }
   }

@@ -131,8 +131,7 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
         queryLength: query.length,
         decisionReason: retrieveDecision ? 'Complex query requiring context' : 'Simple query, skipping retrieval'
       });
-      
-      if (!retrieveDecision) {
+        if (!retrieveDecision) {
         logger.info('Skipping memory retrieval for simple query', { query: query.slice(0, 50) });
         logger.debug('Simple query patterns matched', {
           query: query.slice(0, 100),
@@ -144,8 +143,8 @@ const memoryRetrievalNode = async (state: AppState, context: unknown): Promise<P
             shouldRetrieve: false,
             query,
             retrievedDocs: []
-          },
-          memoryContext: null
+          }
+          // memoryContext is implicitly undefined
         };
       }
       
@@ -448,6 +447,12 @@ const llmQueryNode = async (state: AppState, context: unknown): Promise<Partial<
 
 // Helper to extract tool calls from LLM response
 function extractToolCall(response: string): ToolCall | null {
+  // Log the full response for debugging
+  logger.debug('Extracting tool call from response', {
+    responseLength: response.length,
+    responseSample: response.substring(0, 200) + (response.length > 200 ? "..." : "")
+  });
+  
   // Look for JSON blocks in the response
   const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) || 
                    response.match(/\{[\s\S]*"server"[\s\S]*"tool"[\s\S]*\}/);
@@ -455,18 +460,46 @@ function extractToolCall(response: string): ToolCall | null {
   if (jsonMatch) {
     try {
       const jsonStr = jsonMatch[1] || jsonMatch[0];
+      // Log the extracted JSON string
+      logger.debug('Found potential tool call JSON', {
+        jsonLength: jsonStr.length,
+        jsonSample: jsonStr.substring(0, 500) + (jsonStr.length > 500 ? "..." : "")
+      });
+      
       const parsed = JSON.parse(jsonStr);
+      logger.debug('Parsed tool call JSON', {
+        hasServer: !!parsed.server,
+        serverName: parsed.server,
+        hasTool: !!parsed.tool,
+        toolName: parsed.tool,
+        hasArgs: !!parsed.args,
+        argsKeys: parsed.args ? Object.keys(parsed.args) : [],
+        fullArgs: parsed.args ? JSON.stringify(parsed.args) : '{}'
+      });
+      
       if (parsed.server && parsed.tool) {
         return {
           server: parsed.server,
           tool: parsed.tool,
           args: parsed.args || {}
         };
+      } else {
+        logger.warn('Tool call JSON missing required fields', {
+          hasServer: !!parsed.server,
+          hasTool: !!parsed.tool
+        });
       }
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       logger.error("Failed to parse tool call JSON:", err);
+      logger.error("JSON parsing error details", {
+        errorName: err.name,
+        errorMessage: err.message,
+        jsonSample: jsonMatch ? (jsonMatch[1] || jsonMatch[0]).substring(0, 200) : 'No match found'
+      });
     }
+  } else {
+    logger.debug('No tool call JSON pattern found in response');
   }
   return null;
 }
@@ -481,12 +514,19 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
   }
   
   try {
-    logger.debug('Starting tool execution', { 
+    // Log detailed tool call information
+    logger.info('Starting tool execution', { 
       server: toolCall.server, 
+      tool: toolCall.tool
+    });
+    
+    logger.debug('Tool call details', {
+      server: toolCall.server,
       tool: toolCall.tool,
       argsCount: Object.keys(toolCall.args || {}).length,
-      argsSample: Object.keys(toolCall.args || {}).slice(0, 3),
-      argsSize: JSON.stringify(toolCall.args).length
+      argsKeys: Object.keys(toolCall.args || {}),
+      argsFullJson: JSON.stringify(toolCall.args),
+      rawArgs: toolCall.args
     });
     
     // Get MCP manager from context or from global context (workaround)
@@ -509,11 +549,54 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
     
     logger.debug('MCP manager available, calling tool', {
       server: toolCall.server,
-      tool: toolCall.tool
+      tool: toolCall.tool,
+      clientInfo: {
+        available: !!mcpManager,
+        hasServer: mcpManager ? mcpManager.hasClient(toolCall.server) : false
+      }
     });
     
     // Track tool call for metrics
     incrementMetric('toolCallsMade');
+    
+    // Validate the args structure before calling the tool
+    try {
+      // Check if args is empty but should have required fields
+      if (Object.keys(toolCall.args || {}).length === 0) {
+        logger.warn('Tool call has empty args object', {
+          server: toolCall.server,
+          tool: toolCall.tool
+        });
+      }
+      
+      // Special handling for common tools
+      if (toolCall.server === 'windows-cli' && toolCall.tool === 'execute_command') {
+        // Check for required fields for execute_command
+        const hasCommand = !!toolCall.args?.command;
+        const hasShell = !!toolCall.args?.shell;
+        
+        if (!hasCommand || !hasShell) {
+          logger.warn('Missing required fields for windows-cli execute_command', {
+            hasCommand,
+            hasShell,
+            args: toolCall.args
+          });
+        }
+      }
+      
+      if (toolCall.server === 'filesystem' && toolCall.tool === 'list_allowed_directories') {
+        // Ensure args is at least an empty object for this tool
+        if (!toolCall.args) {
+          toolCall.args = {};
+          logger.debug('Added empty args object for list_allowed_directories');
+        }
+      }
+    } catch (validationErr) {
+      logger.warn('Error during args validation', {
+        error: validationErr instanceof Error ? validationErr.message : String(validationErr)
+      });
+      // Continue execution anyway, let the tool handler handle any issues
+    }
     
     const result = await mcpManager.callTool(
       toolCall.server, 
@@ -524,15 +607,21 @@ const toolExecutionNode = async (state: AppState, context: unknown): Promise<Par
     const executionTime = Date.now() - startTime;
     const resultSize = typeof result === 'string' ? result.length : JSON.stringify(result).length;
     
-    logger.debug('Tool execution completed successfully', { 
-      executionTimeMs: executionTime,
+    logger.info('Tool execution completed successfully', { 
+      server: toolCall.server,
+      tool: toolCall.tool,
+      executionTimeMs: executionTime
+    });
+    
+    logger.debug('Tool execution result details', {
+      server: toolCall.server,
+      tool: toolCall.tool,
       resultSize: resultSize,
       resultType: typeof result,
       resultPreview: typeof result === 'string' 
         ? result.substring(0, 200) + (result.length > 200 ? "..." : "")
         : JSON.stringify(result).substring(0, 200) + (JSON.stringify(result).length > 200 ? "..." : ""),
-      server: toolCall.server,
-      tool: toolCall.tool
+      fullResult: result
     });
     
     // Format tool result for the LLM
@@ -807,8 +896,7 @@ const memoryStorageNode = async (state: AppState, context: unknown): Promise<Par
 export function createAgentWorkflow(mcpManager?: McpClientManager) {
   try {
     logger.info("Creating agent workflow with LangGraph...");
-    
-    // Create the state graph with properly structured channels
+      // Create the state graph with properly structured channels
     const workflow = new StateGraph<AppState>({
       channels: {
         input: { value: null, default: () => "" },
@@ -819,8 +907,7 @@ export function createAgentWorkflow(mcpManager?: McpClientManager) {
         reflectionResult: { value: null },
         memoryId: { value: null },
         retrievalEvaluation: { value: null },
-        memoryContext: { value: null },
-        streamCallback: { value: null }
+        memoryContext: { value: null, default: () => undefined }
       }
     });
 

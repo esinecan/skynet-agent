@@ -28,6 +28,15 @@ interface ChatStore {
   currentSession: Session | null;
   isLoading: boolean;
   streamingMessage: string;
+  currentToolCall?: {
+    server: string;
+    tool: string;
+    args: any;
+    result?: any;
+    success?: boolean;
+    error?: string;
+    inProgress?: boolean;
+  } | null;
   
   // Actions
   loadSessions: () => Promise<void>;
@@ -42,6 +51,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   currentSession: null,
   isLoading: false,
   streamingMessage: "",
+  currentToolCall: null,
   loadSessions: async () => {
     try {
       Sentry.addBreadcrumb({

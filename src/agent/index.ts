@@ -288,6 +288,13 @@ export async function processQueryStream(query: string, threadId = "default"): P
         logger.info(`Invoking synchronous workflow for thread '${threadId}' with input: "${query.substring(0, 50)}..."`);
         
         const workflowStartTime = Date.now();
+        
+        // Ensure agentWorkflow is initialized
+        if (!agentWorkflow) {
+          logger.error('Agent workflow not initialized. Cannot process query.');
+          throw new Error('Agent workflow not initialized. Call initializeAgent() first.');
+        }
+        
         const resultState = await agentWorkflow.invoke(initialState);
         const workflowTime = Date.now() - workflowStartTime;
         
@@ -422,6 +429,13 @@ export async function processQuery(query: string, threadId = "default"): Promise
     logger.info(`Invoking workflow for thread '${threadId}' with input: "${query.substring(0, 50)}..."`);
     
     const workflowStartTime = Date.now();
+    
+    // Ensure agentWorkflow is initialized
+    if (!agentWorkflow) {
+      logger.error('Agent workflow not initialized. Cannot process query.');
+      throw new Error('Agent workflow not initialized. Call initializeAgent() first.');
+    }
+    
     const resultState = await agentWorkflow.invoke(initialState);
     const workflowTime = Date.now() - workflowStartTime;
     
