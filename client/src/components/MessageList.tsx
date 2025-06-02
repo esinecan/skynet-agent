@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { useChatStore } from "../stores/chatStore";
+import { CurrentToolCallDisplay } from "./ToolCallDisplay";
 
 interface Message {
   id: string;
@@ -9,15 +10,21 @@ interface Message {
   timestamp: string;
   attachments?: any[];
   toolCall?: {
+    id?: string;
     server: string;
     tool: string;
     args: Record<string, any>;
+    detectedAt?: string;
+    inProgress?: boolean;
+    result?: any;
+    error?: string;
+    success?: boolean;
   };
   toolResult?: any;
 }
 
 const MessageList: React.FC = () => {
-  const { currentSession, isLoading, streamingMessage } = useChatStore();
+  const { currentSession, isLoading, streamingMessage, currentToolCall } = useChatStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom whenever messages change
@@ -35,17 +42,78 @@ const MessageList: React.FC = () => {
       </div>
     );
   }
-
   const renderToolCall = (message: Message) => {
     if (!message.toolCall) return null;
 
+    const { server, tool, args, inProgress, success, error, result, detectedAt } = message.toolCall;
+
     return (
-      <div className="mt-2 bg-gray-100 p-2 rounded-lg">
-        <div className="text-sm text-gray-600">
-          <span className="font-semibold">Tool Call:</span> {message.toolCall.server}.{message.toolCall.tool}
+      <div className="mt-3 border rounded-md overflow-hidden">
+        <div className="bg-gray-100 p-2 border-b flex justify-between items-center">
+          <div className="flex items-center">
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              className="mr-2"
+            >
+              <path d="m15 7-5 5 5 5" />
+            </svg>
+            <span className="font-semibold text-sm">Tool Call: <code>{server}.{tool}</code></span>
+          </div>
+          {(inProgress !== undefined || success !== undefined) && (
+            <div 
+              className={`text-xs px-2 py-1 rounded-full ${
+                inProgress 
+                  ? 'bg-yellow-200 text-yellow-800' 
+                  : success 
+                    ? 'bg-green-200 text-green-800'
+                    : 'bg-red-200 text-red-800'
+              }`}
+            >
+              {inProgress ? 'Running' : success ? 'Success' : 'Failed'}
+            </div>
+          )}
         </div>
-        <div className="text-sm font-mono bg-gray-200 p-2 rounded mt-1">
-          {JSON.stringify(message.toolCall.args, null, 2)}
+        
+        <div className="p-3 bg-gray-50">
+          <div className="mb-3">
+            <h4 className="text-xs font-semibold text-gray-500 mb-1">ARGUMENTS</h4>
+            <pre className="bg-gray-100 p-2 rounded text-sm overflow-x-auto">
+              {JSON.stringify(args, null, 2)}
+            </pre>
+          </div>
+          
+          {detectedAt && (
+            <div className="mb-3">
+              <h4 className="text-xs font-semibold text-gray-500 mb-1">EXECUTED AT</h4>
+              <div className="text-sm text-gray-600">{new Date(detectedAt).toLocaleString()}</div>
+            </div>
+          )}
+          
+          {result !== undefined && (
+            <div className="mb-3">
+              <h4 className="text-xs font-semibold text-gray-500 mb-1">RESULT</h4>
+              <pre className="bg-gray-100 p-2 rounded text-sm overflow-x-auto">
+                {typeof result === 'object' 
+                  ? JSON.stringify(result, null, 2) 
+                  : String(result)}
+              </pre>
+            </div>
+          )}
+          
+          {error && (
+            <div>
+              <h4 className="text-xs font-semibold text-red-500 mb-1">ERROR</h4>
+              <div className="bg-red-100 text-red-800 p-2 rounded text-sm">{error}</div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -135,8 +203,7 @@ const MessageList: React.FC = () => {
           </div>
         </div>
       ))}
-      
-      {/* Streaming message */}
+        {/* Streaming message */}
       {isLoading && streamingMessage && (
         <div className="mb-4 bg-white mr-10 p-3 rounded-lg shadow-sm">
           <div className="text-xs font-medium text-gray-500 mb-1">
@@ -147,17 +214,32 @@ const MessageList: React.FC = () => {
               {streamingMessage}
             </ReactMarkdown>
           </div>
+          
+          {/* Show current tool call if in progress */}
+          {currentToolCall && (
+            <CurrentToolCallDisplay />
+          )}
         </div>
       )}
-      
-      {/* Loading indicator */}
+        {/* Loading indicator */}
       {isLoading && !streamingMessage && (
-        <div className="flex justify-center items-center text-gray-400">
-          <div className="inline-flex space-x-1">
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></div>
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
+        <div className="mb-4 bg-white mr-10 p-3 rounded-lg shadow-sm">
+          <div className="text-xs font-medium text-gray-500 mb-1">
+            Skynet
           </div>
+          
+          {/* Show current tool call if in progress */}
+          {currentToolCall ? (
+            <CurrentToolCallDisplay />
+          ) : (
+            <div className="flex justify-center items-center text-gray-400">
+              <div className="inline-flex space-x-1">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
+              </div>
+            </div>
+          )}
         </div>
       )}
       

@@ -1,0 +1,209 @@
+import { generateText, tool } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { z } from 'zod';
+import { MCPManager } from './mcp-manager';
+import { getAllMCPServers } from '../config/default-mcp-servers';
+
+export class LLMService {
+  private mcpManager: MCPManager;
+  private model: any;
+
+  constructor() {
+    this.mcpManager = new MCPManager();
+    
+    // Initialize Google AI model using environment variable
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error('GOOGLE_API_KEY environment variable is required');
+    }
+    
+    // Create Google provider and model
+    const google = createGoogleGenerativeAI({
+      apiKey: apiKey
+    });
+    
+    this.model = google('gemini-2.0-flash-exp');
+  }
+
+  async initialize(): Promise<void> {
+    // Connect to all configured MCP servers
+    const serverConfigs = getAllMCPServers();
+    
+    const connectionPromises = serverConfigs.map(async (config) => {
+      try {
+        await this.mcpManager.connectToServer(config);
+      } catch (error) {
+        console.warn(`Failed to connect to MCP server ${config.name}:`, error);
+      }
+    });
+    
+    await Promise.allSettled(connectionPromises);
+    console.log(`Connected to MCP servers: ${this.mcpManager.getConnectedServers().join(', ')}`);
+  }
+  async generateResponse(userMessage: string): Promise<string> {
+    try {
+      console.log('🔍 Starting response generation for:', userMessage);
+      
+      // Get available tools from connected MCP servers
+      const tools = await this.getAvailableTools();
+      console.log('🔧 Available tools:', Object.keys(tools));
+      
+      const result = await generateText({
+        model: this.model,
+        prompt: userMessage,
+        tools: tools,
+        maxTokens: parseInt(process.env.MAX_TOKENS || '4096'),
+        temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
+      });
+
+      console.log('✅ Generated response:', result.text);
+      console.log('🔧 Tool calls made:', result.toolCalls?.length || 0);
+        if (result.toolCalls && result.toolCalls.length > 0) {
+        console.log('🔧 Tool call details:', JSON.stringify(result.toolCalls, null, 2));
+      }
+
+      return result.text;
+    } catch (error) {
+      console.error('❌ Error generating response:', error);
+      
+      // Log the full error details
+      if (error instanceof Error) {
+        console.error('❌ Error name:', error.name);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+      }
+        throw new Error('Failed to generate response');
+    }
+  }
+
+  async getAvailableTools(): Promise<Record<string, any>> {
+    console.log('🔍 Getting available tools from MCP servers...');
+    const tools: Record<string, any> = {};
+    const connectedServers = this.mcpManager.getConnectedServers();
+    console.log('🔍 Connected servers:', connectedServers);
+    
+    for (const serverName of connectedServers) {
+      try {
+        console.log(`🔍 Getting tools from server: ${serverName}`);
+        const serverTools = await this.mcpManager.listTools(serverName);
+        console.log(`🔍 Server ${serverName} has ${serverTools.length} tools:`, serverTools.map(t => t.name));
+        
+        for (const mcpTool of serverTools) {
+          const toolKey = `${serverName}_${mcpTool.name}`;
+          console.log(`🔍 Processing tool: ${toolKey}`);
+          console.log(`🔍 Tool schema:`, JSON.stringify(mcpTool.inputSchema, null, 2));
+          
+          // Convert MCP JSON Schema to Zod schema
+          const parameters = this.convertJsonSchemaToZod(mcpTool.inputSchema);
+          console.log(`🔍 Converted Zod schema for ${toolKey}`);
+          
+          tools[toolKey] = tool({
+            description: mcpTool.description || `Tool ${mcpTool.name} from ${serverName}`,
+            parameters: parameters,
+            execute: async (args: any) => {
+              console.log(`🔧 Executing tool ${serverName}_${mcpTool.name} with args:`, JSON.stringify(args, null, 2));
+              try {
+                const result = await this.mcpManager.callTool(serverName, mcpTool.name, args);
+                console.log(`✅ Tool ${serverName}_${mcpTool.name} succeeded:`, JSON.stringify(result, null, 2));
+                return result;
+              } catch (error) {
+                console.error(`❌ Tool ${serverName}_${mcpTool.name} failed:`, error);
+                throw error;
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to get tools from ${serverName}:`, error);
+      }
+    }    console.log('🔍 Final tool list:', Object.keys(tools));
+    return tools;
+  }
+
+  getModel() {
+    return this.model;
+  }
+
+  private convertJsonSchemaToZod(schema: any): z.ZodSchema {
+    if (!schema || !schema.properties) {
+      return z.object({});
+    }
+
+    const zodProps: Record<string, z.ZodSchema> = {};
+    
+    for (const [propName, propSchema] of Object.entries(schema.properties)) {
+      const prop = propSchema as any;
+      
+      // Convert based on JSON Schema type
+      switch (prop.type) {
+        case 'string':
+          zodProps[propName] = z.string();
+          break;
+        case 'number':
+        case 'integer':
+          zodProps[propName] = z.number();
+          break;
+        case 'boolean':
+          zodProps[propName] = z.boolean();
+          break;
+        case 'array':
+          // Handle array with proper items schema
+          if (prop.items) {
+            const itemSchema = this.convertJsonSchemaPropertyToZod(prop.items);
+            zodProps[propName] = z.array(itemSchema);
+          } else {
+            zodProps[propName] = z.array(z.string()); // Default to string array
+          }
+          break;
+        case 'object':
+          if (prop.properties) {
+            zodProps[propName] = this.convertJsonSchemaToZod(prop);
+          } else {
+            zodProps[propName] = z.object({});
+          }
+          break;
+        default:
+          zodProps[propName] = z.any();
+      }
+      
+      // Handle optional properties
+      if (!schema.required || !schema.required.includes(propName)) {
+        zodProps[propName] = zodProps[propName].optional();
+      }
+    }
+    
+    return z.object(zodProps);
+  }
+
+  private convertJsonSchemaPropertyToZod(propSchema: any): z.ZodSchema {
+    if (!propSchema || !propSchema.type) {
+      return z.any();
+    }
+
+    switch (propSchema.type) {
+      case 'string':
+        return z.string();
+      case 'number':
+      case 'integer':
+        return z.number();
+      case 'boolean':
+        return z.boolean();
+      case 'array':
+        if (propSchema.items) {
+          return z.array(this.convertJsonSchemaPropertyToZod(propSchema.items));
+        }
+        return z.array(z.string());
+      case 'object':
+        if (propSchema.properties) {
+          return this.convertJsonSchemaToZod(propSchema);
+        }
+        return z.object({});
+      default:
+        return z.any();
+    }
+  }
+
+  async cleanup(): Promise<void> {
+    await this.mcpManager.disconnectAll();
+  }
+}

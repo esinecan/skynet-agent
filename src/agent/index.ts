@@ -306,10 +306,18 @@ export async function processQueryStream(query: string, threadId = "default"): P
         });
         
         // Update conversation store
-        conversationStore[threadId] = resultState;
-        
-        // Stream the complete response
+        conversationStore[threadId] = resultState;        // Stream the response with enhanced tool call detection
         const completeResponse = resultState.aiResponse || "No response generated.";
+        
+        // Check if we have a tool call result to include
+        if (resultState.toolCall && resultState.toolResults) {
+          logger.debug('Including tool call information in stream', {
+            server: resultState.toolCall.server,
+            tool: resultState.toolCall.tool,
+            hasResult: !!resultState.toolResults
+          });
+        }
+        
         const chunks = chunkContent(completeResponse);
         
         for (const chunk of chunks) {

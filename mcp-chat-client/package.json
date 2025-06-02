@@ -1,0 +1,34 @@
+{
+  "name": "mcp-chat-client",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "ai": "^4.0.0",
+    "better-sqlite3": "^11.10.0",
+    "next": "15.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.8",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "15.0.0",
+    "postcss": "^8.5.4",
+    "tailwindcss": "^4.1.8",
+    "typescript": "^5.0.0"
+  }
+}

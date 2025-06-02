@@ -497,23 +497,34 @@ app.post('/api/chat/stream', async (req, res) => {
     
     // Send initial acknowledgment
     res.write(`data: ${JSON.stringify({ type: 'start' })}\n\n`);
-    
-    // Get streaming response from agent
+      // Get streaming response from agent with enhanced tool calling
     const streamStartTime = Date.now();
     const responseStream = await processQueryStream(message, sessionId);
     const reader = responseStream.getReader();
     const decoder = new TextDecoder();
     let fullResponse = '';
     let chunkCount = 0;
-      // Variables to track tool call information
-    let detectedToolCall: ToolCallInfo | null = null;
+    
+    // Variables to track tool call information with better typing
+    interface EnhancedToolCallInfo {
+      server: string;
+      tool: string;
+      args: Record<string, any>;
+      detectedAt: string;
+      inProgress: boolean;
+      id?: string;
+    }
+    
+    let detectedToolCall: EnhancedToolCallInfo | null = null;
     let toolCallResult: any = null;
     
-    logger.debug('Started processing stream', {
+    logger.debug('Started processing stream with enhanced tool detection', {
       sessionId,
       streamSetupTimeMs: Date.now() - streamStartTime
-    });    // Helper function to detect tool calls in chunks
-    const detectToolCall = (chunk: string): ToolCallInfo | null => {
+    });
+    
+    // Enhanced tool call detection
+    const detectToolCall = (chunk: string): EnhancedToolCallInfo | null => {
       try {
         // Look for JSON blocks that might contain tool calls
         const jsonMatch = chunk.match(/```json\s*([\s\S]*?)\s*```/) || 
@@ -524,13 +535,18 @@ app.post('/api/chat/stream', async (req, res) => {
           const parsed = JSON.parse(jsonStr);
           
           if (parsed.server && parsed.tool) {
-            logger.debug('Tool call detected in stream', {
+            const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+            
+            logger.debug('Enhanced tool call detected in stream', {
+              toolCallId,
               server: parsed.server,
               tool: parsed.tool,
-              argsKeys: Object.keys(parsed.args || {})
+              argsKeys: Object.keys(parsed.args || {}),
+              argsCount: Object.keys(parsed.args || {}).length
             });
             
             return {
+              id: toolCallId,
               server: parsed.server,
               tool: parsed.tool,
               args: parsed.args || {},
@@ -539,12 +555,39 @@ app.post('/api/chat/stream', async (req, res) => {
             };
           }
         }
+        
+        // Also look for inline tool calls: [TOOL: server:tool args]
+        const inlineMatch = chunk.match(/\[TOOL:\s+([^:]+):([^\s]+)\s+(\{.*?\})\]/);
+        if (inlineMatch) {
+          const [, server, tool, argsStr] = inlineMatch;
+          const args = JSON.parse(argsStr);
+          const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+          
+          logger.debug('Inline tool call detected', {
+            toolCallId,
+            server,
+            tool,
+            args
+          });
+          
+          return {
+            id: toolCallId,
+            server,
+            tool,
+            args,
+            detectedAt: new Date().toISOString(),
+            inProgress: true
+          };
+        }
       } catch (e) {
         // Ignore parsing errors as we might be dealing with incomplete JSON
+        logger.debug('Tool call parsing error (expected during streaming)', {
+          error: e instanceof Error ? e.message : String(e)
+        });
       }
       return null;
     };    // Helper to detect tool results
-    const detectToolResult = (chunk: string, toolCall: ToolCallInfo): { result?: any; error?: string; detectedAt: string; success: boolean } | null => {
+    const detectToolResult = (chunk: string, toolCall: EnhancedToolCallInfo): { result?: any; error?: string; detectedAt: string; success: boolean } | null => {
       if (!toolCall) return null;
       
       try {

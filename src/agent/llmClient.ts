@@ -143,16 +143,14 @@ export class LLMService {
 
     return converted;
   }
-
   /**
-   * Prepare tools from MCP clients for Vercel AI SDK
+   * Prepare tools from MCP clients for Vercel AI SDK with enhanced validation
    */
   private async prepareTools() {
     const startTime = Date.now();
     logger.debug('Starting tool preparation from MCP clients');
 
     try {
-      // Get tools from MCP clients by calling each client directly
       const tools: Record<string, {
         description: string;
         parameters: any;
@@ -160,129 +158,82 @@ export class LLMService {
       }> = {};
 
       // Get all connected MCP clients
-      const clientCount = this.mcpClientManager.getAllClients().length;
-      logger.debug('Processing MCP clients for tools', { clientCount });
-
-      for (const [serverName, client] of (this.mcpClientManager as any).clients.entries()) {
-        try {
-          logger.debug(`Fetching tools from server: ${serverName}`);
+      const allMcpTools = await this.mcpClientManager.listAllTools();
+      logger.debug(`Found ${allMcpTools.length} MCP servers with tools`);
+      
+      for (const { serverName, tools: serverTools } of allMcpTools) {
+        logger.debug(`Processing ${serverTools.length} tools from ${serverName}`);
+        
+        for (const tool of serverTools) {
+          const toolId = `${serverName}:${tool.name}`;
+          logger.debug('Processing tool', {
+            toolId,
+            toolName: tool.name,
+            hasInputSchema: !!tool.inputSchema,
+            inputSchemaType: typeof tool.inputSchema,
+            toolKeys: Object.keys(tool)
+          });          // Validate and sanitize the schema
+          const { validateAndSanitizeSchema } = await import('../mcp/toolValidator.js');
+          const cleanedParameters = validateAndSanitizeSchema(tool.inputSchema);
           
-          // Get tools directly from client.listTools()
-          const serverToolsResponse = await client.listTools();
-          logger.debug('Raw tools from MCP client', {
-            serverName,
-            toolsType: typeof serverToolsResponse,
-            isArray: Array.isArray(serverToolsResponse),
-            toolsData: serverToolsResponse
+          logger.debug('Tool parameters validated and cleaned', {
+            toolId,
+            originalSchemaType: typeof tool.inputSchema,
+            cleanedSchemaType: typeof cleanedParameters,
+            hasType: !!cleanedParameters.type,
+            hasProperties: !!cleanedParameters.properties
           });
 
-          // Handle both array and object with tools property
-          let serverTools: any[];
-          if (Array.isArray(serverToolsResponse)) {
-            serverTools = serverToolsResponse;
-          } else if (serverToolsResponse && typeof serverToolsResponse === 'object' && 'tools' in serverToolsResponse) {
-            serverTools = (serverToolsResponse as any).tools;
-          } else {
-            logger.warn(`Server ${serverName} returned unexpected tools response format`, { serverToolsResponse });
-            continue;
-          }
-
-          if (!Array.isArray(serverTools)) {
-            logger.warn(`Server ${serverName} tools is not an array after extraction`, { serverTools });
-            continue;
-          }
-
-          logger.debug(`Processing ${serverTools.length} tools from ${serverName}`);
-
-          for (const tool of serverTools) {
-            const toolId = `${serverName}:${tool.name}`;
-            logger.debug('Processing tool', {
-              toolId,
-              toolName: tool.name,
-              hasInputSchema: !!tool.inputSchema,
-              inputSchemaType: typeof tool.inputSchema,
-              toolKeys: Object.keys(tool)
-            });
-
-            // Create a safe copy of the inputSchema
-            let parameters;
-            if (tool.inputSchema && typeof tool.inputSchema === 'object') {
-              // Use the MCP inputSchema directly as a JSON schema
-              parameters = { ...tool.inputSchema };
-            } else {
-              // Fallback to empty object schema
-              parameters = { 
-                type: 'object', 
-                properties: {},
-                additionalProperties: false
-              };
-            }
-
-            logger.debug('Tool parameters prepared', {
-              toolId,
-              parametersType: typeof parameters,
-              hasType: !!parameters.type,
-              hasProperties: !!parameters.properties,
-              schema: parameters
-            });
-
-            tools[toolId] = {
-              description: tool.description || `Tool ${tool.name} from ${serverName}`,
-              parameters: parameters,
-              execute: async (args: any) => {
-                const execStartTime = Date.now();
-                try {
-                  logger.debug('Executing tool', {
-                    toolId,
-                    argsKeys: Object.keys(args || {}),
-                    argsSize: JSON.stringify(args).length
-                  });
-                  
-                  const result = await this.mcpClientManager.callTool(serverName, tool.name, args);
-                  const execTime = Date.now() - execStartTime;
-                  
-                  logger.debug('Tool execution completed', {
-                    toolId,
-                    executionTimeMs: execTime,
-                    resultType: typeof result,
-                    resultSize: JSON.stringify(result).length
-                  });
-                  
-                  return result;
-                } catch (error) {
-                  const err = error instanceof Error ? error : new Error(String(error));
-                  const execTime = Date.now() - execStartTime;
-                  logger.error('Tool execution failed', {
-                    toolId,
-                    executionTimeMs: execTime,
-                    error: err.message,
-                    args: args
-                  });
-                  throw err;
-                }
+          tools[toolId] = {
+            description: tool.description || `Tool ${tool.name} from ${serverName}`,
+            parameters: cleanedParameters,
+            execute: async (args: any) => {
+              const execStartTime = Date.now();
+              try {
+                logger.debug('Executing tool', {
+                  toolId,
+                  argsKeys: Object.keys(args || {}),
+                  argsSize: JSON.stringify(args).length
+                });
+                
+                const result = await this.mcpClientManager.callTool(serverName, tool.name, args);
+                const execTime = Date.now() - execStartTime;
+                
+                logger.debug('Tool execution completed', {
+                  toolId,
+                  executionTimeMs: execTime,
+                  resultType: typeof result,
+                  resultSize: JSON.stringify(result).length
+                });
+                
+                return result;
+              } catch (error) {
+                const err = error instanceof Error ? error : new Error(String(error));
+                const execTime = Date.now() - execStartTime;
+                logger.error('Tool execution failed', {
+                  toolId,
+                  executionTimeMs: execTime,
+                  error: err.message,
+                  args: args
+                });
+                throw err;
               }
-            };
-          }
-
-          logger.debug(`Successfully processed tools from ${serverName}`, {
-            toolCount: serverTools.length,
-            toolNames: serverTools.map(t => t.name)
-          });
-
-        } catch (error) {
-          const err = error instanceof Error ? error : new Error(String(error));
-          logger.error(`Error processing tools from server ${serverName}`, {
-            error: err.message,
-            stack: err.stack
-          });
-          // Continue with other servers
+            }
+          };
         }
+
+        logger.debug(`Successfully processed tools from ${serverName}`, {
+          toolCount: serverTools.length,
+          toolNames: serverTools.map(t => t.name)
+        });
       }
 
       const totalPrepTime = Date.now() - startTime;
       const toolCount = Object.keys(tools).length;
       
-      logger.info(`Prepared ${toolCount} tools for LLM`);
+      logger.info(`Prepared ${toolCount} tools for LLM`, {
+        timeMs: totalPrepTime
+      });
       logger.debug('Tool preparation completed', {
         totalToolCount: toolCount,
         totalPrepTimeMs: totalPrepTime,
@@ -422,9 +373,8 @@ export class LLMService {
       });
     }
   }
-
   /**
-   * Generate complete text response synchronously
+   * Generate complete text response with native tool calling
    */
   async generateCompleteResponse(
     messages: InternalMessage[],
@@ -440,8 +390,11 @@ export class LLMService {
     });
 
     try {
+      // Prepare tools from MCP clients
+      const tools = await this.prepareTools();
+      
       // Convert messages to CoreMessage format
-      const coreMessages = this.convertMessages(messages);
+      const coreMessages: CoreMessage[] = this.convertMessages(messages);
       
       // Add system message if provided
       if (systemPrompt) {
@@ -451,41 +404,128 @@ export class LLMService {
         });
       }
 
-      // Skip tool preparation - we handle tool calling manually in the workflow
-      logger.debug('Generating complete LLM response (tools handled in workflow)', {
+      logger.debug('Generating LLM response with tools', {
         requestId,
-        messageCount: coreMessages.length,
-        modelId: this.modelId
+        modelId: this.modelId,
+        toolCount: Object.keys(tools).length
       });
 
-      // Generate complete response from AI SDK
-      // Don't pass tools - we'll handle tool calling manually in the workflow
-      const result = await generateText({
+      // Send request to LLM with tools
+      const response = await generateText({
         model: this.llm,
-        messages: coreMessages
+        messages: coreMessages,
+        tools: Object.keys(tools).length > 0 ? tools : undefined,
+        toolChoice: Object.keys(tools).length > 0 ? 'auto' : undefined
       });
-
-      const totalTime = Date.now() - startTime;
       
-      logger.debug('Complete LLM response generated', {
+      const totalTime = Date.now() - startTime;
+      logger.debug('LLM response completed', {
         requestId,
-        responseLength: result.text.length,
-        totalTimeMs: totalTime,
-        efficiency: `${Math.round((result.text.length / totalTime) * 1000)} chars/sec`
+        toolCallCount: response.toolCalls?.length || 0,
+        responseLength: response.text.length,
+        totalTimeMs: totalTime
       });
 
-      return result.text;
+      return response.text;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      const totalTime = Date.now() - startTime;
-      
-      logger.error('Error in complete LLM response generation', {
+      logger.error('Error generating LLM response', {
         requestId,
-        errorMessage: err.message,
-        totalTimeMs: totalTime
+        totalTimeMs: Date.now() - startTime,
+        error: err.message
       });
       
       throw err;
+    }
+  }
+
+  /**
+   * Generate streaming response with tool calls
+   */
+  async generateStreamingResponse(
+    messages: InternalMessage[],
+    systemPrompt?: string,
+    onContent?: (content: string) => void,
+    onToolCall?: (toolCall: any) => void,
+    onToolResult?: (result: any) => void,
+    onError?: (error: Error) => void,
+    onComplete?: () => void
+  ): Promise<void> {
+    const startTime = Date.now();
+    const requestId = Math.random().toString(36).substring(7);
+    
+    logger.debug('Streaming LLM response generation started', {
+      requestId,
+      messageCount: messages.length,
+      hasSystemPrompt: !!systemPrompt
+    });
+    
+    try {
+      // Prepare tools from MCP clients
+      const tools = await this.prepareTools();
+      
+      // Convert messages to CoreMessage format
+      const coreMessages: CoreMessage[] = this.convertMessages(messages);
+      
+      // Add system message if provided
+      if (systemPrompt) {
+        coreMessages.unshift({
+          role: 'system',
+          content: systemPrompt
+        });
+      }
+      
+      // Create stream with tool calling support
+      const result = await streamText({
+        model: this.llm,
+        messages: coreMessages,
+        tools: Object.keys(tools).length > 0 ? tools : undefined,
+        toolChoice: Object.keys(tools).length > 0 ? 'auto' : undefined
+      });
+      
+      // Process the stream
+      for await (const chunk of result.textStream) {
+        if (onContent) {
+          onContent(chunk);
+        }
+      }
+        // Handle tool calls if any - wait for the promise to resolve
+      const toolCalls = await result.toolCalls;
+      if (toolCalls && toolCalls.length > 0) {
+        for (const toolCall of toolCalls) {
+          if (onToolCall) {
+            onToolCall(toolCall);
+          }
+          
+          // Note: In the Vercel AI SDK, tool execution is handled automatically
+          // during the generation process, so we don't need to manually execute here
+          if (onToolResult) {
+            onToolResult({ toolCallId: toolCall.toolCallId, executed: true });
+          }
+        }
+      }
+      
+      // Stream completed
+      if (onComplete) {
+        onComplete();
+      }
+      
+      logger.debug('Streaming LLM response completed', {
+        requestId,
+        totalTimeMs: Date.now() - startTime
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      
+      logger.error('Error in streaming LLM response', {
+        requestId,
+        totalTimeMs: Date.now() - startTime,
+        error: err.message
+      });
+      
+      if (onError) {
+        onError(err);
+      }
     }
   }
 

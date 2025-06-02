@@ -1,0 +1,28 @@
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+
+class MCPClient {
+  private client: Client | null = null;
+  private isConnected = false;
+
+  constructor(private transportType: 'http' | 'stdio', private config: any) {}
+
+  async connect() {
+    // Initialize transport based on type
+    const transport = this.transportType === 'http'
+      ? new StreamableHTTPClientTransport(new URL(this.config.url))
+      : new StdioClientTransport(this.config);
+    
+    this.client = new Client({ name: 'Local Chat Client', version: '1.0.0' });
+    await this.client.connect(transport);
+    this.isConnected = true;
+  }
+
+  async callTool(toolId: string, params: any) {
+    if (!this.client || !this.isConnected) {
+      throw new Error('Client not connected');
+    }
+    return await this.client.callTool(toolId, params);
+  }
+}

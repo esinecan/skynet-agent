@@ -9,6 +9,11 @@ const logger = createLogger('mcpClient');
 export interface ToolInfo {
   name: string;
   description?: string;
+  inputSchema?: any;
+}
+
+export interface ExtendedToolInfo extends ToolInfo {
+  serverName: string;
 }
 
 export class McpClientManager {
@@ -135,9 +140,7 @@ export class McpClientManager {
   // Check if a client exists for the given server name
   hasClient(serverName: string): boolean {
     return this.clients.has(serverName);
-  }
-
-  // Method to get all connected clients for use with @google/genai mcpToTool
+  }  // Method to get all connected clients for use with @google/genai mcpToTool
   getAllClients(): McpClient[] {
     return Array.from(this.clients.values());
   }
@@ -257,53 +260,81 @@ export class McpClientManager {
       throw err;
     }
   }
-
-  // Method to list all available tools across all connected servers
+  // Method to list all available tools across all connected servers with enhanced schema support
   async listAllTools(): Promise<{serverName: string, tools: ToolInfo[]}[]> {
+    const startTime = Date.now();
     const allTools: {serverName: string, tools: ToolInfo[]}[] = [];
+    
+    logger.debug('Starting to list all tools from MCP clients', {
+      clientCount: this.clients.size,
+      servers: Array.from(this.clients.keys())
+    });
     
     for (const [serverName, client] of this.clients.entries()) {
       try {
         const rawTools = await client.listTools();
-        logger.debug(`Raw tools from ${serverName}:`, { type: typeof rawTools, rawTools });
+        logger.debug(`Raw tools from ${serverName}:`, { 
+          type: typeof rawTools, 
+          isArray: Array.isArray(rawTools),
+          hasToolsProperty: rawTools && typeof rawTools === 'object' && 'tools' in rawTools
+        });
         
         let tools: ToolInfo[] = [];
         
         // Handle different potential response formats
         if (Array.isArray(rawTools)) {
           tools = rawTools.map((t: any) => {
-            // Extract name and description with better fallbacks
+            // Extract name, description, and schema with better fallbacks
             const name = t?.name || t?.function || t?.id || 'unnamed';
             const description = t?.description || t?.help || t?.doc || undefined;
-            return { name, description };
+            const inputSchema = t?.inputSchema || t?.schema || t?.parameters || undefined;
+            return { name, description, inputSchema };
           });
         } else if (rawTools && typeof rawTools === 'object' && 'tools' in rawTools && Array.isArray((rawTools as any).tools)) {
           // Handle object with tools property
           tools = (rawTools as any).tools.map((t: any) => {
             const name = t?.name || t?.function || t?.id || 'unnamed';
             const description = t?.description || t?.help || t?.doc || undefined;
-            return { name, description };
+            const inputSchema = t?.inputSchema || t?.schema || t?.parameters || undefined;
+            return { name, description, inputSchema };
           });
         } else if (typeof rawTools === 'object' && rawTools !== null) {
           // Handle case where it might be an object with tool definitions as properties
           tools = Object.entries(rawTools).map(([key, value]: [string, any]) => {
             const name = value?.name || key;
             const description = value?.description || value?.help || value?.doc || undefined;
-            return { name, description };
+            const inputSchema = value?.inputSchema || value?.schema || value?.parameters || undefined;
+            return { name, description, inputSchema };
           });
         }
         
-        // Improved logging: Include actual tool names
+        // Improved logging: Include actual tool names and schema info
         const toolNames = tools.map(t => t.name).join(", ");
-        logger.info(`Found ${tools.length} tools from server ${serverName}: ${toolNames || "none"}`);
+        const toolsWithSchema = tools.filter(t => t.inputSchema).length;
+        logger.info(`Found ${tools.length} tools from server ${serverName}: ${toolNames || "none"}`, {
+          toolsWithSchema,
+          toolsWithoutSchema: tools.length - toolsWithSchema
+        });
         
         allTools.push({serverName, tools});
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        logger.error(`Error listing tools for ${serverName}:`, err);
+        logger.error(`Error listing tools for ${serverName}:`, {
+          error: err.message,
+          stack: err.stack
+        });
         allTools.push({serverName, tools: []});
       }
     }
+    
+    const totalTime = Date.now() - startTime;
+    const totalToolCount = allTools.reduce((sum, server) => sum + server.tools.length, 0);
+    
+    logger.info(`Listed all tools from MCP clients`, {
+      serverCount: allTools.length,
+      totalToolCount,
+      timeMs: totalTime
+    });
     
     return allTools;
   }

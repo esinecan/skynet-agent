@@ -16,9 +16,15 @@ interface Message {
   timestamp: string;
   attachments?: any[];
   toolCall?: {
+    id?: string;
     server: string;
     tool: string;
     args: Record<string, any>;
+    detectedAt?: string;
+    inProgress?: boolean;
+    result?: any;
+    error?: string;
+    success?: boolean;
   };
   toolResult?: any;
 }
@@ -26,9 +32,9 @@ interface Message {
 interface ChatStore {
   sessions: Session[];
   currentSession: Session | null;
-  isLoading: boolean;
-  streamingMessage: string;
+  isLoading: boolean;  streamingMessage: string;
   currentToolCall?: {
+    id?: string;
     server: string;
     tool: string;
     args: any;
@@ -36,6 +42,7 @@ interface ChatStore {
     success?: boolean;
     error?: string;
     inProgress?: boolean;
+    detectedAt?: string;
   } | null;
   
   // Actions
@@ -203,13 +210,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.substring(6));
-              
-              if (data.type === 'chunk') {
+                if (data.type === 'chunk') {
                 set(state => ({ 
                   streamingMessage: state.streamingMessage + data.content 
                 }));
+              } else if (data.type === 'toolCall') {                if (data.status === 'started') {
+                  // Tool call started
+                  set(() => ({
+                    currentToolCall: {
+                      ...data.toolCall,
+                      inProgress: true
+                    }
+                  }));} else if (data.status === 'completed' || data.status === 'failed') {
+                  // Tool call completed or failed
+                  set(state => ({
+                    currentToolCall: {
+                      ...(state.currentToolCall || {}),
+                      ...data.toolCall,
+                      inProgress: false
+                    }
+                  }));
+                }
               } else if (data.type === 'tool') {
-                // Handle tool call
+                // Legacy tool call handling (for backward compatibility)
                 const assistantMessage = {
                   id: `msg_${Date.now()}`,
                   role: 'assistant' as const,
@@ -242,12 +265,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                   } : state.currentSession
                 }));
               } else if (data.type === 'end') {
-                // Add the complete assistant message
+                // Add the complete assistant message with any tool call information
+                const { currentToolCall } = get();
                 const assistantMessage = {
                   id: `msg_${Date.now()}`,
                   role: 'assistant' as const,
                   content: get().streamingMessage,
-                  timestamp: new Date().toISOString()
+                  timestamp: new Date().toISOString(),
+                  ...(currentToolCall && { toolCall: currentToolCall })
                 };
                 
                 set(state => ({
@@ -256,7 +281,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     messages: [...state.currentSession.messages, assistantMessage]
                   } : state.currentSession,
                   streamingMessage: '',
-                  isLoading: false
+                  isLoading: false,
+                  currentToolCall: null
                 }));
                 
                 // Refresh session to sync with server
@@ -265,7 +291,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 console.error('Stream error:', data.error);
                 set({ 
                   streamingMessage: `Error: ${data.error}`,
-                  isLoading: false 
+                  isLoading: false,
+                  currentToolCall: null
                 });
               }
             } catch (e) {

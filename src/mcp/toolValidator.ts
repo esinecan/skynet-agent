@@ -2,6 +2,108 @@ import { createLogger } from '../utils/logger';
 
 const logger = createLogger('mcpToolValidator');
 
+/**
+ * Validates and sanitizes tool schemas to ensure compatibility with LLM APIs
+ */
+export function validateAndSanitizeSchema(schema: any): any {
+  const cleanId = Math.random().toString(36).substring(7);
+  
+  logger.debug('Schema validation started', {
+    cleanId,
+    schemaType: typeof schema,
+    isArray: Array.isArray(schema),
+    isNull: schema === null
+  });
+
+  // Return early for non-objects or null
+  if (!schema || typeof schema !== 'object') {
+    logger.debug('Non-object schema provided, returning default', { cleanId });
+    return { type: 'object', properties: {}, additionalProperties: false };
+  }
+
+  try {
+    // Deep clone to avoid modifying original
+    const cleanedSchema = JSON.parse(JSON.stringify(schema));
+    
+    // Add specific provider compatibility fixes here
+    // OpenAI requires 'additionalProperties' to be defined for objects
+    if (cleanedSchema.type === 'object' && cleanedSchema.additionalProperties === undefined) {
+      cleanedSchema.additionalProperties = false;
+    }
+    
+    // Ensure there's a type field
+    if (!cleanedSchema.type) {
+      cleanedSchema.type = 'object';
+    }
+    
+    // Process object schemas
+    if (cleanedSchema.type === 'object') {
+      // Ensure properties exists
+      if (!cleanedSchema.properties) {
+        cleanedSchema.properties = {};
+      }
+      
+      // Handle required properties
+      if (cleanedSchema.required && Array.isArray(cleanedSchema.required)) {
+        const originalRequired = [...cleanedSchema.required];
+        // Validate that required properties exist in properties
+        cleanedSchema.required = originalRequired.filter(reqProp => {
+          const exists = cleanedSchema.properties && cleanedSchema.properties[reqProp];
+          if (!exists) {
+            logger.warn(`Required property '${reqProp}' not found in properties, removing from required array`, { cleanId });
+          }
+          return exists;
+        });
+      }
+      
+      // Process nested properties
+      if (cleanedSchema.properties && typeof cleanedSchema.properties === 'object') {
+        const cleanedProperties: Record<string, any> = {};
+        for (const [propName, propSchema] of Object.entries(cleanedSchema.properties)) {
+          cleanedProperties[propName] = validateAndSanitizeSchema(propSchema);
+        }
+        cleanedSchema.properties = cleanedProperties;
+      }
+    }
+    
+    // Process array schemas
+    if (cleanedSchema.type === 'array' && cleanedSchema.items) {
+      cleanedSchema.items = validateAndSanitizeSchema(cleanedSchema.items);
+    }
+    
+    // Handle union types with oneOf, anyOf, allOf
+    for (const unionType of ['oneOf', 'anyOf', 'allOf']) {
+      if (cleanedSchema[unionType] && Array.isArray(cleanedSchema[unionType])) {
+        cleanedSchema[unionType] = cleanedSchema[unionType].map(
+          (subSchema: any) => validateAndSanitizeSchema(subSchema)
+        );
+      }
+    }
+    
+    // Remove unsupported fields for some LLM APIs
+    const fieldsToRemove = ['$schema', '$id', 'examples', 'default'];
+    for (const field of fieldsToRemove) {
+      if (field in cleanedSchema) {
+        delete cleanedSchema[field];
+      }
+    }
+    
+    logger.debug('Schema validation completed', { cleanId });
+    
+    return cleanedSchema;
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error('Schema validation failed', {
+      cleanId,
+      error: err.message, 
+      stack: err.stack
+    });
+    
+    // Return a minimal valid schema as fallback
+    return { type: 'object', properties: {}, additionalProperties: false };
+  }
+}
+
 function deepCleanSchema(obj: unknown, parentPath = ''): unknown {
   const cleanId = Math.random().toString(36).substring(7);
   
