@@ -1,5 +1,6 @@
 import { generateText, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createDeepSeek } from '@ai-sdk/deepseek';
 import { z } from 'zod';
 import { MCPManager } from './mcp-manager';
 import { getAllMCPServers } from '../config/default-mcp-servers';
@@ -11,26 +12,88 @@ export interface LLMOptions {
   includeMemoryContext?: boolean;
 }
 
+export type LLMProvider = 'google' | 'deepseek';
+
+export interface LLMProviderConfig {
+  provider: LLMProvider;
+  model: string;
+  apiKey?: string;
+}
+
 export class LLMService {
   private mcpManager: MCPManager;
   private model: any;
   private ragService = getRAGService();
+  private provider: LLMProvider;
+  private modelName: string;
 
-  constructor() {
+  constructor(config?: LLMProviderConfig) {
     this.mcpManager = new MCPManager();
     
-    // Initialize Google AI model using environment variable
-    const apiKey = process.env.GOOGLE_API_KEY;
-    if (!apiKey) {
-      throw new Error('GOOGLE_API_KEY environment variable is required');
+    // Determine provider from config or environment
+    this.provider = config?.provider || this.getProviderFromEnvironment();
+    this.modelName = config?.model || this.getDefaultModel(this.provider);
+    
+    // Initialize the model based on provider
+    this.model = this.initializeModel(config);
+  }
+
+  private getProviderFromEnvironment(): LLMProvider {
+    // Check environment variable for provider preference
+    const envProvider = process.env.LLM_PROVIDER?.toLowerCase();
+    if (envProvider === 'deepseek') return 'deepseek';
+    if (envProvider === 'google') return 'google';
+    
+    // Default to Google if Google API key is available
+    if (process.env.GOOGLE_API_KEY) return 'google';
+    
+    // Otherwise default to DeepSeek
+    return 'deepseek';
+  }
+
+  private getDefaultModel(provider: LLMProvider): string {
+    switch (provider) {
+      case 'google':
+        return 'gemini-2.0-flash-exp';
+      case 'deepseek':
+        return 'deepseek-chat';
+      default:
+        return 'gemini-2.0-flash-exp';
     }
-    
-    // Create Google provider and model
-    const google = createGoogleGenerativeAI({
-      apiKey: apiKey
-    });
-    
-    this.model = google('gemini-2.0-flash-exp');
+  }
+
+  private initializeModel(config?: LLMProviderConfig): any {
+    switch (this.provider) {
+      case 'google':
+        const googleApiKey = config?.apiKey || process.env.GOOGLE_API_KEY;
+        if (!googleApiKey) {
+          throw new Error('GOOGLE_API_KEY environment variable is required for Google provider');
+        }
+        const google = createGoogleGenerativeAI({
+          apiKey: googleApiKey
+        });
+        return google(this.modelName);
+
+      case 'deepseek':
+        const deepseekApiKey = config?.apiKey || process.env.DEEPSEEK_API_KEY;
+        if (!deepseekApiKey) {
+          throw new Error('DEEPSEEK_API_KEY environment variable is required for DeepSeek provider');
+        }
+        const deepseek = createDeepSeek({
+          apiKey: deepseekApiKey
+        });
+        return deepseek(this.modelName);
+
+      default:
+        throw new Error(`Unsupported provider: ${this.provider}`);
+    }
+  }
+
+  getProviderInfo(): { provider: LLMProvider; model: string } {
+    return {
+      provider: this.provider,
+      model: this.modelName
+    };
   }
   async initialize(): Promise<void> {
     // Connect to all configured MCP servers

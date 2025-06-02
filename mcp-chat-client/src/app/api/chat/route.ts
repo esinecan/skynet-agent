@@ -55,8 +55,9 @@ export async function POST(request: NextRequest) {
     // Get available tools and model
     const tools = await service.getAvailableTools();
     const model = service.getModel();
+    const providerInfo = service.getProviderInfo();
     
-    //console.log('� Chat API: Available tools:', Object.keys(tools));
+    console.log('🤖 Chat API: Using provider:', providerInfo.provider, 'with model:', providerInfo.model);
     
     // Create enhanced system message with RAG context if enabled
     let enhancedMessages = [...messages];
