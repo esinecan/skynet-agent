@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:rag": "npx ts-node --esm src/tests/rag-test.ts",
+    "test:integration": "node src/tests/integration-test.js",
+    "test:all": "npm run test:integration && npm run test:rag",
+    "type-check": "tsc --noEmit --skipLibCheck",
+    "start:rag": "powershell -ExecutionPolicy Bypass -File start-rag.ps1"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.0.0",
@@ -14,6 +19,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "ai": "^4.0.0",
     "better-sqlite3": "^11.10.0",
+    "chromadb": "^2.4.6",
     "next": "15.0.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",

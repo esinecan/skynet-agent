@@ -3,10 +3,18 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { z } from 'zod';
 import { MCPManager } from './mcp-manager';
 import { getAllMCPServers } from '../config/default-mcp-servers';
+import { getRAGService, RAGResult } from './rag';
+
+export interface LLMOptions {
+  enableRAG?: boolean;
+  sessionId?: string;
+  includeMemoryContext?: boolean;
+}
 
 export class LLMService {
   private mcpManager: MCPManager;
   private model: any;
+  private ragService = getRAGService();
 
   constructor() {
     this.mcpManager = new MCPManager();
@@ -24,7 +32,6 @@ export class LLMService {
     
     this.model = google('gemini-2.0-flash-exp');
   }
-
   async initialize(): Promise<void> {
     // Connect to all configured MCP servers
     const serverConfigs = getAllMCPServers();
@@ -39,12 +46,20 @@ export class LLMService {
     
     await Promise.allSettled(connectionPromises);
     console.log(`Connected to MCP servers: ${this.mcpManager.getConnectedServers().join(', ')}`);
-  }
-  async generateResponse(userMessage: string): Promise<string> {
+    
+    // Initialize RAG service
+    await this.initializeRAG();
+  }async generateResponse(userMessage: string, options?: LLMOptions): Promise<string> {
     try {
       console.log('🔍 Starting response generation for:', userMessage);
       
-      // Get available tools from connected MCP servers
+      // Use RAG-enhanced generation if sessionId is provided and RAG is enabled
+      if (options?.sessionId && options?.enableRAG !== false) {
+        const result = await this.generateResponseWithMemory(userMessage, options.sessionId, options);
+        return result.text;
+      }
+      
+      // Fall back to basic generation without memory
       const tools = await this.getAvailableTools();
       console.log('🔧 Available tools:', Object.keys(tools));
       
@@ -58,12 +73,12 @@ export class LLMService {
 
       console.log('✅ Generated response:', result.text);
       console.log('🔧 Tool calls made:', result.toolCalls?.length || 0);
-        if (result.toolCalls && result.toolCalls.length > 0) {
+      
+      if (result.toolCalls && result.toolCalls.length > 0) {
         console.log('🔧 Tool call details:', JSON.stringify(result.toolCalls, null, 2));
       }
 
-      return result.text;
-    } catch (error) {
+      return result.text;    } catch (error) {
       console.error('❌ Error generating response:', error);
       
       // Log the full error details
@@ -72,7 +87,8 @@ export class LLMService {
         console.error('❌ Error message:', error.message);
         console.error('❌ Error stack:', error.stack);
       }
-        throw new Error('Failed to generate response');
+      
+      throw new Error('Failed to generate response');
     }
   }
 
@@ -205,5 +221,105 @@ export class LLMService {
 
   async cleanup(): Promise<void> {
     await this.mcpManager.disconnectAll();
+  }
+
+  /**
+   * Generate response with RAG memory enhancement
+   */
+  async generateResponseWithMemory(
+    userMessage: string, 
+    sessionId: string,
+    options: LLMOptions = {}
+  ): Promise<{ text: string; ragResult?: RAGResult }> {
+    try {
+      console.log('🧠 Starting RAG-enhanced response generation for:', userMessage);
+      
+      let ragResult: RAGResult | undefined;
+      let enhancedPrompt = userMessage;
+      
+      // Retrieve relevant memories if RAG is enabled
+      if (options.enableRAG !== false && options.includeMemoryContext !== false) {
+        ragResult = await this.ragService.retrieveAndFormatContext(userMessage, sessionId);
+        
+        if (ragResult.shouldRetrieve && ragResult.context) {
+          // Enhance the prompt with memory context
+          enhancedPrompt = this.formatPromptWithMemoryContext(userMessage, ragResult.context);
+          console.log('🧠 Enhanced prompt with memory context');
+        }
+      }
+      
+      // Get available tools from connected MCP servers
+      const tools = await this.getAvailableTools();
+      console.log('🔧 Available tools:', Object.keys(tools));
+      
+      const result = await generateText({
+        model: this.model,
+        prompt: enhancedPrompt,
+        tools: tools,
+        maxTokens: parseInt(process.env.MAX_TOKENS || '4096'),
+        temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
+      });
+
+      console.log('✅ Generated RAG-enhanced response:', result.text);
+      console.log('🔧 Tool calls made:', result.toolCalls?.length || 0);
+      
+      if (result.toolCalls && result.toolCalls.length > 0) {
+        console.log('🔧 Tool call details:', JSON.stringify(result.toolCalls, null, 2));
+      }
+
+      return { text: result.text, ragResult };
+    } catch (error) {
+      console.error('❌ Error generating RAG-enhanced response:', error);
+      
+      // Log the full error details
+      if (error instanceof Error) {
+        console.error('❌ Error name:', error.name);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+      }
+      
+      throw new Error('Failed to generate response');
+    }
+  }
+
+  /**
+   * Store conversation in memory after successful response
+   */
+  async storeConversationInMemory(
+    userMessage: string,
+    assistantResponse: string,
+    sessionId: string
+  ): Promise<void> {
+    try {
+      await this.ragService.storeConversation(userMessage, assistantResponse, sessionId);
+      console.log('💾 Conversation stored in memory');
+    } catch (error) {
+      console.error('❌ Failed to store conversation in memory:', error);
+      // Don't throw - memory storage failure shouldn't break the chat
+    }
+  }
+
+  /**
+   * Format prompt with memory context
+   */
+  private formatPromptWithMemoryContext(userMessage: string, memoryContext: string): string {
+    return `${memoryContext}
+
+Current user message: ${userMessage}
+
+Please respond to the current user message, taking into account any relevant information from the previous conversations shown above.`;
+  }
+
+  /**
+   * Initialize RAG service
+   */
+  async initializeRAG(): Promise<void> {
+    try {
+      await this.ragService.initialize();
+      console.log('🧠 RAG service initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize RAG service:', error);
+      // Don't throw - RAG failure shouldn't prevent chat functionality
+    }
   }
 }

@@ -1,39 +1,35 @@
-// ChatInterface.tsx
-import React, { useState } from 'react';
+import React from 'react'
+import { Message } from 'ai'
+import ToolCallDisplay from './ToolCallDisplay'
 
-const ChatInterface = () => {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+interface ChatMessageProps {
+  message: Message
+}
 
-  const sendMessage = async () => {
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: input }),
-    });
-    const data = await response.json();
-    setMessages([...messages, { user: input, bot: data.response }]);
-    setInput('');
-  };
-
+export default function ChatMessage({ message }: ChatMessageProps) {
+  const isUser = message.role === 'user'
+  
   return (
-    <div>
-      <div>
-        {messages.map((msg, index) => (
-          <div key={index}>
-            <strong>User:</strong> {msg.user}
-            <br />
-            <strong>Bot:</strong> {msg.bot}
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+      <div className={`max-w-3xl px-4 py-2 rounded-lg ${
+        isUser 
+          ? 'bg-blue-500 text-white' 
+          : 'bg-gray-100 text-gray-900'
+      }`}>
+        <div className="whitespace-pre-wrap">{message.content}</div>
+        
+        {/* Tool Invocations */}
+        {message.toolInvocations && message.toolInvocations.length > 0 && (
+          <div className="mt-2 space-y-2">
+            {message.toolInvocations.map((toolInvocation, index) => (
+              <ToolCallDisplay 
+                key={index} 
+                toolInvocation={toolInvocation}
+              />
+            ))}
           </div>
-        ))}
+        )}
       </div>
-      <input
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-      />
     </div>
-  );
-};
-
-export default ChatInterface;
+  )
+}

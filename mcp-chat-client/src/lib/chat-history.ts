@@ -213,6 +213,12 @@ export class ChatHistoryDatabase {
   }
 
   // Utility methods
+  sessionExists(sessionId: string): boolean {
+    const stmt = this.db.prepare('SELECT 1 FROM chat_sessions WHERE id = ?');
+    const result = stmt.get(sessionId);
+    return !!result;
+  }
+
   generateSessionTitle(messages: any[]): string {
     const firstUserMessage = messages.find(m => m.role === 'user');
     if (!firstUserMessage) return 'New Chat';
