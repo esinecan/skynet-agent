@@ -2,6 +2,8 @@ import { generateText, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { z } from 'zod';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { MCPManager } from './mcp-manager';
 import { getAllMCPServers } from '../config/default-mcp-servers';
 import { getRAGService, RAGResult } from './rag';
@@ -120,14 +122,16 @@ export class LLMService {
       if (options?.sessionId && options?.enableRAG !== false) {
         const result = await this.generateResponseWithMemory(userMessage, options.sessionId, options);
         return result.text;
-      }
-      
-      // Fall back to basic generation without memory
+      }        // Fall back to basic generation without memory
       const tools = await this.getAvailableTools();
       console.log('🔧 Available tools:', Object.keys(tools));
       
+      // Get system prompt
+      const systemPrompt = this.getSystemPrompt();
+      
       const result = await generateText({
         model: this.model,
+        system: systemPrompt || undefined,
         prompt: userMessage,
         tools: tools,
         maxTokens: parseInt(process.env.MAX_TOKENS || '4096'),
@@ -310,13 +314,16 @@ export class LLMService {
           console.log('🧠 Enhanced prompt with memory context');
         }
       }
-      
-      // Get available tools from connected MCP servers
+        // Get available tools from connected MCP servers
       const tools = await this.getAvailableTools();
       console.log('🔧 Available tools:', Object.keys(tools));
       
+      // Get system prompt
+      const systemPrompt = this.getSystemPrompt();
+      
       const result = await generateText({
         model: this.model,
+        system: systemPrompt || undefined,
         prompt: enhancedPrompt,
         tools: tools,
         maxTokens: parseInt(process.env.MAX_TOKENS || '4096'),
@@ -363,14 +370,55 @@ export class LLMService {
   }
 
   /**
-   * Format prompt with memory context
+   * Read system prompt from system-prompt.md file
    */
-  private formatPromptWithMemoryContext(userMessage: string, memoryContext: string): string {
-    return `${memoryContext}
+  private getSystemPrompt(): string {
+    try {
+      const systemPromptPath = join(process.cwd(), 'system-prompt.md');
+      const content = readFileSync(systemPromptPath, 'utf-8').trim();
+      
+      if (content) {
+        console.log('📝 Loaded system prompt from system-prompt.md');
+        return content;
+      } else {
+        console.log('📝 system-prompt.md is empty, using no system prompt');
+        return '';
+      }
+    } catch (error) {
+      if ((error as any).code === 'ENOENT') {
+        console.log('📝 system-prompt.md not found, using no system prompt');
+      } else {
+        console.warn('📝 Error reading system-prompt.md:', error);
+      }
+      return '';
+    }
+  }
 
-Current user message: ${userMessage}
-
-Please respond to the current user message, taking into account any relevant information from the previous conversations shown above.`;
+  /**
+   * Format prompt with system instructions only (no memory context)
+   */
+  private formatPrompt(userMessage: string): string {
+    const systemPrompt = this.getSystemPrompt();
+    
+    if (systemPrompt) {
+      return `${systemPrompt}\n\nUser: ${userMessage}`;
+    } else {
+      return userMessage;
+    }
+  }
+  /**
+   * Format prompt with memory context (system prompt is handled separately)
+   */  private formatPromptWithMemoryContext(userMessage: string, memoryContext: string): string {
+    let prompt = '';
+    
+    // Add memory context
+    prompt += `${memoryContext}\n\n`;
+    
+    // Add current user message
+    prompt += `Current user message: ${userMessage}\n\n`;
+    prompt += `Please respond to the current user message, taking into account any relevant information from the previous conversations shown above.`;
+    
+    return prompt;
   }
 
   /**

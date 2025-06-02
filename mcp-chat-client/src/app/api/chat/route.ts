@@ -2,9 +2,34 @@ import { streamText } from 'ai';
 import { NextRequest } from 'next/server';
 import { LLMService } from '../../../lib/llm-service';
 import { ChatHistoryDatabase } from '../../../lib/chat-history';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 // Global LLM service instance
 let llmService: LLMService | null = null;
+
+// Helper function to load system prompt
+function loadSystemPrompt(): string {
+  try {
+    const systemPromptPath = join(process.cwd(), 'system-prompt.md');
+    const content = readFileSync(systemPromptPath, 'utf-8').trim();
+    
+    if (content) {
+      console.log('📝 Chat API: Loaded system prompt from system-prompt.md');
+      return content;
+    } else {
+      console.log('📝 Chat API: system-prompt.md is empty, using no system prompt');
+      return '';
+    }
+  } catch (error) {
+    if ((error as any).code === 'ENOENT') {
+      console.log('📝 Chat API: system-prompt.md not found, using no system prompt');
+    } else {
+      console.warn('📝 Chat API: Error reading system-prompt.md:', error);
+    }
+    return '';
+  }
+}
 
 async function getLLMService(): Promise<LLMService> {
   if (!llmService) {
@@ -101,14 +126,17 @@ export async function POST(request: NextRequest) {
         console.warn('⚠️  Chat API: RAG enhancement failed, continuing without memory:', ragError);
       }
     }
-    
-    console.log('🚀 Chat API: About to call streamText with', enhancedMessages.length, 'messages');
+      console.log('🚀 Chat API: About to call streamText with', enhancedMessages.length, 'messages');
     console.log('🚀 Chat API: Last message:', JSON.stringify(enhancedMessages[enhancedMessages.length - 1], null, 2));
+    
+    // Load system prompt
+    const systemPrompt = loadSystemPrompt();
     
     // Stream the response with tool support
     try {
       const result = await streamText({
         model: model,
+        system: systemPrompt || undefined, // Include system prompt if available
         messages: enhancedMessages,
         tools: tools,
         maxTokens: parseInt(process.env.MAX_TOKENS || '4096'),
