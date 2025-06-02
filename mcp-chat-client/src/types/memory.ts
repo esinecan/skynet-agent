@@ -52,3 +52,80 @@ export interface MemoryStore {
   getMemoryCount(): Promise<number>;
   healthCheck(): Promise<boolean>;
 }
+
+// === Conscious Memory Types ===
+
+export interface ConsciousMemory {
+  id: string;
+  content: string;
+  tags: string[];
+  importance: number; // 1-10 scale
+  source: 'explicit' | 'suggested' | 'derived';
+  context?: string; // Surrounding conversation context
+  metadata: ConsciousMemoryMetadata;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ConsciousMemoryMetadata extends MemoryMetadata {
+  memoryType: 'conscious';
+  tags: string[];
+  importance: number;
+  source: 'explicit' | 'suggested' | 'derived';
+  relatedMemoryIds?: string[];
+  context?: string;
+}
+
+export interface ConsciousMemorySearchOptions extends MemorySearchOptions {
+  tags?: string[];
+  importanceMin?: number;
+  importanceMax?: number;
+  source?: 'explicit' | 'suggested' | 'derived';
+  includeRelated?: boolean;
+  consciousOnly?: boolean; // If true, only search explicit conscious memories
+}
+
+export interface ConsciousMemorySearchResult extends MemoryRetrievalResult {
+  tags: string[];
+  importance: number;
+  source: 'explicit' | 'suggested' | 'derived';
+  context?: string;
+  relatedMemoryIds?: string[];
+}
+
+export interface MemorySaveRequest {
+  content: string;
+  tags?: string[];
+  importance?: number;
+  source?: 'explicit' | 'suggested' | 'derived';
+  context?: string;
+  sessionId?: string;
+}
+
+export interface MemoryUpdateRequest {
+  id: string;
+  content?: string;
+  tags?: string[];
+  importance?: number;
+  context?: string;
+}
+
+export interface ConsciousMemoryStats {
+  totalConsciousMemories: number;
+  tagCount: number;
+  averageImportance: number;
+  sourceBreakdown: Record<string, number>;
+}
+
+export interface ConsciousMemoryService {
+  initialize(): Promise<void>;
+  saveMemory(request: MemorySaveRequest): Promise<string>;
+  searchMemories(query: string, options?: ConsciousMemorySearchOptions): Promise<ConsciousMemorySearchResult[]>;
+  updateMemory(request: MemoryUpdateRequest): Promise<boolean>;
+  deleteMemory(id: string): Promise<boolean>;
+  getAllTags(): Promise<string[]>;
+  getRelatedMemories(id: string, limit?: number): Promise<ConsciousMemorySearchResult[]>;
+  getStats(): Promise<ConsciousMemoryStats>;
+  healthCheck(): Promise<boolean>;
+  testMemorySystem(): Promise<boolean>;
+}

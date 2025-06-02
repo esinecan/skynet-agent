@@ -40,6 +40,13 @@ export const mcpConfig: MCPConfig = {
           '-y',
           '@modelcontextprotocol/server-sequential-thinking'
         ]
+      },
+      'conscious-memory': {
+        command: 'npx',
+        args: [
+          'tsx',
+          './src/lib/mcp-servers/conscious-memory-server.ts'
+        ]
       }
     }
   }
