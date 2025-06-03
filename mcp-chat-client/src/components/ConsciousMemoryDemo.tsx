@@ -39,6 +39,7 @@ export default function ConsciousMemoryDemo() {
     context: ''
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedMemories, setSelectedMemories] = useState<string[]>([]);
 
   const fetchStats = async () => {
     try {
@@ -51,24 +52,26 @@ export default function ConsciousMemoryDemo() {
       console.error('Failed to fetch stats:', err);
     }
   };
-
   const fetchTags = async () => {
     try {
       const response = await fetch('/api/conscious-memory?action=tags');
       const data = await response.json();
-      if (data.success) {
+      if (data.success && Array.isArray(data.data)) {
         setTags(data.data);
+      } else {
+        setTags([]); // Fallback to empty array
       }
     } catch (err) {
       console.error('Failed to fetch tags:', err);
+      setTags([]); // Fallback to empty array on error
     }
   };
 
   const saveMemory = async () => {
     if (!newMemory.content.trim()) return;
-    
-    setLoading(true);
+      setLoading(true);
     setError(null);
+    console.log('💾 Saving memory:', newMemory.content);
     
     try {
       const response = await fetch('/api/conscious-memory', {
@@ -85,14 +88,17 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
+      console.log('💾 Save response:', data);
       
       if (data.success) {
+        console.log('💾 Memory saved successfully with ID:', data.id);
         setNewMemory({ content: '', tags: '', importance: 5, context: '' });
         await Promise.all([fetchStats(), fetchTags()]);
         if (searchQuery) {
           await searchMemories();
         }
       } else {
+        console.error('💾 Save failed:', data.error);
         setError(data.error || 'Failed to save memory');
       }
     } catch (err) {
@@ -101,15 +107,167 @@ export default function ConsciousMemoryDemo() {
       setLoading(false);
     }
   };
-
   const searchMemories = async () => {
-    if (!searchQuery.trim()) {
-      setMemories([]);
+    setLoading(true);
+    setError(null);
+    console.log('🔍 Searching for:', searchQuery);
+    
+    try {
+      // If search query is empty, get all memories
+      if (!searchQuery.trim()) {
+        const allResponse = await fetch('/api/conscious-memory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'search',
+            query: 'a', // Search for common letter to match most text
+            limit: 100
+          })
+        });
+        
+        const allData = await allResponse.json();
+        console.log('🔍 All memories response:', allData);
+        
+        if (allData.success) {
+          setMemories(allData.results || []);
+          console.log('🔍 Found all memories:', allData.results?.length || 0);
+        }
+        setLoading(false);
+        return;
+      }
+      
+      const response = await fetch('/api/conscious-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'search',
+          query: searchQuery,
+          limit: 10
+        })
+      });
+      
+      const data = await response.json();
+      console.log('🔍 Search response:', data);
+      
+      if (data.success) {
+        setMemories(data.results || []);
+        console.log('🔍 Found memories:', data.results?.length || 0);
+      } else {
+        console.error('🔍 Search failed:', data.error);
+        setError(data.error || 'Failed to search memories');
+      }
+    } catch (err) {
+      setError('Network error while searching memories');
+    } finally {
+      setLoading(false);
+    }  };
+
+  const debugMemories = async () => {
+    setLoading(true);
+    console.log('🐛 Debug: Checking all memories...');
+    
+    try {
+      const response = await fetch('/api/conscious-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'debug' })
+      });
+      
+      const data = await response.json();
+      console.log('🐛 Debug response:', data);
+      
+      if (data.success) {
+        console.log(`🐛 Total memories in database: ${data.totalMemories}`);
+        console.log('🐛 Sample memories:', data.memories);
+      }
+    } catch (err) {
+      console.error('🐛 Debug failed:', err);
+    } finally {
+      setLoading(false);
+    }  };
+  const deleteMemory = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this memory?')) {
       return;
     }
     
     setLoading(true);
-    setError(null);
+    console.log('🗑️ Deleting memory:', id);
+    
+    try {
+      const response = await fetch('/api/conscious-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          id: id
+        })
+      });
+      
+      const data = await response.json();
+      console.log('🗑️ Delete response:', data);
+      
+      if (data.success) {
+        console.log('🗑️ Memory deleted successfully');
+        // Remove from current memories list immediately
+        setMemories(prev => prev.filter(m => m.id !== id));
+        // Refresh stats and tags
+        await Promise.all([fetchStats(), fetchTags()]);
+      } else {
+        console.error('🗑️ Delete failed:', data.error);
+        setError(data.error || 'Failed to delete memory');
+      }
+    } catch (err) {
+      console.error('🗑️ Delete error:', err);
+      setError('Network error while deleting memory');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteSelectedMemories = async () => {
+    if (selectedMemories.length === 0) return;
+    
+    setLoading(true);
+    console.log('🗑️ Deleting selected memories:', selectedMemories);
+    
+    try {
+      const response = await fetch('/api/conscious-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deleteMultiple',
+          ids: selectedMemories
+        })
+      });
+      
+      const data = await response.json();
+      console.log('🗑️ Bulk delete response:', data);
+      
+      if (data.success) {
+        console.log(`🗑️ Successfully deleted ${selectedMemories.length} memories`);
+        // Clear selected memories
+        setSelectedMemories([]);
+        // Refresh the search results and stats
+        await Promise.all([fetchStats(), fetchTags()]);
+        if (searchQuery || searchQuery === '') {
+          await searchMemories();
+        }
+      } else {
+        console.error('🗑️ Bulk delete failed:', data.error);
+        setError(data.error || 'Failed to delete selected memories');
+      }
+    } catch (err) {
+      console.error('🗑️ Bulk delete error:', err);
+      setError('Network error while deleting memories');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getAllMemories = async () => {
+    setSearchQuery('');
+    setLoading(true);
+    console.log('📋 Getting all memories...');
     
     try {
       const response = await fetch('/api/conscious-memory', {
@@ -117,20 +275,81 @@ export default function ConsciousMemoryDemo() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'search',
-          query: searchQuery,
-          options: { limit: 10 }
+          query: '',
+          limit: 100
         })
       });
       
       const data = await response.json();
+      console.log('📋 All memories response:', data);
       
       if (data.success) {
-        setMemories(data.data);
+        setMemories(data.results || []);
+        console.log('📋 Found all memories:', data.results?.length || 0);
       } else {
-        setError(data.error || 'Failed to search memories');
+        console.error('📋 Failed to get all memories:', data.error);
+        setError(data.error || 'Failed to get all memories');
       }
     } catch (err) {
-      setError('Network error while searching memories');
+      console.error('📋 Get all memories error:', err);
+      setError('Network error while getting all memories');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleMemorySelection = (id: string) => {
+    setSelectedMemories(prev => 
+      prev.includes(id) 
+        ? prev.filter(memId => memId !== id)
+        : [...prev, id]
+    );
+  };
+
+  const selectAllMemories = () => {
+    const allIds = memories.map(m => m.id);
+    setSelectedMemories(allIds);
+  };
+
+  const clearSelection = () => {
+    setSelectedMemories([]);  };
+
+  const deleteAllSearchResults = async () => {
+    if (memories.length === 0) {
+      return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete all ${memories.length} memories shown in the search results?`)) {
+      return;
+    }
+    
+    setLoading(true);
+    console.log('🗑️ Bulk deleting memories:', memories.length);
+    
+    try {
+      let deletedCount = 0;
+      for (const memory of memories) {
+        const response = await fetch('/api/conscious-memory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'delete',
+            id: memory.id
+          })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          deletedCount++;
+        }
+      }
+      
+      console.log(`🗑️ Deleted ${deletedCount} memories`);
+      setMemories([]);
+      await fetchStats();
+    } catch (err) {
+      console.error('🗑️ Bulk delete error:', err);
+      setError('Error during bulk delete');
     } finally {
       setLoading(false);
     }
@@ -140,9 +359,8 @@ export default function ConsciousMemoryDemo() {
     fetchStats();
     fetchTags();
   }, []);
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 p-8 text-gray-900">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-4">
@@ -182,14 +400,13 @@ export default function ConsciousMemoryDemo() {
               {stats?.averageImportance?.toFixed(1) || '0.0'}
             </p>
           </div>
-          
-          <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="bg-white rounded-lg shadow-md p-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-2">Source Types</h3>
-            <div className="text-sm">
+            <div className="text-sm text-gray-700">
               {stats?.sourceBreakdown && Object.entries(stats.sourceBreakdown).map(([source, count]) => (
-                <div key={source} className="flex justify-between">
-                  <span className="capitalize">{source}:</span>
-                  <span className="font-semibold">{count}</span>
+                <div key={source} className="flex justify-between text-gray-700">
+                  <span className="capitalize text-gray-600">{source}:</span>
+                  <span className="font-semibold text-gray-800">{count}</span>
                 </div>
               ))}
             </div>
@@ -253,16 +470,25 @@ export default function ConsciousMemoryDemo() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Why is this important?"
                 />
-              </div>
-            </div>
+              </div>            </div>
             
-            <button
-              onClick={saveMemory}
-              disabled={loading || !newMemory.content.trim()}
-              className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Saving...' : 'Save Memory'}
-            </button>
+            <div className="flex gap-4">
+              <button
+                onClick={saveMemory}
+                disabled={loading || !newMemory.content.trim()}
+                className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Saving...' : 'Save Memory'}
+              </button>
+              
+              <button
+                onClick={debugMemories}
+                disabled={loading}
+                className="bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 disabled:opacity-50"
+              >
+                🐛 Debug DB
+              </button>
+            </div>
           </div>
         </div>
 
@@ -276,7 +502,7 @@ export default function ConsciousMemoryDemo() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Search for memories..."
+              placeholder="Search for memories... (leave empty to show all)"
               onKeyPress={(e) => e.key === 'Enter' && searchMemories()}
             />
             <button
@@ -286,10 +512,8 @@ export default function ConsciousMemoryDemo() {
             >
               {loading ? 'Searching...' : 'Search'}
             </button>
-          </div>
-
-          {/* Available Tags */}
-          {tags.length > 0 && (
+          </div>          {/* Available Tags */}
+          {Array.isArray(tags) && tags.length > 0 && (
             <div className="mb-4">
               <p className="text-sm text-gray-600 mb-2">Available tags:</p>
               <div className="flex flex-wrap gap-2">
@@ -304,14 +528,21 @@ export default function ConsciousMemoryDemo() {
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Search Results */}
-          {memories.length > 0 && (
+          )}          {/* Search Results */}
+          {Array.isArray(memories) && memories.length > 0 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-700">
-                Found {memories.length} memories:
-              </h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-700">
+                  Found {memories.length} memories:
+                </h3>
+                <button
+                  onClick={deleteAllSearchResults}
+                  disabled={loading}
+                  className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 disabled:opacity-50 text-sm"
+                >
+                  🗑️ Delete All ({memories.length})
+                </button>
+              </div>
               {memories.map((memory, index) => (
                 <div key={memory.id || index} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex justify-between items-start mb-2">
@@ -331,10 +562,9 @@ export default function ConsciousMemoryDemo() {
                       {memory.source}
                     </span>
                   </div>
+                    <p className="text-gray-800 mb-2">{memory.text}</p>
                   
-                  <p className="text-gray-800 mb-2">{memory.text}</p>
-                  
-                  {memory.tags.length > 0 && (
+                  {Array.isArray(memory.tags) && memory.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
                       {memory.tags.map(tag => (
                         <span
@@ -346,12 +576,21 @@ export default function ConsciousMemoryDemo() {
                       ))}
                     </div>
                   )}
-                  
-                  {memory.context && (
+                    {memory.context && (
                     <p className="text-sm text-gray-600 italic">
                       Context: {memory.context}
                     </p>
                   )}
+                  
+                  <div className="mt-3 pt-3 border-t border-gray-200 flex justify-end">
+                    <button
+                      onClick={() => deleteMemory(memory.id)}
+                      disabled={loading}
+                      className="bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 disabled:opacity-50 text-sm"
+                    >
+                      🗑️ Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

@@ -123,6 +123,8 @@ export interface ConsciousMemoryService {
   searchMemories(query: string, options?: ConsciousMemorySearchOptions): Promise<ConsciousMemorySearchResult[]>;
   updateMemory(request: MemoryUpdateRequest): Promise<boolean>;
   deleteMemory(id: string): Promise<boolean>;
+  deleteMultipleMemories(ids: string[]): Promise<boolean>;
+  clearAllMemories(): Promise<boolean>;
   getAllTags(): Promise<string[]>;
   getRelatedMemories(id: string, limit?: number): Promise<ConsciousMemorySearchResult[]>;
   getStats(): Promise<ConsciousMemoryStats>;

@@ -41,7 +41,7 @@ export async function POST(
         { status: 400 }
       );
     }
-    
+
     const db = ChatHistoryDatabase.getInstance();
     
     // Ensure session exists
@@ -53,14 +53,26 @@ export async function POST(
         messages: [],
       });
     }
-    
-    // Add the message
+
+    // Prepare attachments if they exist
+    const attachments = message.attachments ? message.attachments.map((att: any) => ({
+      id: att.id || `att_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+      messageId: message.id,
+      name: att.name,
+      type: att.type,
+      size: att.size,
+      data: att.data,
+      createdAt: att.createdAt ? new Date(att.createdAt) : new Date(),
+    })) : undefined;
+
+    // Add the message with attachments
     const savedMessage = db.addMessage({
       id: message.id || `${sessionId}-msg-${Date.now()}`,
       sessionId,
       role: message.role,
       content: message.content,
       toolInvocations: message.toolInvocations,
+      attachments,
     });
     
     // Update session title if it's the first user message

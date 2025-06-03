@@ -62,15 +62,86 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
   ): Promise<ConsciousMemorySearchResult[]> {
     if (!this.initialized) {
       await this.initialize();
-    }
+    }    console.log(`🧠 Conscious memory search: "${query}" with options:`, options);
 
-    console.log(`🧠 Conscious memory search: "${query}" with options:`, options);
+    // Special case: empty query returns all memories (for management purposes)
+    if (!query.trim()) {
+      console.log('🧠 Empty query - returning all memories');
+      try {
+        // Use a generic search to get all memories
+        const allMemories = await this.memoryStore.retrieveMemories('the', {
+          limit: options.limit || 100,
+          sessionId: options.sessionId,
+          minScore: -2.0  // Get everything
+        });
+        console.log(`🧠 Retrieved ${allMemories.length} total memories`);        // Process and return all memories using existing logic
+        const combinedResults = this.mergeSearchResults(allMemories, []);
+        
+        // Apply the same filtering and mapping logic
+        const filtered = combinedResults
+          .filter(result => {
+            const metadata = result.metadata as ConsciousMemoryMetadata;
+            
+            // Basic filtering - mostly include all for empty search
+            if (metadata.memoryType === 'conscious') {
+              if (options.tags && options.tags.length > 0) {
+                if (!metadata.tags || !options.tags.some(tag => metadata.tags.includes(tag))) {
+                  return false;
+                }
+              }
+              
+              if (options.importanceMin && metadata.importance < options.importanceMin) {
+                return false;
+              }
+              
+              if (options.importanceMax && metadata.importance > options.importanceMax) {
+                return false;
+              }
+              
+              if (options.source && metadata.source !== options.source) {
+                return false;
+              }
+            } else if (options.consciousOnly) {
+              return false;
+            }
+            
+            return true;
+          })
+          .map(result => {
+            const metadata = result.metadata as any;
+            
+            let tags: string[] = [];
+            try {
+              tags = typeof metadata.tags === 'string' ? JSON.parse(metadata.tags) : (metadata.tags || []);
+            } catch {
+              tags = [];
+            }
+            
+            return {
+              id: result.id,
+              text: result.text,
+              score: result.score,
+              metadata: result.metadata,
+              tags,
+              importance: metadata.importance || 5,
+              source: metadata.source || 'chat',
+              context: metadata.context,
+              relatedMemoryIds: []
+            };
+          });
+          
+        return filtered;
+      } catch (error) {
+        console.error('🧠 Failed to retrieve all memories:', error);
+        return [];
+      }
+    }
 
     // Stage 1: Semantic search with embeddings
     const semanticResults = await this.memoryStore.retrieveMemories(query, {
       limit: options.limit || 10,
       sessionId: options.sessionId,
-      minScore: options.minScore || 0.0  // Very low threshold to catch more results
+      minScore: -2.0  // Extremely low threshold to catch ALL results
     });
 
     console.log(`🧠 Semantic search results: ${semanticResults.length} memories found`);
@@ -201,13 +272,70 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       return false;
     }
   }
-
   async deleteMemory(id: string): Promise<boolean> {
-    // ChromaDB doesn't have a direct delete method in our current implementation
-    // This would need to be added to the ChromaMemoryStore class
-    // For now, we'll return false to indicate deletion is not yet supported
-    console.warn(`🧠 Memory deletion not yet implemented for id: ${id}`);
-    return false;
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log(`🧠 Deleting conscious memory: ${id}`);
+      const success = await this.memoryStore.deleteMemory(id);
+      
+      if (success) {
+        console.log(`🧠 Successfully deleted memory: ${id}`);
+      } else {
+        console.error(`🧠 Failed to delete memory: ${id}`);
+      }
+      
+      return success;
+    } catch (error) {
+      console.error(`🧠 Error deleting memory ${id}:`, error);
+      return false;
+    }
+  }
+
+  async deleteMultipleMemories(ids: string[]): Promise<boolean> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log(`🧠 Deleting ${ids.length} conscious memories:`, ids);
+      const success = await this.memoryStore.deleteMemories(ids);
+      
+      if (success) {
+        console.log(`🧠 Successfully deleted ${ids.length} memories`);
+      } else {
+        console.error(`🧠 Failed to delete ${ids.length} memories`);
+      }
+      
+      return success;
+    } catch (error) {
+      console.error(`🧠 Error deleting multiple memories:`, error);
+      return false;
+    }
+  }
+
+  async clearAllMemories(): Promise<boolean> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log('🧠 Clearing all conscious memories');
+      const success = await this.memoryStore.clearAllMemories();
+      
+      if (success) {
+        console.log('🧠 Successfully cleared all memories');
+      } else {
+        console.error('🧠 Failed to clear all memories');
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('🧠 Error clearing all memories:', error);
+      return false;
+    }
   }
 
   async getAllTags(): Promise<string[]> {

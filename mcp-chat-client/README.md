@@ -498,9 +498,8 @@ curl http://localhost:3000/api/conscious-memory?action=stats
 3. **Configure environment variables**:
    ```env
    NODE_ENV=production
-   GOOGLE_AI_API_KEY=your_production_key
-   ANTHROPIC_API_KEY=your_production_key
-   CHROMA_URL=http://your-chroma-instance:8000
+   GOOGLE_AI_API_KEY=your_gosh_darn_key
+   CHROMA_URL=http://localhost:8000
    ```
 
 4. **Deploy to your platform** (Vercel, Railway, etc.)
@@ -557,7 +556,7 @@ We welcome contributions! Here's how to get started:
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License - Lok Tar Ogar!
 
 ---
 
@@ -567,152 +566,11 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - **Google AI** for the powerful embedding models
 - **Anthropic** for the Model Context Protocol
 - **Next.js Team** for the amazing React framework
-- **Open Source Community** for inspiration and tools
+- **Open Source Community** for the superb MCP servers and the Ollama library for Vercel AI SDK
 
 ---
 
-## 📞 Support & Community
+## Contribution
 
-- **Documentation**: [docs.example.com](https://docs.example.com)
-- **Discord**: [Join our community](https://discord.gg/mcp-chat)
-- **GitHub Issues**: [Report bugs or request features](https://github.com/your-org/mcp-chat-client/issues)
-- **Email**: support@example.com
-
----
-
-## 🔮 Roadmap
-
-### Phase 1: Core Features ✅
-- [x] Dual-layer memory architecture
-- [x] MCP tool integration
-- [x] Hybrid search algorithm
-- [x] Memory dashboard UI
-
-### Phase 2: Advanced Features 🚧
-- [ ] Memory relationship mapping
-- [ ] Automatic memory consolidation
-- [ ] Multi-user memory spaces
-- [ ] Memory export/import
-
-### Phase 3: AI Enhancement 🔮
-- [ ] Memory importance learning
-- [ ] Automatic tag generation
-- [ ] Cross-conversation memory linking
-- [ ] Memory summarization
-
-### Phase 4: Enterprise Features 🎯
-- [ ] Team memory sharing
-- [ ] Memory access controls
-- [ ] Audit trails and analytics
-- [ ] Enterprise deployment guides
-
----
-
-**Built with ❤️ by the MCP Chat Client team**
-
-*"Giving AI the power of conscious memory, one conversation at a time."*
-- **Responsibilities**: 
-  - Manages the core language model conversation flow
-  - Handles MCP tool calls and execution
-  - Coordinates between different LLM providers
-  - *(This node contains its own complex subsystem for tool orchestration)*
-
-#### 4. Self-Reflection Node
-- **Purpose**: Post-response analysis and quality assessment
-- **Responsibilities**:
-  - Evaluates the quality of generated responses
-  - Performs critique and improvement suggestions
-  - Determines response complexity for appropriate reflection depth
-  - Generates reflection scores and improvement recommendations
-  - *(Currently disabled in MVP but framework is in place)*
-
-#### 5. Memory Storage Node
-- **Purpose**: Persists conversation context for future retrieval
-- **Responsibilities**:
-  - Stores user queries and AI responses in vector database
-  - Generates embeddings for semantic search capabilities
-  - Manages memory metadata and timestamps
-  - Handles storage error recovery gracefully
-
-### Workflow Flow
-```
-User Input → Entry Point → Memory Retrieval → Unified LLM → Self-Reflection → Memory Storage → Response
-```
-
-The workflow uses LangGraph's state management to pass an `AppState` object between nodes, containing:
-- User input and message history
-- Retrieved memory context
-- AI responses and tool results
-- Reflection analysis
-- Memory storage references
-
-### Error Handling & Health Monitoring
-- Each node implements comprehensive error handling with graceful degradation
-- Health status monitoring tracks workflow performance
-- Sentry integration provides distributed tracing across workflow execution
-- Detailed logging at each stage enables debugging and optimization
-
-## Components
-
-### MCP Client
-- **Purpose**: To manage connections to the MCP server and facilitate tool calls.
-- **Implementation**:
-  - Use the `MCPClient` class to connect to the MCP server.
-  - Implement methods to call tools and handle responses.
-  - Support two types of transports: Streamable HTTP and stdio.
-
-### LLM Service
-- **Purpose**: To generate responses using the Vercel AI SDK.
-- **Implementation**:
-  - Create an `LLMService` class that initializes the language model based on the specified provider (e.g., OpenAI, Anthropic).
-  - Implement a method to generate responses that aggregates tools from the MCP client and sends requests to the language model.
-
-### User Interface
-- **Purpose**: To provide a user-friendly interface for interacting with the chat client.
-- **Implementation**:
-  - Use React to create a simple chat interface with an input field for user messages and a display area for conversation history.
-  - Implement a `ChatInterface` component that handles user input and displays responses from the LLM.
-
-## Data Flow
-1. The user enters a message in the chat interface.
-2. The message is sent to the `LLMService`, which prepares the context and tools.
-3. The `LLMService` sends a request to the language model using the Vercel AI SDK.
-4. The language model generates a response, which is returned to the `LLMService`.
-5. The response is displayed in the chat interface.
-
-## Error Handling
-- Implement error handling in the MCP client to catch connection issues and tool call failures.
-- Log errors using a simple logger utility to provide feedback in the console.
-- Display user-friendly error messages in the chat interface when issues occur.
-
-## Implementation Plan
-1. **Setup Project**:
-   - Initialize a new Node.js project.
-   - Install necessary dependencies: `@modelcontextprotocol/sdk`, `ai`, `react`, `react-dom`, etc.
-   
-2. **Create MCP Client**:
-   - Implement the `MCPClient` class to manage connections and tool calls.
-   - Support both Streamable HTTP and stdio transports.
-
-3. **Implement LLM Service**:
-   - Create the `LLMService` class to handle language model interactions.
-   - Integrate the Vercel AI SDK for generating responses.
-
-4. **Develop User Interface**:
-   - Create the `ChatInterface` component for user interaction.
-   - Implement state management to handle conversation history.
-
-5. **Testing**:
-   - Write unit tests for the MCP client and LLM service.
-   - Perform integration testing to ensure the components work together seamlessly.
-
-6. **Documentation**:
-   - Document the code and provide usage instructions for the chat client.
-
-## Testing
-- **Unit Tests**: Test individual components (MCP client, LLM service) for expected behavior.
-- **Integration Tests**: Ensure that the entire flow from user input to response generation works correctly.
-- **User Acceptance Testing**: Gather feedback from potential users to refine the interface and functionality.
-
-## Conclusion
-This design document outlines the implementation of a local chat client using the Model Context Protocol and Vercel AI SDK. By focusing on a single-user experience without authentication, the application aims to provide a straightforward and efficient way to interact with language models and tools. The modular architecture allows for easy expansion and integration of additional features in the future.
+- Fork then PR
+- If you open issues I'll try to fix them but you know, maybe not.

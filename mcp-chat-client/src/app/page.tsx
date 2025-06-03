@@ -90,8 +90,7 @@ export default function Home() {
       />
       
       <main className="flex min-h-screen flex-col items-center justify-between p-24">
-        <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
-          {/* Header with sidebar toggle */}
+        <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">          {/* Header with sidebar toggle */}
           <div className="flex items-center justify-between mb-8">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -101,17 +100,38 @@ export default function Home() {
               History
             </button>
             
-            <h1 className="text-4xl font-bold text-center flex-1">
-              MCP Chat Client
-            </h1>
+            <div className="flex-1 flex justify-center">
+              <h1 className="text-4xl font-bold">
+                MCP Chat Client
+              </h1>
+            </div>
             
-            <button
-              onClick={startNewChat}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <span>+</span>
-              New
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Navigation Links */}
+              <a 
+                href="/conscious-memory"
+                className="bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-1"
+                title="Memory Dashboard"
+              >
+                🧠 Memory
+              </a>
+              
+              <a 
+                href="/attachments"
+                className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm flex items-center gap-1"
+                title="Attachment Dashboard"
+              >
+                📎 Files
+              </a>
+              
+              <button
+                onClick={startNewChat}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <span>+</span>
+                New
+              </button>
+            </div>
           </div>
         
         <div className="bg-gray-100 border border-gray-300 rounded-lg p-4 h-96 overflow-y-auto mb-4">

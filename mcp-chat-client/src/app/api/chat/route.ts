@@ -60,7 +60,7 @@ function extractUserMessage(messages: any[]): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, sessionId: providedSessionId } = await request.json();
+    const { messages, sessionId: providedSessionId, attachments } = await request.json();
     
     if (!messages || !Array.isArray(messages)) {
       return new Response('Invalid messages format', { status: 400 });
@@ -73,6 +73,12 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Chat API: Processing messages:', messages.length);
     console.log('🏷️  Chat API: Session ID:', sessionId);
     console.log('💬 Chat API: User message:', userMessage.slice(0, 100) + '...');
+    
+    // Log attachment info if present
+    if (attachments && attachments.length > 0) {
+      console.log('📎 Chat API: Attachments:', attachments.length);
+      console.log('📎 Chat API: Attachment types:', attachments.map((a: any) => a.type).join(', '));
+    }
     
     // Get LLM service (will initialize on first call)
     const service = await getLLMService();
@@ -172,13 +178,21 @@ export async function POST(request: NextRequest) {
             
             console.log('📁 Chat API: Created new session:', sessionId);
           }
-          
           // Store user message
           await chatHistory.addMessage({
             id: `msg_${Date.now()}_user`,
             sessionId: sessionId,
             role: 'user',
             content: userMessage,
+            attachments: attachments ? attachments.map((att: any) => ({
+              id: att.id || `att_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+              messageId: `msg_${Date.now()}_user`,
+              name: att.name,
+              type: att.type,
+              size: att.size,
+              data: att.data,
+              createdAt: new Date(),
+            })) : undefined,
           });
           
           // Store assistant response

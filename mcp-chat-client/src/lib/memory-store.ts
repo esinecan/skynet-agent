@@ -261,10 +261,84 @@ export class ChromaMemoryStore implements MemoryStore {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const results = await this.retrieveMemories(testText, { limit: 1 });
-      
-      return results.length > 0 && results[0].id === id;
+        return results.length > 0 && results[0].id === id;
     } catch (error) {
       console.error('Memory system test failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Delete a specific memory by ID
+   */
+  async deleteMemory(id: string): Promise<boolean> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log(`Deleting memory with ID: ${id}`);
+      
+      await this.collection.delete({
+        ids: [id]
+      });
+      
+      console.log(`Successfully deleted memory: ${id}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to delete memory:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Delete multiple memories by IDs
+   */
+  async deleteMemories(ids: string[]): Promise<boolean> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log(`Deleting ${ids.length} memories:`, ids);
+      
+      await this.collection.delete({
+        ids: ids
+      });
+      
+      console.log(`Successfully deleted ${ids.length} memories`);
+      return true;
+    } catch (error) {
+      console.error('Failed to delete memories:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Clear all memories (be careful!)
+   */
+  async clearAllMemories(): Promise<boolean> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log('Clearing all memories from collection');
+      
+      // Get all IDs first
+      const results = await this.collection.get();
+      if (results.ids && results.ids.length > 0) {
+        await this.collection.delete({
+          ids: results.ids
+        });
+        console.log(`Successfully cleared ${results.ids.length} memories`);
+      } else {
+        console.log('No memories to clear');
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to clear all memories:', error);
       return false;
     }
   }

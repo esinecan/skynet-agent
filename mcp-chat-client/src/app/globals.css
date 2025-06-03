@@ -14,8 +14,8 @@ body {
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
+  color: #1f2937; /* Force dark gray text */
+  background: #ffffff; /* Force white background */
 }
 
 :root {
