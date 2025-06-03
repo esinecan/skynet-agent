@@ -135,31 +135,53 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
         console.error('🧠 Failed to retrieve all memories:', error);
         return [];
       }
-    }
-
-    // Stage 1: Semantic search with embeddings
+    }    // Stage 1: Semantic search with embeddings
     const semanticResults = await this.memoryStore.retrieveMemories(query, {
       limit: options.limit || 10,
       sessionId: options.sessionId,
-      minScore: -2.0  // Extremely low threshold to catch ALL results
+      minScore: -2.0  // Very low threshold to catch all potential results
     });
 
     console.log(`🧠 Semantic search results: ${semanticResults.length} memories found`);
-
-    // Stage 2: Keyword fallback search if semantic results are limited
-    let keywordResults: any[] = [];
-    const minSemanticResults = 2; // If we get fewer than this, try keyword search
     
-    if (semanticResults.length < minSemanticResults) {
-      console.log(`🧠 Semantic results below threshold (${semanticResults.length}), trying keyword search...`);
+    // Check quality of semantic results
+    const goodSemanticResults = semanticResults.filter(r => r.score >= 0.15); // Reasonable similarity threshold
+    const hasGoodSemanticMatch = goodSemanticResults.length > 0;
+    const bestSemanticScore = semanticResults.length > 0 ? Math.max(...semanticResults.map(r => r.score)) : 0;
+    
+    console.log(`🧠 Semantic quality check: ${goodSemanticResults.length} good results (score >= 0.15), best score: ${bestSemanticScore.toFixed(3)}`);
+
+    // Stage 2: Keyword fallback search - more aggressive fallback
+    let keywordResults: any[] = [];
+    const shouldTryKeywords = !hasGoodSemanticMatch || semanticResults.length < 3;
+    
+    if (shouldTryKeywords) {
+      console.log(`🧠 Semantic results poor quality or insufficient (best: ${bestSemanticScore.toFixed(3)}), trying keyword search...`);
       keywordResults = await this.performKeywordSearch(query, options);
       console.log(`🧠 Keyword search results: ${keywordResults.length} memories found`);
-    }
-
-    // Stage 3: Merge and deduplicate results
+    }    // Stage 3: Merge and deduplicate results
     const combinedResults = this.mergeSearchResults(semanticResults, keywordResults);
-    console.log(`🧠 Combined search results: ${combinedResults.length} memories found`);    // Filter and enhance results - include both conscious memories AND regular memories
-    const filtered = combinedResults
+    console.log(`🧠 Combined search results: ${combinedResults.length} memories found`);
+
+    // Apply quality threshold - don't return very poor matches unless there's keyword relevance
+    const qualityFiltered = combinedResults.filter(result => {
+      // Keep results with decent semantic similarity
+      if (result.score >= 0.15) return true;
+      
+      // Keep results with keyword matches (keywordMatches property from keyword search)
+      if (result.keywordMatches && result.keywordMatches > 0) return true;
+      
+      // Reject very poor matches
+      if (result.score < 0.05) return false;
+      
+      // For borderline cases, keep if we don't have better results
+      return combinedResults.filter(r => r.score >= 0.15).length === 0;
+    });
+    
+    console.log(`🧠 Quality filtered results: ${qualityFiltered.length} memories (removed ${combinedResults.length - qualityFiltered.length} low-quality matches)`);
+
+    // Filter and enhance results - include both conscious memories AND regular memories
+    const filtered = qualityFiltered
       .filter(result => {
         const metadata = result.metadata as ConsciousMemoryMetadata;
         
@@ -483,7 +505,6 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       return false;
     }
   }
-
   /**
    * Perform keyword-based search as fallback when semantic search returns few results
    */
@@ -499,8 +520,11 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
         minScore: -1.0 // Very low to get everything
       });
 
-      // Split query into keywords
-      const keywords = query.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+      // Handle multi-word phrases and individual keywords
+      const originalQuery = query.toLowerCase().trim();
+      const keywords = originalQuery.split(/\s+/).filter(word => word.length > 1); // Allow 2+ letter words
+      
+      console.log(`🔍 Keyword search for: "${originalQuery}" (split into: ${keywords.join(', ')})`);
       
       // Score memories based on keyword matches
       const scoredMemories = allMemories
@@ -508,23 +532,38 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
           const text = memory.text.toLowerCase();
           let keywordScore = 0;
           let exactMatches = 0;
+          let phraseBonus = 0;
           
+          // Check for exact phrase match first (highest score)
+          if (text.includes(originalQuery)) {
+            phraseBonus = 1.0;
+            keywordScore += 1.0;
+            console.log(`🎯 Exact phrase match found in memory ${memory.id}`);
+          }
+          
+          // Check individual keywords
           for (const keyword of keywords) {
             if (text.includes(keyword)) {
               exactMatches++;
-              keywordScore += 0.3; // Base score for keyword match
+              keywordScore += 0.4; // Higher base score
               
               // Bonus for exact word boundary matches
               const wordRegex = new RegExp(`\\b${keyword}\\b`, 'i');
               if (wordRegex.test(text)) {
+                keywordScore += 0.3; // Higher word boundary bonus
+              }
+              
+              // Extra bonus for proper nouns (capitalized words)
+              if (keyword[0] === keyword[0].toUpperCase() && keyword.length > 2) {
                 keywordScore += 0.2;
+                console.log(`🏷️ Proper noun bonus for "${keyword}" in memory ${memory.id}`);
               }
             }
           }
           
-          // Calculate final score
-          const coverage = exactMatches / keywords.length; // How many keywords matched
-          const finalScore = keywordScore * coverage;
+          // Calculate final score with phrase bonus
+          const coverage = keywords.length > 0 ? exactMatches / keywords.length : 0;
+          const finalScore = (keywordScore + phraseBonus) * Math.max(0.5, coverage); // Ensure some score for partial matches
           
           return {
             ...memory,

@@ -3,7 +3,9 @@
 import React from 'react'
 import { useChat } from 'ai/react'
 import ChatHistorySidebar from '../components/ChatHistorySidebar'
+import MessageInput from '../components/MessageInput'
 import { ChatSession } from '../lib/chat-history'
+import { FileAttachment } from '../types/chat'
 
 export default function Home() {
   const [currentSessionId, setCurrentSessionId] = React.useState<string>('')
@@ -33,9 +35,8 @@ export default function Home() {
       }
     }
   })
-
   // Save user messages immediately when sent
-  const handleChatSubmit = async (e: React.FormEvent) => {
+  const handleChatSubmit = async (e: React.FormEvent, attachments?: FileAttachment[]) => {
     handleSubmit(e)
     
     // Save user message to database
@@ -49,6 +50,7 @@ export default function Home() {
               id: `user-${Date.now()}`,
               role: 'user',
               content: input.trim(),
+              attachments: attachments || []
             }
           })
         })
@@ -180,25 +182,15 @@ export default function Home() {
             <div className="text-gray-500 text-center">
               <div className="animate-pulse">Assistant is thinking...</div>
             </div>
-          )}
-        </div>
+          )}        </div>
         
-        <form onSubmit={handleChatSubmit} className="flex gap-2">
-          <input
-            value={input}
-            onChange={handleInputChange}
-            placeholder="Type your message..."
-            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !input.trim()}
-            className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Sending...' : 'Send'}
-          </button>
-        </form>        
+        <MessageInput
+          input={input}
+          handleInputChange={handleInputChange}
+          handleSubmit={handleChatSubmit}
+          isLoading={isLoading}
+        />
+        
         <div className="text-xs text-gray-500 mt-4 text-center">
           Connected MCP servers: filesystem, windows-cli, playwright, sequential-thinking
         </div>

@@ -106,43 +106,51 @@ export default function ConsciousMemoryDemo() {
     } finally {
       setLoading(false);
     }
+  };  const loadAllMemories = async () => {
+    setLoading(true);
+    setError(null);
+    console.log('🔍 Loading all memories on initial page load');
+    
+    try {
+      const response = await fetch('/api/conscious-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'search',
+          query: '', // Empty query to get all memories
+          limit: 100
+        })
+      });
+      
+      const data = await response.json();
+      console.log('🔍 Load all response:', data);
+      
+      if (data.success) {
+        setMemories(data.results || []);
+        console.log('🔍 Loaded all memories:', data.results?.length || 0);
+      } else {
+        setError(data.error || 'Failed to load memories');
+      }
+    } catch (err) {
+      setError('Network error while loading memories');
+    } finally {
+      setLoading(false);
+    }
   };
+
   const searchMemories = async () => {
     setLoading(true);
     setError(null);
     console.log('🔍 Searching for:', searchQuery);
     
     try {
-      // If search query is empty, get all memories
-      if (!searchQuery.trim()) {
-        const allResponse = await fetch('/api/conscious-memory', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'search',
-            query: 'a', // Search for common letter to match most text
-            limit: 100
-          })
-        });
-        
-        const allData = await allResponse.json();
-        console.log('🔍 All memories response:', allData);
-        
-        if (allData.success) {
-          setMemories(allData.results || []);
-          console.log('🔍 Found all memories:', allData.results?.length || 0);
-        }
-        setLoading(false);
-        return;
-      }
-      
       const response = await fetch('/api/conscious-memory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'search',
-          query: searchQuery,
-          limit: 10
+          query: searchQuery, // Send the actual query (empty or not)
+          limit: searchQuery.trim() ? 10 : 100 // Higher limit for "show all" vs specific search
         })
       });
       
@@ -353,11 +361,11 @@ export default function ConsciousMemoryDemo() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
+  };  useEffect(() => {
     fetchStats();
     fetchTags();
+    // Load all memories on initial load
+    loadAllMemories();
   }, []);
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 p-8 text-gray-900">

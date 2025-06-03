@@ -22,7 +22,6 @@ async function main() {
       tools: {}
     }
   });
-
   // Initialize conscious memory service
   const memoryService = getConsciousMemoryService();
   await memoryService.initialize();
@@ -32,29 +31,34 @@ async function main() {
     {
       content: z.string().describe("The information to remember"),
       tags: z.array(z.string()).optional().describe("Tags to categorize this memory"),
-      importance: z.number().min(1).max(10).optional().describe("Importance level 1-10 (default: 5)"),
+      importance: z.number().min(0).max(10).optional().describe("Importance level: preferably 1-10 (where 1=low importance, 10=critical importance), but 0-1 decimal values will be auto-converted. Default is 5."),
       context: z.string().optional().describe("Additional context about when/why this was saved"),
       sessionId: z.string().optional().describe("Session ID to associate with this memory")
     },
     async ({ content, tags, importance, context, sessionId }) => {
       try {
+        // Safe conversion: if importance is between 0-1, convert to 1-10 scale
+        let safeImportance = importance || 5;
+        if (safeImportance > 0 && safeImportance < 1) {
+          safeImportance = Math.max(1, Math.floor(10 * safeImportance));
+          console.log(`🔧 Converted importance from ${importance} to ${safeImportance}`);
+        }
+        
         const id = await memoryService.saveMemory({
           content,
           tags: tags || [],
-          importance: importance || 5,
+          importance: safeImportance,
           source: 'explicit',
           context,
           sessionId
-        });
-
-        const result = {
+        });        const result = {
           success: true,
           id,
           message: `Memory saved successfully with ID: ${id}`,
           summary: {
             content: content.slice(0, 100) + (content.length > 100 ? '...' : ''),
             tags: tags || [],
-            importance: importance || 5
+            importance: safeImportance
           }
         };
 

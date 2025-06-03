@@ -1,36 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_TYPES = [
-  // Images
-  'image/jpeg',
-  'image/jpg', 
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  // Documents
-  'application/pdf',
-  'text/plain',
-  'text/markdown',
-  'text/csv',
-  'application/json',
-  'application/xml',
-  // Microsoft Office
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/msword',
-  'application/vnd.ms-excel',
-  'application/vnd.ms-powerpoint',
-  // Code files
-  'text/javascript',
-  'text/typescript',
-  'text/html',
-  'text/css',
-  'application/javascript',
-  'application/typescript',
-];
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB - generous limit for multimodal content
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,35 +12,24 @@ export async function POST(request: NextRequest) {
         { error: 'No files provided' },
         { status: 400 }
       );
-    }
-
-    if (files.length > 10) {
+    }    if (files.length > 20) { // More generous file count
       return NextResponse.json(
-        { error: 'Maximum 10 files allowed per upload' },
+        { error: 'Maximum 20 files allowed per upload' },
         { status: 400 }
       );
     }
 
     const processedFiles = [];
-    
-    for (const file of files) {
-      // Validate file size
+      for (const file of files) {
+      // Only validate file size - let the AI handle the rest
       if (file.size > MAX_FILE_SIZE) {
         return NextResponse.json(
-          { error: `File "${file.name}" exceeds maximum size of 10MB` },
+          { error: `File "${file.name}" exceeds maximum size of 50MB` },
           { status: 400 }
         );
       }
 
-      // Validate file type
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        return NextResponse.json(
-          { error: `File type "${file.type}" is not allowed for file "${file.name}"` },
-          { status: 400 }
-        );
-      }
-
-      // Convert to base64
+      // Convert to base64 - no type validation
       const buffer = await file.arrayBuffer();
       const base64Data = Buffer.from(buffer).toString('base64');
 
@@ -106,13 +65,13 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     maxFileSize: MAX_FILE_SIZE,
-    maxFiles: 10,
-    allowedTypes: ALLOWED_TYPES,
-    supportedFormats: {
-      images: ['JPEG', 'PNG', 'GIF', 'WebP', 'SVG'],
-      documents: ['PDF', 'TXT', 'MD', 'CSV', 'JSON', 'XML'],
-      office: ['DOCX', 'XLSX', 'PPTX', 'DOC', 'XLS', 'PPT'],
-      code: ['JS', 'TS', 'HTML', 'CSS'],
+    maxFiles: 20,
+    message: "Upload any file type - let the AI model decide what it can handle! 🚀",
+    supportedByModels: {
+      "Gemini": ["Images", "Text", "Audio", "Video", "Documents"],
+      "GPT-4V": ["Images", "Text", "Documents"],
+      "Claude": ["Images", "Text", "Documents"],
+      "Note": "Different models have different capabilities - we don't restrict file types"
     },
   });
 }

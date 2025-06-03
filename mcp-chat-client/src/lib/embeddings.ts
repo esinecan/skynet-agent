@@ -15,10 +15,12 @@ export class GoogleEmbeddingService implements EmbeddingService {
   private readonly dimensions = 768; // text-embedding-004 dimensions
   
   constructor() {
-    const apiKey = process.env.GOOGLE_API_KEY;
-    
+    let apiKey = process.env.GOOGLE_API_KEY;
+    console.log(`Using GOOGLE_API_KEY: ${!!apiKey}`);
     if (!apiKey) {
       console.warn('GOOGLE_API_KEY not configured, using fallback embeddings');
+      apiKey = process.env.GOOGLE_API_KEY;
+      console.log(`Using GOOGLE_API_KEY: ${!!apiKey}`);
     } else {
       this.initializeGoogleAI(apiKey);
     }

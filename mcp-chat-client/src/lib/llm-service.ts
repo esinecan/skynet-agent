@@ -56,11 +56,11 @@ export class LLMService {
   private getDefaultModel(provider: LLMProvider): string {
     switch (provider) {
       case 'google':
-        return 'gemini-2.0-flash-exp';
+        return 'gemini-2.5-flash-preview-05-20';
       case 'deepseek':
         return 'deepseek-chat';
       default:
-        return 'gemini-2.0-flash-exp';
+        return 'gemini-2.5-flash-preview-05-20';
     }
   }
 

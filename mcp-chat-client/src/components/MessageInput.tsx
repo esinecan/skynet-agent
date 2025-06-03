@@ -174,7 +174,6 @@ export default function MessageInput({
               multiple
               onChange={(e) => e.target.files && handleFileSelect(e.target.files)}
               className="hidden"
-              accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.docx,.xlsx,.pptx,.doc,.xls,.ppt,.js,.ts,.html,.css"
             />
 
             {/* Attachment count */}
