@@ -109,8 +109,8 @@ ANTHROPIC_API_KEY=sk-ant-your-key
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/mcp-chat-client.git
-cd mcp-chat-client
+git clone https://github.com/esinecan/skynet-agent.git
+cd skynet-agent
 
 # Install dependencies
 npm install
@@ -384,7 +384,7 @@ The conscious memory system exposes these tools to the LLM:
 ## 🏛️ Project Structure
 
 ```
-mcp-chat-client/
+skynet-agent/
 ├── src/
 │   ├── app/                    # Next.js app router
 │   │   ├── api/               # API routes
