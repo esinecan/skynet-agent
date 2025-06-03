@@ -1,621 +1,604 @@
-# MCP Compatible TypeScript and Next.js LLM Chat Client That Also Has Passive RAG for Long Term Memory Purposes (IN PROGRESS)
-Skynet Agent is an autonomous AI assistant built with Node.js and TypeScript. It features **multi-LLM provider support** via the Vercel AI SDK, enabling seamless switching between OpenAI, Google Gemini, Anthropic Claude, and more. The agent includes intrinsic motivation, self-reflection, semantic memory management, and external tool execution via the Model Context Protocol (MCP). It exposes a modern streaming HTTP API and includes a React-based web GUI. See "Tutorial.md" for detailed information.
+# 🧠 Skynet-Agent: One LLM Client to Rule Them All (Feat RAG + MCP)
 
-![Gemini_Generated_Image_s0i5y7s0i5y7s0i5](https://github.com/user-attachments/assets/59288b74-f072-48fa-9e3e-04f1dce59706)
+> *"What if AI could not only access memories, but consciously choose what to remember? With MCP tool access fully supported?"*
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6B6B?style=for-the-badge&logo=database&logoColor=white)](https://www.trychroma.com/)
+[![MCP](https://img.shields.io/badge/MCP-4A90E2?style=for-the-badge&logo=protocol&logoColor=white)](https://modelcontextprotocol.io/)
+
+**Skynet-Agent Client** is a revolutionary AI conversation platform that implements a **dual-layer memory architecture** inspired by human cognition. It combines automatic background memory (like human non-volitional memory) with conscious, deliberate memory operations that AI can control. It also has the tool access powers similar to those of Claude Desktop.
+
+## 🎯 Key Innovations
+
+### 🔄 Dual-Layer Memory Architecture
+- **Automatic Layer (RAG)**: Background conversation storage and retrieval
+- **Conscious Layer**: Explicit, volitional memory operations controlled by AI
+- **Hybrid Search**: Solves embedding similarity limitations with semantic + keyword search
+
+### 🛠️ MCP Tool Integration
+- Exposes conscious memory as **Model Context Protocol tools**
+- AI naturally saves and recalls memories during conversation
+- Clean separation between UI, memory, and AI operations
+
+### 🔍 Advanced Search Capabilities
+- **Semantic Search**: Vector embeddings for conceptual similarity
+- **Keyword Fallback**: Exact text matching when embeddings fail
+- **Smart Merging**: Combines results with intelligent ranking
+
+---
+
+## 🏗️ Architecture Overview
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   User Interface│────│  Next.js Chat   │────│   Chat API      │
+│   (React/TS)    │    │   Client        │    │   Routes        │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                                       │
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │  LLM Service    │────│  MCP Manager    │
+                       │  (Anthropic)    │    │                 │
+                       └─────────────────┘    └─────────────────┘
+                                                       │
+                                              ┌─────────────────┐
+                                              │ Conscious Memory│
+                                              │  MCP Server     │
+                                              └─────────────────┘
+                                                       │
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Memory UI     │────│ Conscious Memory│────│ ChromaDB Memory │
+│   Dashboard     │    │    Service      │    │     Store       │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                                       │
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │   RAG System    │────│  Google         │
+                       │  (Automatic)    │    │  Embeddings     │
+                       └─────────────────┘    └─────────────────┘
+```
+
+### Core Components
+
+| Component | Purpose | Technology |
+|-----------|---------|------------|
+| **Chat Interface** | Real-time AI conversations | Next.js, React, TypeScript |
+| **RAG System** | Automatic memory storage & retrieval | ChromaDB, Google Embeddings |
+| **Conscious Memory** | Explicit memory operations | MCP Tools, Vector Search |
+| **Hybrid Search** | Semantic + keyword matching | Custom algorithm |
+| **MCP Integration** | Tool-based AI memory access | Model Context Protocol |
+
+## 🤖 Multi-Provider LLM Support
+
+**Skynet-Agent** supports **7 different LLM providers**, giving you unmatched flexibility to choose the perfect model for any task:
+
+| Provider                  | Type              | Best For                              | Models Available                                      |
+|---------------------------|-------------------|---------------------------------------|-------------------------------------------------------|
+| **🧠 Anthropic**          | Cloud             | Advanced reasoning, analysis & safety | `claude-4-sonnet`, `claude-4-opus`                     |
+| **🏎️ Groq**              | Cloud             | Ultra‑fast inference                  | `grok-3-mini`, `grok-3-beta`                           |
+| **💻 Mistral**            | Cloud             | Natural language & code generation    | `mistral-7b-instruct`, `mistral-coder-7b`               |
+| **🔄 OpenAI-Compatible**  | Cloud / Self‑Hosted | Broad ecosystem integration           | `gpt-4o-chat`, `gpt-4o-code`, and more                  |
+| **🏠 Ollama**             | Local             | Privacy-focused, truly free           | Any local model (Llama 3, Qwen3, etc.)                  |
+| **🤖 Google Gemini**      | Cloud             | Multimodal integration & high speed   | `gemini-2.5-flash`, `gemini-2.5-pro`                    |
+| **🚀 DeepSeek**           | Cloud             | Cost‑effective, robust performance    | `deepseek-chat-r1`, `deepseek-coder-r1`                 |
 
 
-## Features
 
-### 🤖 **Multi-LLM Provider Support**
-* **Vercel AI SDK integration** with unified interface for multiple providers
-* **OpenAI models**: GPT-4o, GPT-4o-mini, GPT-3.5-turbo
-* **Google Gemini models**: Gemini 2.5 series
-* **Anthropic Claude models**: Claude 3.5 Sonnet, Claude 3.5 Haiku
-* **Easy provider switching** via environment configuration
+### 🔧 Quick Provider Setup
+```env
+# Choose your provider
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-3-5-sonnet-20241022
 
-### 🧠 **Advanced Memory System**
-* **Real embeddings**: Uses Google's latest text-embedding-004 model for semantic memory
-* **ChromaDB integration**: Lightweight, high-performance vector database (primary)
-* **Semantic similarity search** with configurable similarity thresholds
-* **Memory consolidation**: Scheduled summarization and cleanup of stored memories
+# Add your API key
+ANTHROPIC_API_KEY=sk-ant-your-key
+```
 
-### 🔧 **Cognitive Capabilities**
-* **Multi-step reasoning** with adaptive response improvement
-* **Self-reflection system**: Evaluates and refines responses automatically
-* **Intrinsic motivation**: Autonomous task initiation during idle periods
-* **Session-based conversations** with persistent memory across sessions
+**👉 [Complete Provider Setup Guide](PROVIDERS.md)** - Installation, configuration, and usage examples for all providers.
 
-### 🛠️ **Tool Integration & APIs**
-* **Model Context Protocol (MCP)**: Dynamic external tool execution
-* **Streaming API**: Real-time Server-Sent Events for live responses
-* **RESTful endpoints**: Session management, file uploads, health monitoring
-* **React-based GUI**: Modern web interface with real-time chat and file sharing
-* **Docker support**: Complete containerization with health checks
+---
 
-## Prerequisites
+## 🚀 Quick Start
 
-* Node.js >= 18.x
-* npm >= 8.x
-* **At least one LLM provider API key**:
-  - **Google Gemini**: `GOOGLE_API_KEY` (recommended for embeddings)
-  - **OpenAI**: `OPENAI_API_KEY` (for GPT models)
-  - **Anthropic**: `ANTHROPIC_API_KEY` (for Claude models)
-* **ChromaDB**: Primary vector database for semantic memory storage
+### Prerequisites
 
-## Installation
+- **Node.js** 18+ 
+- **Docker** (for ChromaDB)
+- **Google AI API Key** (for embeddings)
+
+### Installation
 
 ```bash
-git clone <repository-url>
-cd <repository-directory>
+# Clone the repository
+git clone https://github.com/esinecan/skynet-agent.git
+cd skynet-agent
+
+# Install dependencies
 npm install
 
-# Install client dependencies for the GUI
-cd client
-npm install
-cd ..
+# Set up environment variables
+cp .env.example .env.local
+# Edit .env.local with your API keys
+
+# Start ChromaDB
+docker-compose up -d
+
+# Start the development server
+npm run dev
 ```
 
-**Alternative**: Use the automatic installer script:
-```bash
-npm run install:all
-```
-
-## Configuration
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and configure your LLM provider(s):
+### Environment Configuration
 
 ```env
-# LLM Provider Configuration (choose one or more)
-# Google Gemini (recommended for embeddings)
-GOOGLE_API_KEY=your_gemini_api_key_here
-
-# OpenAI (for GPT models)
-OPENAI_API_KEY=your_openai_api_key_here
-
-# Anthropic (for Claude models)
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-
-# Model Selection (defaults to google:gemini-2.0-flash)
-# Format: provider:model-name
-# Examples:
-# LLM_MODEL=google:gemini-2.0-flash
-# LLM_MODEL=openai:gpt-4o
-# LLM_MODEL=anthropic:claude-3-5-sonnet-20241022
-
-# Server Configuration
-PORT=3000
-MCP_SERVER_PORT=8081
-
-# ChromaDB Configuration (Primary vector database)
-CHROMA_PATH=./data/chroma
-CHROMA_COLLECTION=skynet_memories
-
-# Memory & Autonomous Behavior
-MEMORY_CONSOLIDATION_SCHEDULE="0 2 * * *"  # Daily at 2 AM
-MEMORY_DIR=./data/memory
-IDLE_THRESHOLD_MINUTES=10
-
-# MCP Server Configuration (JSON format)
-# Example: {"playwright":{"transport":"stdio","command":"npx","args":["@playwright/mcp@latest"]}}
-# SKYNET_MCP_SERVERS_JSON='{}'
+# .env.local
+GOOGLE_AI_API_KEY=your_google_ai_api_key
+ANTHROPIC_API_KEY=your_anthropic_api_key
+CHROMA_URL=http://localhost:8000
 ```
 
-### LLM Provider Setup
+### First Run
 
-Skynet Agent uses the **Vercel AI SDK** for unified multi-provider LLM access. Configure one or more providers:
+1. **Visit** `http://localhost:3000`
+2. **Start chatting** - memories are automatically saved
+3. **Try conscious memory**: "Remember that I prefer TypeScript for large projects"
+4. **Test recall**: "What did I tell you about my preferences?"
+5. **Explore memory UI**: Visit `/conscious-memory` for the memory dashboard
 
-#### Google Gemini (Recommended)
-```env
-GOOGLE_API_KEY=your_api_key_here
-LLM_MODEL=google:gemini-2.0-flash
+---
+
+## 💡 Usage Examples
+
+### 🤖 Natural Memory Operations
+
+The AI automatically handles memory operations through conversation:
+
+```
+User: "Remember that I'm working on a React project with TypeScript and prefer functional components"
+
+AI: "💾 I've saved this to memory: Your React project preferences - TypeScript with functional components"
+
+User: "What were my frontend preferences again?"
+
+AI: "🧠 From memory: You're working on a React project with TypeScript and prefer functional components. You also mentioned preferring Tailwind for styling earlier."
 ```
 
-**Available Gemini models:**
-- `gemini-2.0-flash` (latest, fastest)
-- `gemini-1.5-pro` (high capability)
-- `gemini-1.5-flash` (balanced)
+### 🔧 Explicit Memory Commands
 
-**Get API key:** [Google AI Studio](https://aistudio.google.com/app/apikey)
+```
+User: "Save this debugging approach for React performance issues"
+AI: [Automatically calls save_memory tool]
 
-#### OpenAI
-```env
-OPENAI_API_KEY=your_api_key_here  
-LLM_MODEL=openai:gpt-4o
+User: "Search my memories for anything about state management"  
+AI: [Calls search_memories tool and returns relevant findings]
+
+User: "What have I learned about Next.js?"
+AI: [Searches both conscious and RAG memories]
 ```
 
-**Available OpenAI models:**
-- `gpt-4o` (latest GPT-4)
-- `gpt-4o-mini` (cost-effective)
-- `gpt-3.5-turbo` (legacy)
+### 🎯 Memory Types
 
-**Get API key:** [OpenAI Platform](https://platform.openai.com/api-keys)
+| Type | Description | Example |
+|------|-------------|---------|
+| **Preferences** | User settings and choices | "I prefer VS Code over other editors" |
+| **Knowledge** | Technical insights and learnings | "React hooks are better for state logic" |
+| **Context** | Project and work information | "Working on e-commerce platform" |
+| **References** | Important links and resources | "Useful TypeScript patterns guide" |
 
-#### Anthropic Claude
-```env
-ANTHROPIC_API_KEY=your_api_key_here
-LLM_MODEL=anthropic:claude-3-5-sonnet-20241022
+---
+
+## 🔬 Technical Deep Dive
+
+### Memory Architecture
+
+#### Automatic Memory (RAG)
+```typescript
+interface AutomaticMemory {
+  id: string;
+  text: string;
+  embedding: number[];
+  sessionId: string;
+  timestamp: string;
+  messageType: 'user' | 'assistant';
+}
 ```
 
-**Available Claude models:**
-- `claude-3-5-sonnet-20241022` (most capable)
-- `claude-3-5-haiku-20241022` (fastest)
-
-**Get API key:** [Anthropic Console](https://console.anthropic.com/)
-### MCP Server Configuration
-
-The agent connects to **Model Context Protocol (MCP)** servers for external tool access. Configure servers in order of precedence:
-
-#### 1. Environment Variable (Highest Priority)
-```env
-SKYNET_MCP_SERVERS_JSON='{"playwright":{"command":"npx","args":["@playwright/mcp@latest"]}}'
+#### Conscious Memory
+```typescript
+interface ConsciousMemory {
+  id: string;
+  text: string;
+  embedding: number[];
+  tags: string[];
+  importance: number; // 1-10 scale
+  source: 'explicit' | 'suggested' | 'auto';
+  context?: string;
+  relatedMemoryIds: string[];
+  metadata: {
+    sessionId: string;
+    timestamp: string;
+    memoryType: 'conscious';
+  };
+}
 ```
 
-#### 2. Config File (`config.json`)
+### Hybrid Search Algorithm
+
+The system implements a sophisticated multi-stage search:
+
+#### Stage 1: Semantic Search
+```typescript
+// Uses Google text-embedding-004 for vector similarity
+const semanticResults = await memoryStore.retrieveMemories(query, {
+  minScore: 0.0,  // Low threshold for broad matching
+  limit: 10
+});
+```
+
+#### Stage 2: Keyword Fallback
+```typescript
+// Triggered when semantic results are insufficient
+if (semanticResults.length < minThreshold) {
+  const keywordResults = await performKeywordSearch(query);
+  // Scores based on exact matches and word boundaries
+}
+```
+
+#### Stage 3: Smart Merging
+```typescript
+// Combines results with intelligent ranking
+const mergedResults = mergeSearchResults(semanticResults, keywordResults);
+// Prioritizes semantic results for close scores
+// Ensures no duplicates
+// Maintains relevance order
+```
+
+### MCP Tool Integration
+
+Conscious memory operations are exposed as MCP tools:
+
+```typescript
+// Available tools for the LLM
+const tools = [
+  'save_memory',
+  'search_memories', 
+  'update_memory',
+  'delete_memory',
+  'get_related_memories',
+  'list_memory_tags'
+];
+```
+
+Each tool returns structured content that the LLM can use naturally in conversation.
+
+---
+
+## 🌟 Key Features
+
+### 🧠 Intelligent Memory Management
+- **Automatic Importance Scoring**: AI determines memory significance
+- **Tag-Based Organization**: Categorize memories for easy retrieval
+- **Relationship Mapping**: Link related memories together
+- **Memory Editing**: Update and refine stored information
+
+### 🔍 Advanced Search Capabilities
+- **Multi-Modal Search**: Semantic understanding + exact keyword matching
+- **Contextual Filtering**: Search by tags, importance, date ranges
+- **Cross-Memory Search**: Find connections across different memory types
+- **Relevance Ranking**: Smart scoring combines multiple signals
+
+### 🎨 Beautiful User Interface
+- **Real-Time Chat**: Smooth conversation experience
+- **Memory Dashboard**: Visual memory management interface
+- **Smart Suggestions**: AI-powered memory recommendations
+- **Export/Import**: Backup and share memory collections
+
+### ⚡ Performance Optimizations
+- **Efficient Embeddings**: Google's latest text-embedding-004 model
+- **Caching Layer**: Reduces API calls and improves response times
+- **Batch Operations**: Handle multiple memories efficiently
+- **Background Processing**: Non-blocking memory operations
+
+---
+
+## 🔧 API Reference
+
+### Conscious Memory API
+
+#### Save Memory
+```http
+POST /api/conscious-memory
+Content-Type: application/json
+
+{
+  "action": "save",
+  "content": "User prefers functional components in React",
+  "tags": ["react", "preferences", "frontend"],
+  "importance": 7,
+  "context": "During discussion about React best practices"
+}
+```
+
+#### Search Memories
+```http
+POST /api/conscious-memory
+Content-Type: application/json
+
+{
+  "action": "search",
+  "query": "React components",
+  "tags": ["react"],
+  "limit": 10,
+  "importanceMin": 5
+}
+```
+
+#### Memory Statistics
+```http
+GET /api/conscious-memory?action=stats
+```
+
+#### Available Tags
+```http
+GET /api/conscious-memory?action=tags
+```
+
+### MCP Tools
+
+The conscious memory system exposes these tools to the LLM:
+
+#### save_memory
 ```json
 {
-  "mcp": {
-    "servers": {
-      "playwright": {
-        "command": "npx",
-        "args": ["@playwright/mcp@latest"]
-      },
-      "filesystem": {
-        "command": "npx", 
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
-      }
+  "name": "save_memory",
+  "description": "Save important information to conscious memory",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "content": {"type": "string"},
+      "tags": {"type": "array", "items": {"type": "string"}},
+      "importance": {"type": "number", "minimum": 1, "maximum": 10},
+      "context": {"type": "string"}
     }
   }
 }
 ```
 
-#### 3. VS Code Settings (Lowest Priority)
-Uses your VS Code MCP settings if available.
-
-### Popular MCP Servers
-
-| Server | Package | Description |
-|--------|---------|-------------|
-| **playwright** | `@playwright/mcp` | Browser automation and web scraping |
-| **filesystem** | `@modelcontextprotocol/server-filesystem` | File system operations |
-| **windows-cli** | `@simonb97/server-win-cli` | Windows command-line access |
-| **sequential-thinking** | `@modelcontextprotocol/server-sequential-thinking` | Step-by-step reasoning |
-
-### Dynamic MCP Reload
-
-Reload MCP configurations without restarting:
-
-```bash
-# Reload via API
-curl -X POST http://localhost:3000/mcp/reload
-```
-
-Response includes loaded server information:
+#### search_memories
 ```json
 {
-  "success": true,
-  "message": "MCP server configurations reloaded",
-  "count": 4,
-  "servers": ["filesystem", "windows-cli", "playwright", "sequential-thinking"]
+  "name": "search_memories",
+  "description": "Search conscious memories for relevant information",
+  "inputSchema": {
+    "type": "object", 
+    "properties": {
+      "query": {"type": "string"},
+      "tags": {"type": "array", "items": {"type": "string"}},
+      "limit": {"type": "number"},
+      "importanceMin": {"type": "number"}
+    }
+  }
 }
 ```
-
-## Usage
-
-### Quick Start Commands
-
-**Prerequisites**: Start ChromaDB for vector storage:
-```bash
-# Required: Start ChromaDB for semantic memory
-docker run -v ./data/chroma:/chroma/chroma -p 8000:8000 chromadb/chroma
-```
-
-**Development Mode** (Recommended):
-```bash
-# Install dependencies for both server and client
-npm run install:all
-
-# Start both backend and frontend with hot-reload
-npm run dev:gui
-```
-The GUI automatically opens at http://localhost:3000
-
-**Production Mode**:
-```bash
-# Build and start production server with GUI
-npm run build
-npm run gui
-```
-
-**Full Docker Deployment** (includes ChromaDB):
-```bash
-# Starts both ChromaDB and Skynet Agent
-./start.sh    # Linux/macOS  
-start.bat     # Windows
-```
-
-**Standalone Development**:
-```bash
-# Backend only (API server)
-npm run dev
-
-# Frontend only (requires backend running)
-npm run dev:client
-```
-
-### API Usage
-
-The API server provides both RESTful endpoints and the web GUI:
-
-#### Chat API
-```http
-POST /api/query HTTP/1.1
-Content-Type: application/json
-
-{
-  "query": "Hello, agent!",
-  "sessionId": "optional-session-id"
-}
-```
-
-#### Session Management
-```http
-# Get all sessions
-GET /api/sessions
-
-# Get specific session
-GET /api/sessions/:sessionId
-
-# Create new session
-POST /api/sessions
-Content-Type: application/json
-{
-  "title": "Session Title"
-}
-
-# Delete session
-DELETE /api/sessions/:sessionId
-```
-
-#### Streaming Chat
-```http
-# Server-Sent Events for real-time responses
-GET /api/stream/:sessionId?query=your_message
-```
-
-#### File Upload
-```http
-POST /api/upload
-Content-Type: multipart/form-data
-
-# Include file in form data
-```
-
-## Using the Web GUI
-
-Skynet Agent includes a modern React-based web interface for easier interaction:
-
-### Quick Start
-
-**Prerequisites**: Ensure you have ChromaDB running for vector storage:
-
-```bash
-# Start ChromaDB (required for semantic memory)
-docker run -v ./data/chroma:/chroma/chroma -p 8000:8000 chromadb/chroma
-```
-
-1. **Development Mode** (Recommended for development):
-   ```bash
-   npm run dev:gui
-   ```
-   This starts both backend and frontend with hot-reload and automatically opens your browser.
-
-2. **Production Mode**:
-   ```bash
-   npm run build
-   npm run gui
-   ```
-
-3. **Full Docker Deployment** (includes ChromaDB):
-   ```bash
-   # Starts both ChromaDB and Skynet Agent
-   ./start.sh    # Linux/macOS
-   start.bat     # Windows
-   ```
-
-### GUI Features
-
-- **Session Management**: Create, switch between, and delete conversation sessions
-- **Real-time Streaming**: Messages stream in real-time as the agent generates responses
-- **File Upload**: Drag and drop or select files to share with the agent
-- **Markdown Support**: Rich text rendering with syntax highlighting for code
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
-- **Session Persistence**: Conversations are automatically saved and restored
-- **Modern UI**: Built with React, TypeScript, and Tailwind CSS
-
-### Browser Support
-
-The GUI automatically opens at http://localhost:3000 and supports all modern browsers including Chrome, Firefox, Safari, and Edge.
-
-## Architecture
-
-Skynet Agent is built with a **modular, event-driven architecture** that separates concerns and enables easy extensibility:
-
-### Core Components
-
-* **LLM Service** (`llmClient.ts`): **Vercel AI SDK integration** with unified interface for multiple providers (OpenAI, Google, Anthropic). Supports streaming responses and tool integration.
-* **Workflow Engine** (`workflow.ts`): **LangGraph-based state machine** orchestrating perception, decision, action, and reflection loops with integrated error recovery.
-* **Memory System** (`memory/`): **Hybrid semantic memory** using ChromaDB for long-term storage and real-time embedding search via Google's text-embedding-004 model.
-* **MCP Integration** (`mcp/client.ts`): **Model Context Protocol client** managing dynamic connections to external tool servers with automatic tool discovery.
-* **API Server** (`server/api.ts`): **Express-based streaming API** with RESTful endpoints, Server-Sent Events, file upload, and static React GUI serving.
-* **Session Management** (`db/sessions.ts`): **Persistent conversation storage** with file-based session persistence and CRUD operations.
-
-### Key Features
-
-* **Multi-Provider LLM Support**: Seamless switching between OpenAI GPT, Google Gemini, and Anthropic Claude models
-* **Real-time Streaming**: Server-Sent Events for live response generation with typing indicators
-* **Semantic Memory**: Vector-based memory storage with automatic consolidation and similarity search
-* **Autonomous Behavior**: Intrinsic motivation system triggers self-initiated tasks during idle periods
-* **Tool Integration**: Dynamic MCP server connections for browser automation, file operations, and custom tools
-* **Modern Web GUI**: React-based interface with session management, file uploads, and markdown rendering
-
-## Folder Structure
-
-```
-src/
-├── index.ts                   
-├── run.ts
-├── agent/
-│   ├── index.ts
-│   ├── intrinsicMotivation.ts
-│   ├── selfReflection.ts 
-│   ├── llmClient.ts
-│   ├── workflow.ts
-│   └── schemas/appStateSchema.ts
-├── memory/
-│   ├── index.ts
-│   └── consolidation.ts
-├── mcp/
-│   └── client.ts
-├── server/
-│   └── api.ts
-├── db/
-│   └── sessions.ts
-└── utils/
-    ├── logger.ts
-    ├── errorHandler.ts
-    └── health.ts
-
-client/
-├── src/
-│   ├── App.tsx
-│   ├── main.tsx
-│   ├── components/
-│   │   ├── ChatInterface.tsx
-│   │   ├── SessionList.tsx
-│   │   ├── MessageList.tsx
-│   │   └── InputArea.tsx
-│   └── stores/
-│       └── chatStore.ts
-├── index.html
-├── package.json
-├── vite.config.ts
-└── tailwind.config.js
-```
-
-## Recent Major Updates
-
-### **Features**
-
-1. **RAG via Google Embeddings** - Memory system uses Google's text-embedding-004 model for semantic search.
-2. **Self-Reflection System** - **Temporarily turned off**
-3. **Multi-Step Reasoning** - Implemented in selfReflection.ts with performMultiStepReasoning function.
-4. **ChromaDB Vector Database** - Primary vector storage with automatic fallback to in-memory storage.
-5. **Docker Support** - Complete containerization with health checks.
-6. **Modern React GUI** - Complete web interface with session management, streaming responses, and file uploads.
-7. **Session Management System** - Persistent conversation storage with CRUD operations.
-8. **Streaming Chat API** - Real-time Server-Sent Events for live response streaming.
-9. **File Upload Support** - Multer-based file handling with base64 encoding for agent processing. **buggy**
-10. **Enhanced API Server** - RESTful endpoints for sessions, streaming, and file operations.
-
-## Technology Stack
-
-### 🔧 **Backend**
-- **Runtime**: Node.js 18+ with TypeScript for type safety
-- **LLM Integration**: Vercel AI SDK with multi-provider support
-  - `@ai-sdk/google` - Google Gemini models
-  - `@ai-sdk/openai` - OpenAI GPT models  
-  - `@ai-sdk/anthropic` - Anthropic Claude models
-- **Vector Database**: ChromaDB (primary)
-- **Embeddings**: Google text-embedding-004 for semantic memory
-- **Workflow**: LangGraph for stateful agent orchestration
-- **Tools**: Model Context Protocol (MCP) for external integrations
-- **API**: Express.js with streaming Server-Sent Events
-- **Storage**: File-based session persistence with JSON
-
-### 🎨 **Frontend**
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite for fast development and optimized builds
-- **Styling**: Tailwind CSS utility-first framework
-- **State**: Zustand for lightweight state management
-- **UI Components**: Custom React components with Lucide icons
-- **Rendering**: React Markdown with syntax highlighting
-- **Communication**: Server-Sent Events for real-time streaming
-
-### 🚀 **Development & Deployment**
-- **Development**: ts-node-dev with hot-reload, concurrently for parallel processes
-- **Containerization**: Docker with multi-stage builds and health checks
-- **Process Management**: Docker Compose for multi-service orchestration
-- **Monitoring**: Structured logging with winston, health endpoints
-- **Error Tracking**: Sentry integration for production monitoring
-
-### 🔗 **Integration Ecosystem**
-- **MCP Servers**: Playwright (web automation), filesystem, CLI tools
-- **APIs**: RESTful endpoints with streaming support
-- **File Handling**: Multer for uploads with base64 encoding
-- **Configuration**: Environment-based with JSON config fallback
-
-### 🚀 **Key Improvements Over Original**
-
-- **Functional Memory**: Real embeddings replaced mock random vectors for semantic search
-- **Adaptive Intelligence**: Self-reflection system generates and uses improved responses automatically
-- **Modern UX**: Complete React-based web GUI with session persistence and streaming
-- **Enhanced API**: RESTful endpoints for sessions, streaming chat, and file uploads
-- **Better Development Experience**: Hot-reload, concurrent development, and automatic browser opening
-- **Containerization**: Docker support for easy deployment and scaling
-- **Enhanced Reasoning**: Multi-step problem solving for complex queries
-- **Real-time Communication**: Server-Sent Events for live response streaming
-- **File Processing**: Upload and share documents directly with the agent
-
-### 📋 **Quick Start Checklist**
-
-### 📋 **Quick Setup Checklist**
-
-1. ✅ Clone repository and install dependencies (`npm run install:all`)
-2. ✅ Copy `.env.example` to `.env` and configure your LLM provider API key(s)
-3. ✅ Start ChromaDB: `docker run -v ./data/chroma:/chroma/chroma -p 8000:8000 chromadb/chroma`
-4. ✅ Start development: `npm run dev:gui`
-5. ✅ Access GUI at http://localhost:3000 (opens automatically)
-
-## Quick Verification
-
-Verify your installation with these simple tests:
-
-### 1. API Test
-```bash
-# Test the streaming API
-curl -X POST http://localhost:3000/api/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Hello! What LLM models do you support?"}'
-```
-
-### 2. GUI Test  
-```bash
-# Start with GUI (should auto-open browser)
-npm run dev:gui
-
-# Verify: You should see the React interface with session management
-```
-
-### 3. Multi-Provider Test
-Test different LLM providers by updating your `.env`:
-
-```bash
-# Test Google Gemini
-LLM_MODEL=google:gemini-2.0-flash
-
-# Test OpenAI (requires OPENAI_API_KEY)  
-LLM_MODEL=openai:gpt-4o
-
-# Test Anthropic (requires ANTHROPIC_API_KEY)
-LLM_MODEL=anthropic:claude-3-5-sonnet-20241022
-```
-
-## Troubleshooting
-
-### Common Issues
-
-#### ❌ Vector Database Connection Failed
-```bash
-# Start ChromaDB first (most common issue)
-docker run -v ./data/chroma:/chroma/chroma -p 8000:8000 chromadb/chroma
-
-# Or check if port 8000 is available
-netstat -an | grep 8000  # Linux/macOS
-netstat -an | findstr 8000  # Windows
-```
-
-#### ❌ LLM API Key Not Working
-```bash
-# Verify your API key is set correctly
-echo $GOOGLE_API_KEY    # Linux/macOS
-echo %GOOGLE_API_KEY%   # Windows
-
-# Test API key directly
-curl -H "Authorization: Bearer $GOOGLE_API_KEY" \
-  https://generativelanguage.googleapis.com/v1beta/models
-```
-
-#### ❌ Port Conflicts
-```env
-# Update your .env file to use different ports
-PORT=3001
-CHROMA_PORT=8001
-```
-
-#### ❌ Build/Installation Issues
-```bash
-# Clean reinstall
-rm -rf node_modules client/node_modules package-lock.json client/package-lock.json
-npm run install:all
-```
-
-#### ❌ GUI Not Loading
-```bash
-# Check both services are running
-npm run dev:gui
-
-# If client fails to start:
-cd client
-npm install
-npm run dev
-```
-
-### Development Tips
-
-- **Hot Reload**: Use `npm run dev:gui` for automatic reload on code changes
-- **API Testing**: Use the `/api/health` endpoint to verify server status
-- **Logs**: Check console output for detailed error information with structured logging
-- **Memory**: Monitor ChromaDB logs if memory operations fail
-- **MCP Tools**: Use `/mcp/reload` endpoint to refresh tool configurations
-
-#### GUI Not Loading
-```bash
-# Check if client dependencies are installed
-cd client && npm install
-
-# Verify both server and client are running
-npm run dev:gui
-```
-
-#### Port Conflicts
-If port 3000 is in use, update your `.env` file:
-```env
-PORT=3001  # Or any available port
-```
-
-#### Build Errors
-```bash
-# Clean install
-rm -rf node_modules client/node_modules
-npm run install:all
-npm run build
-```
-
-### Development Tips
-
-- Use `npm run dev:gui` for the best development experience
-- Check the browser console for frontend errors
-- Monitor the terminal for backend logs
-- API endpoints are available at `/api/*` when GUI is running
-- Session data is stored in `./data/sessions/` by default
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes and test thoroughly
-4. Ensure both `npm run build` and `npm run dev:gui` work correctly
-5. Submit a pull request with a clear description
-
-## License
-
-MIT License - see LICENSE file for details.
 
 ---
 
-**Last Updated**: May 23, 2025  
-**Version**: 0.1.0 (GUI-Enhanced)
+## 🏛️ Project Structure
 
-For the latest updates and documentation, visit the project repository.
+```
+skynet-agent/
+├── src/
+│   ├── app/                    # Next.js app router
+│   │   ├── api/               # API routes
+│   │   │   ├── chat/          # Chat endpoints
+│   │   │   ├── conscious-memory/ # Memory API
+│   │   │   └── chat-history/  # Chat history API
+│   │   ├── conscious-memory/  # Memory dashboard page
+│   │   └── globals.css        # Global styles
+│   ├── components/            # React components
+│   │   ├── ChatInterface.tsx  # Main chat UI
+│   │   ├── ChatMessage.tsx    # Message components
+│   │   ├── MessageInput.tsx   # Input handling
+│   │   └── ToolCallDisplay.tsx # Tool visualization
+│   ├── lib/                   # Core libraries
+│   │   ├── mcp-servers/       # MCP server implementations
+│   │   │   └── conscious-memory-server.ts
+│   │   ├── chat-history.ts    # SQLite chat storage
+│   │   ├── conscious-memory.ts # Memory service
+│   │   ├── embeddings.ts      # Google embeddings
+│   │   ├── llm-service.ts     # AI service
+│   │   ├── mcp-manager.ts     # MCP orchestration
+│   │   ├── memory-store.ts    # ChromaDB interface
+│   │   └── rag.ts            # RAG implementation
+│   └── types/                 # TypeScript definitions
+│       ├── chat.ts           # Chat types
+│       ├── memory.ts         # Memory types
+│       ├── mcp.ts            # MCP types
+│       └── tool.ts           # Tool types
+├── config.json               # MCP server configuration
+├── docker-compose.yml        # ChromaDB setup
+├── package.json             # Dependencies
+└── README.md               # This file
+```
+
+---
+
+## 🔬 Research & Innovation
+
+### Memory Architecture Inspiration
+
+This project draws inspiration from cognitive science research on human memory:
+
+- **Dual-Process Theory**: Automatic vs. controlled cognitive processes
+- **Long-Term Memory**: Declarative vs. procedural memory systems  
+- **Working Memory**: Conscious manipulation of information
+- **Memory Consolidation**: Active rehearsal and organization
+
+### Technical Innovations
+
+#### Hybrid Search Solution
+Solves the fundamental limitation of pure semantic search where subset queries (e.g., "debugging") fail to match longer stored texts containing those terms.
+
+#### MCP Tool Architecture
+Clean separation between AI capabilities and memory operations, enabling natural language memory control without prompt engineering.
+
+#### Importance-Weighted Retrieval
+Combines relevance scores with user-defined importance ratings for smarter memory prioritization.
+
+---
+
+## 🧪 Development & Testing
+
+### Running Tests
+
+```bash
+# Unit tests
+npm test
+
+# Memory system integration test
+npm run test:memory
+
+# RAG system test  
+npm run test:rag
+
+# End-to-end tests
+npm run test:e2e
+```
+
+### Development Scripts
+
+```bash
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
+
+# Start ChromaDB
+npm run chroma:start
+
+# Stop ChromaDB
+npm run chroma:stop
+
+# Reset memory databases
+npm run memory:reset
+```
+
+### Debugging
+
+Enable debug logging:
+```bash
+DEBUG=mcp:*,memory:*,rag:* npm run dev
+```
+
+View memory store status:
+```bash
+curl http://localhost:3000/api/conscious-memory?action=stats
+```
+
+---
+
+## 🚀 Deployment
+
+### Production Deployment
+
+1. **Build the application**:
+   ```bash
+   npm run build
+   ```
+
+2. **Set up ChromaDB** with persistent storage:
+   ```yaml
+   # docker-compose.prod.yml
+   version: '3.8'
+   services:
+     chroma:
+       image: chromadb/chroma:latest
+       ports:
+         - "8000:8000"
+       volumes:
+         - ./chroma-data:/chroma/chroma
+       environment:
+         - CHROMA_SERVER_HOST=0.0.0.0
+   ```
+
+3. **Configure environment variables**:
+   ```env
+   NODE_ENV=production
+   GOOGLE_AI_API_KEY=your_gosh_darn_key
+   CHROMA_URL=http://localhost:8000
+   ```
+
+4. **Deploy to your platform** (Vercel, Railway, etc.)
+
+### Docker Deployment
+
+```dockerfile
+# Dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+RUN npm run build
+
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+### Development Setup
+
+1. **Fork and clone** the repository
+2. **Install dependencies**: `npm install`
+3. **Start ChromaDB**: `docker-compose up -d`
+4. **Run development server**: `npm run dev`
+5. **Make your changes** and test thoroughly
+6. **Submit a pull request**
+
+### Contribution Guidelines
+
+- **Code Style**: Follow the existing TypeScript/React patterns
+- **Testing**: Add tests for new features
+- **Documentation**: Update README and inline docs
+- **Commits**: Use conventional commit messages
+
+### Areas for Contribution
+
+- 🧠 **Memory algorithms**: Improve search and relevance scoring
+- 🎨 **UI/UX**: Enhance the memory management interface  
+- 🔧 **MCP tools**: Add new memory operations and capabilities
+- 📚 **Documentation**: Improve guides and examples
+- 🧪 **Testing**: Add comprehensive test coverage
+- 🚀 **Performance**: Optimize memory operations and search
+
+---
+
+## 📄 License
+
+MIT License - Lok Tar Ogar!
+
+---
+
+## 🙏 Acknowledgments
+
+- **ChromaDB Team** for the excellent vector database
+- **Google AI** for the powerful embedding models
+- **Anthropic** for the Model Context Protocol
+- **Next.js Team** for the amazing React framework
+- **Open Source Community** for the superb MCP servers and the Ollama library for Vercel AI SDK
+
+---
+
+## Contribution
+
+- Fork then PR
+- If you open issues I'll try to fix them but you know, maybe not.

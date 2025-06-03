@@ -1,0 +1,247 @@
+/**
+ * RAG (Retrieval-Augmented Generation) orchestration for the lean MCP chat client
+ * Handles memory retrieval, context formatting, and integration with the chat flow
+ */
+
+import type { MemoryRetrievalResult, MemorySearchOptions } from '../types/memory';
+import { getMemoryStore } from './memory-store';
+import { getEmbeddingService } from './embeddings';
+
+export interface RAGConfig {
+  enabled: boolean;
+  maxMemories: number;
+  minSimilarity: number;
+  includeSessionContext: boolean;
+  contextTemplate: string;
+}
+
+export interface RAGResult {
+  shouldRetrieve: boolean;
+  memories: MemoryRetrievalResult[];
+  context: string;
+  retrievalTime: number;
+}
+
+export class RAGService {
+  private memoryStore = getMemoryStore();
+  private embeddingService = getEmbeddingService();
+  private defaultConfig: RAGConfig = {
+    enabled: true,
+    maxMemories: 3,
+    minSimilarity: 0.5,
+    includeSessionContext: false,
+    contextTemplate: `Based on previous conversations:\n\n{memories}\n\nNow respond to the current message.`
+  };
+
+  constructor(private config: Partial<RAGConfig> = {}) {
+    this.config = { ...this.defaultConfig, ...config };
+  }
+
+  /**
+   * Initialize the RAG service
+   */
+  async initialize(): Promise<void> {
+    try {
+      await this.memoryStore.initialize();
+      console.log('RAG Service initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize RAG Service:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Determine if memory retrieval should be performed for a given query
+   */
+  shouldRetrieveMemories(query: string): boolean {
+    if (!this.config.enabled) {
+      return false;
+    }
+
+    // Skip retrieval for simple patterns
+    const skipPatterns = [
+      /^(hi|hello|hey|goodbye|thanks|thank you)$/i,
+      /^(what is \d+ [\+\-\*\/] \d+)/i,
+      /^\s*tell me a joke\s*$/i,
+      /^\s*who are you\??\s*$/i,
+      /^(help|commands?|what can you do)\??$/i,
+      /^\s*how are you\??\s*$/i,
+    ];
+    
+    const shouldSkip = skipPatterns.some(pattern => pattern.test(query.trim()));
+    return !shouldSkip;
+  }
+
+  /**
+   * Retrieve relevant memories for a query and format context
+   */
+  async retrieveAndFormatContext(
+    query: string, 
+    sessionId?: string
+  ): Promise<RAGResult> {
+    const startTime = Date.now();
+    
+    // Check if we should retrieve memories
+    const shouldRetrieve = this.shouldRetrieveMemories(query);
+    
+    if (!shouldRetrieve) {
+      return {
+        shouldRetrieve: false,
+        memories: [],
+        context: '',
+        retrievalTime: Date.now() - startTime
+      };
+    }
+
+    try {
+      // Retrieve relevant memories
+      const searchOptions: MemorySearchOptions = {
+        limit: this.config.maxMemories,
+        minScore: this.config.minSimilarity,
+        sessionId: this.config.includeSessionContext ? sessionId : undefined,
+        messageType: 'both'
+      };
+
+      const memories = await this.memoryStore.retrieveMemories(query, searchOptions);
+      
+      // Format memories into context
+      const context = this.formatMemoriesAsContext(memories);
+      
+      const retrievalTime = Date.now() - startTime;
+      
+      console.log(`RAG retrieval completed: ${memories.length} memories in ${retrievalTime}ms`);
+      
+      return {
+        shouldRetrieve: true,
+        memories,
+        context,
+        retrievalTime
+      };
+    } catch (error) {
+      console.error('Error during RAG retrieval:', error);
+      return {
+        shouldRetrieve: true,
+        memories: [],
+        context: '',
+        retrievalTime: Date.now() - startTime
+      };
+    }
+  }
+
+  /**
+   * Store a conversation exchange in memory
+   */
+  async storeConversation(
+    userMessage: string,
+    assistantMessage: string,
+    sessionId: string
+  ): Promise<{ userMemoryId: string; assistantMemoryId: string }> {
+    try {
+      const timestamp = new Date().toISOString();
+      
+      // Store user message
+      const userMemoryId = await this.memoryStore.storeMemory(userMessage, {
+        sessionId,
+        timestamp,
+        messageType: 'user',
+        textLength: userMessage.length
+      });
+      
+      // Store assistant message
+      const assistantMemoryId = await this.memoryStore.storeMemory(assistantMessage, {
+        sessionId,
+        timestamp,
+        messageType: 'assistant',
+        textLength: assistantMessage.length
+      });
+      
+      console.log(`Conversation stored: user=${userMemoryId}, assistant=${assistantMemoryId}`);
+      
+      return { userMemoryId, assistantMemoryId };
+    } catch (error) {
+      console.error('Failed to store conversation in memory:', error);
+      throw error;
+    }
+  }
+  /**
+   * Format retrieved memories as context for the LLM
+   */
+  private formatMemoriesAsContext(memories: MemoryRetrievalResult[]): string {
+    if (memories.length === 0) {
+      return '';
+    }
+
+    const formattedMemories = memories.map((memory, index) => {
+      const type = memory.metadata.messageType === 'user' ? 'User' : 'Assistant';
+      const score = (memory.score * 100).toFixed(1);
+      return `${index + 1}. [${type}, similarity: ${score}%]: ${memory.text}`;
+    }).join('\n\n');
+
+    const template = this.config.contextTemplate || this.defaultConfig.contextTemplate;
+    return template.replace('{memories}', formattedMemories);
+  }
+
+  /**
+   * Get memory statistics
+   */
+  async getMemoryStats(): Promise<{
+    totalMemories: number;
+    embeddingServiceReady: boolean;
+    healthCheck: boolean;
+  }> {
+    try {
+      const [totalMemories, healthCheck] = await Promise.all([
+        this.memoryStore.getMemoryCount(),
+        this.memoryStore.healthCheck()
+      ]);
+
+      return {
+        totalMemories,
+        embeddingServiceReady: this.embeddingService.isReady(),
+        healthCheck
+      };
+    } catch (error) {
+      console.error('Failed to get memory stats:', error);
+      return {
+        totalMemories: 0,
+        embeddingServiceReady: false,
+        healthCheck: false
+      };
+    }
+  }
+
+  /**
+   * Test the RAG system
+   */
+  async testRAGSystem(): Promise<boolean> {
+    try {
+      console.log('Testing RAG system...');
+      
+      // Test memory store
+      const memoryTest = await this.memoryStore.testMemorySystem();
+      if (!memoryTest) {
+        console.error('Memory store test failed');
+        return false;
+      }
+      
+      // Test retrieval
+      const ragResult = await this.retrieveAndFormatContext('test query', 'test-session');
+      
+      console.log('RAG system test completed successfully');
+      return true;
+    } catch (error) {
+      console.error('RAG system test failed:', error);
+      return false;
+    }
+  }
+}
+
+// Export singleton instance
+let ragService: RAGService | null = null;
+
+export function getRAGService(config?: Partial<RAGConfig>): RAGService {
+  if (!ragService) {
+    ragService = new RAGService(config);
+  }
+  return ragService;
+}

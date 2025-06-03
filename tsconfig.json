@@ -1,26 +1,41 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "strict": true,
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "es6"
+    ],
+    "allowJs": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "outDir": "dist",
-    "declaration": true,
-    "sourceMap": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "rootDir": "src",
-    "lib": ["ES2020", "DOM"],
-    "inlineSources": true,
-
-    // Set `sourceRoot` to  "/" to strip the build path prefix
-    // from generated source code references.
-    // This improves issue grouping in Sentry.
-    "sourceRoot": "/"
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "target": "ES2017"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

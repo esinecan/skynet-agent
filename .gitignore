@@ -1,59 +1,48 @@
-# Dependency directories
-node_modules/
-.pnp/
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
 .pnp.js
+.yarn/install-state.gz
 
-# Production build
-dist/
-build/
-out/
+# testing
+/coverage
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-config.json
+# next.js
+/.next/
+/out/
 
-# Logs
-logs
-*.log
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Editor directories and files
-.idea/
-.vscode/
-.history/
+# local env files
+.env*.local
+.env
+
+# vercel
+.vercel
 .cop/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-.DS_Store
+.vscode/
+.github/
+.history/
 
-# Testing
-coverage/
-
-# TypeScript cache
+# typescript
 *.tsbuildinfo
+next-env.d.ts
 
-# Debug
-.npm
-.eslintcache
-
-# Vector database files (if using local vector DB)
-volumes/
-data/
-*.faiss
-
-# Temporary files
-tmp/
-temp/
-
-# Sentry Config File
-.sentryclirc
-vercel docs.md
+# SQLite database files
+/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal

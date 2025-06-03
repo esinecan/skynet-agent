@@ -1,0 +1,15 @@
+{
+  "name": "mcp-chat-client",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build", 
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:phase2": "jest --testPathPattern=phase2",
+    "type-check": "tsc --noEmit",
+    "phase2:test": "npm run type-check && npm run test:phase2",
+    "phase2:start": "echo 'Starting Phase 2 MCP Chat Client...' && npm run dev"
+  }
+}
