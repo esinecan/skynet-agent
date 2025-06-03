@@ -130,9 +130,69 @@ export async function POST(request: NextRequest) {
         }
       } catch (ragError) {
         console.warn('⚠️  Chat API: RAG enhancement failed, continuing without memory:', ragError);
+      }    }
+      
+    // Process attachments and add them to the last user message
+    if (attachments && attachments.length > 0) {
+      console.log('📎 Chat API: Processing', attachments.length, 'attachments');
+      
+      // Find the last user message in enhancedMessages
+      const lastUserMessageIndex = enhancedMessages.map(m => m.role).lastIndexOf('user');
+      if (lastUserMessageIndex !== -1) {
+        const lastUserMessage = enhancedMessages[lastUserMessageIndex];
+        
+        // Convert attachments to the format expected by AI models
+        const attachmentContent: any[] = [];
+        
+        for (const attachment of attachments) {
+          if (attachment.type.startsWith('image/')) {
+            // Image attachment
+            attachmentContent.push({
+              type: 'image',
+              image: `data:${attachment.type};base64,${attachment.data}`
+            });
+            console.log(`📎 Chat API: Added image attachment: ${attachment.name}`);
+          } else {
+            // Text-based attachment (documents, code, etc.)
+            let fileContent;
+            try {
+              fileContent = Buffer.from(attachment.data, 'base64').toString('utf-8');
+            } catch (error) {
+              console.warn(`📎 Chat API: Could not decode attachment ${attachment.name} as text, treating as binary`);
+              fileContent = `[Binary file: ${attachment.name} (${attachment.type}, ${attachment.size} bytes)]`;
+            }
+            
+            attachmentContent.push({
+              type: 'text',
+              text: `File: ${attachment.name} (${attachment.type})\n\n${fileContent}`
+            });
+            console.log(`📎 Chat API: Added text attachment: ${attachment.name}`);
+          }
+        }
+        
+        // Update the message content to include attachments
+        if (typeof lastUserMessage.content === 'string') {
+          // Convert string content to multipart content array
+          enhancedMessages[lastUserMessageIndex] = {
+            ...lastUserMessage,
+            content: [
+              { type: 'text', text: lastUserMessage.content },
+              ...attachmentContent
+            ]
+          };
+        } else if (Array.isArray(lastUserMessage.content)) {
+          // Add to existing content array
+          enhancedMessages[lastUserMessageIndex] = {
+            ...lastUserMessage,
+            content: [...lastUserMessage.content, ...attachmentContent]
+          };
+        }
+        
+        console.log(`📎 Chat API: Enhanced message with ${attachments.length} attachments`);
       }
     }
-      console.log('🚀 Chat API: About to call streamText with', enhancedMessages.length, 'messages');
+      
+    console.log('🚀 Chat API: About to call streamText with', enhancedMessages.length, 'messages');
     console.log('🚀 Chat API: Last message:', JSON.stringify(enhancedMessages[enhancedMessages.length - 1], null, 2));
     
     // Load system prompt

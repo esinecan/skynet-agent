@@ -1,6 +1,11 @@
 import { generateText, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createDeepSeek } from '@ai-sdk/deepseek';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGroq } from '@ai-sdk/groq';
+import { createMistral } from '@ai-sdk/mistral';
+import { ollama } from 'ollama-ai-provider';
+import { createOpenAI } from '@ai-sdk/openai'; // For OpenAI-compatible providers
 import { z } from 'zod';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -14,12 +19,13 @@ export interface LLMOptions {
   includeMemoryContext?: boolean;
 }
 
-export type LLMProvider = 'google' | 'deepseek';
+export type LLMProvider = 'google' | 'deepseek' | 'openai-compatible' | 'anthropic' | 'groq' | 'mistral' | 'ollama';
 
 export interface LLMProviderConfig {
   provider: LLMProvider;
   model: string;
   apiKey?: string;
+  baseURL?: string; // For OpenAI-compatible providers
 }
 
 export class LLMService {
@@ -39,12 +45,16 @@ export class LLMService {
     // Initialize the model based on provider
     this.model = this.initializeModel(config);
   }
-
   private getProviderFromEnvironment(): LLMProvider {
     // Check environment variable for provider preference
     const envProvider = process.env.LLM_PROVIDER?.toLowerCase();
     if (envProvider === 'deepseek') return 'deepseek';
     if (envProvider === 'google') return 'google';
+    if (envProvider === 'openai-compatible') return 'openai-compatible';
+    if (envProvider === 'anthropic') return 'anthropic';
+    if (envProvider === 'groq') return 'groq';
+    if (envProvider === 'mistral') return 'mistral';
+    if (envProvider === 'ollama') return 'ollama';
     
     // Default to Google if Google API key is available
     if (process.env.GOOGLE_API_KEY) return 'google';
@@ -52,18 +62,26 @@ export class LLMService {
     // Otherwise default to DeepSeek
     return 'deepseek';
   }
-
   private getDefaultModel(provider: LLMProvider): string {
     switch (provider) {
       case 'google':
         return 'gemini-2.5-flash-preview-05-20';
       case 'deepseek':
         return 'deepseek-chat';
+      case 'openai-compatible':
+        return 'gpt-4o-mini'; // Default OpenAI model for compatible providers
+      case 'anthropic':
+        return 'claude-3-5-haiku-20241022';
+      case 'groq':
+        return 'llama-3.3-70b-versatile';
+      case 'mistral':
+        return 'mistral-large-latest';
+      case 'ollama':
+        return 'llama3.2:latest';
       default:
         return 'gemini-2.5-flash-preview-05-20';
     }
   }
-
   private initializeModel(config?: LLMProviderConfig): any {
     switch (this.provider) {
       case 'google':
@@ -85,6 +103,51 @@ export class LLMService {
           apiKey: deepseekApiKey
         });
         return deepseek(this.modelName);
+
+      case 'openai-compatible':
+        const openaiApiKey = config?.apiKey || process.env.OPENAI_API_KEY;
+        const baseURL = config?.baseURL || process.env.OPENAI_BASE_URL;
+        if (!openaiApiKey) {
+          throw new Error('OPENAI_API_KEY environment variable is required for OpenAI-compatible provider');
+        }
+        const openaiConfig: any = { apiKey: openaiApiKey };
+        if (baseURL) {
+          openaiConfig.baseURL = baseURL;
+        }
+        const openai = createOpenAI(openaiConfig);
+        return openai(this.modelName);
+
+      case 'anthropic':
+        const anthropicApiKey = config?.apiKey || process.env.ANTHROPIC_API_KEY;
+        if (!anthropicApiKey) {
+          throw new Error('ANTHROPIC_API_KEY environment variable is required for Anthropic provider');
+        }
+        const anthropic = createAnthropic({
+          apiKey: anthropicApiKey
+        });
+        return anthropic(this.modelName);
+
+      case 'groq':
+        const groqApiKey = config?.apiKey || process.env.GROQ_API_KEY;
+        if (!groqApiKey) {
+          throw new Error('GROQ_API_KEY environment variable is required for Groq provider');
+        }
+        const groq = createGroq({
+          apiKey: groqApiKey
+        });
+        return groq(this.modelName);
+
+      case 'mistral':
+        const mistralApiKey = config?.apiKey || process.env.MISTRAL_API_KEY;
+        if (!mistralApiKey) {
+          throw new Error('MISTRAL_API_KEY environment variable is required for Mistral provider');
+        }
+        const mistral = createMistral({
+          apiKey: mistralApiKey
+        });
+        return mistral(this.modelName);      case 'ollama':
+        const ollamaBaseURL = config?.baseURL || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+        return ollama(this.modelName);
 
       default:
         throw new Error(`Unsupported provider: ${this.provider}`);
