@@ -11,7 +11,7 @@
 
 **Skynet-Agent Client** is a revolutionary AI conversation platform that implements a **dual-layer memory architecture** inspired by human cognition. It combines automatic background memory (like human non-volitional memory) with conscious, deliberate memory operations that AI can control. It also has the tool access powers similar to those of Claude Desktop.
 
-## 🎯 Key Innovations
+## 🎯 Minimal But Powerful
 
 ### 🔄 Dual-Layer Memory Architecture
 - **Automatic Layer (RAG)**: Background conversation storage and retrieval
