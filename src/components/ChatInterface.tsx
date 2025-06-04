@@ -12,29 +12,15 @@ interface ChatInterfaceProps {
   sessionId?: string
 }
 
-export default function ChatInterface({ onNewSession, sessionId }: ChatInterfaceProps) {
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
+export default function ChatInterface({ onNewSession, sessionId }: ChatInterfaceProps) {  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
     id: sessionId,
-    onFinish: async (message) => {
-      // Save message to database after completion
-      if (sessionId) {
-        try {
-          await fetch(`/api/chat-history/${sessionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              message: {
-                id: message.id,
-                role: message.role,
-                content: message.content,
-                toolInvocations: message.toolInvocations,
-              }
-            })
-          })
-        } catch (error) {
-          console.error('Failed to save message:', error)
-        }
-      }
+    api: '/api/chat',
+    maxSteps: 5, // Allow multiple tool calls
+    onError: (error) => {
+      console.error('Chat error:', error);
+    },    onFinish: async (message) => {
+      // Message storage is now handled by the chat API
+      // No need to store separately here
     }
   })
 
@@ -62,36 +48,10 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
         createdAt: new Date(),
         attachments
       }
+        setMessages(prev => [...prev, userMessage])
       
-      setMessages(prev => [...prev, userMessage])
-      
-      // Save user message to database with attachments
-      if (sessionId) {
-        try {
-          await fetch(`/api/chat-history/${sessionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              message: {
-                id: userMessage.id,
-                role: 'user',
-                content: input,
-                attachments: attachments.map(att => ({
-                  id: att.id,
-                  messageId: userMessage.id,
-                  name: att.name,
-                  type: att.type,
-                  size: att.size,
-                  data: att.data,
-                  createdAt: new Date()
-                }))
-              }
-            })
-          })
-        } catch (error) {
-          console.error('Failed to save user message with attachments:', error)
-        }
-      }
+      // User message storage is now handled by the chat API
+      // No need to store separately here
       
       // Send to chat API with attachment info in the message content
       const attachmentInfo = attachments.map(att => 
@@ -107,28 +67,11 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
       handleInputChange(syntheticEvent)
       handleSubmit(e)
       
-    } else {
-      // Regular submit without attachments
+    } else {      // Regular submit without attachments
       handleSubmit(e)
       
-      // Save user message to database
-      if (sessionId && input.trim()) {
-        try {
-          await fetch(`/api/chat-history/${sessionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              message: {
-                id: `user-${Date.now()}`,
-                role: 'user',
-                content: input,
-              }
-            })
-          })
-        } catch (error) {
-          console.error('Failed to save user message:', error)
-        }
-      }
+      // User message storage is now handled by the chat API
+      // No need to store separately here
     }
   }
 

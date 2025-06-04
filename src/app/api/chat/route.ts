@@ -60,18 +60,25 @@ function extractUserMessage(messages: any[]): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, sessionId: providedSessionId, attachments } = await request.json();
+    const body = await request.json();
+    console.log('🔍 Chat API: Received request body keys:', Object.keys(body));
+    console.log('🔍 Chat API: Request body.sessionId:', body.sessionId);
+    console.log('🔍 Chat API: Request body.id:', body.id);
+    console.log('🔍 Chat API: Any other ID fields:', Object.keys(body).filter(k => k.toLowerCase().includes('id')));
+    
+    const { messages, sessionId: providedSessionId, id: providedId, attachments } = body;
     
     if (!messages || !Array.isArray(messages)) {
       return new Response('Invalid messages format', { status: 400 });
     }
     
-    // Get or generate session ID
-    const sessionId = providedSessionId || extractOrGenerateSessionId(messages);
-    const userMessage = extractUserMessage(messages);
+    // AI SDK might send session ID as 'id' instead of 'sessionId'
+    const sessionId = providedSessionId || providedId || extractOrGenerateSessionId(messages);    const userMessage = extractUserMessage(messages);
     
     console.log('🔍 Chat API: Processing messages:', messages.length);
-    console.log('🏷️  Chat API: Session ID:', sessionId);
+    console.log('🏷️  Chat API: Provided Session ID:', providedSessionId);
+    console.log('🏷️  Chat API: Provided ID:', providedId);
+    console.log('🏷️  Chat API: Final Session ID:', sessionId);
     console.log('💬 Chat API: User message:', userMessage.slice(0, 100) + '...');
     
     // Log attachment info if present
@@ -196,9 +203,7 @@ export async function POST(request: NextRequest) {
     console.log('🚀 Chat API: Last message:', JSON.stringify(enhancedMessages[enhancedMessages.length - 1], null, 2));
     
     // Load system prompt
-    const systemPrompt = loadSystemPrompt();
-    
-    // Stream the response with tool support
+    const systemPrompt = loadSystemPrompt();      // Stream the response with tool support
     try {
       const result = await streamText({
         model: model,
@@ -269,23 +274,34 @@ export async function POST(request: NextRequest) {
           console.warn('⚠️  Chat API: Failed to store in chat history:', historyError);
         }
       },
-    });
+    });    console.log('✅ Chat API: streamText completed successfully');
     
-    console.log('✅ Chat API: streamText completed successfully');
-    return result.toDataStreamResponse();
-    
-    } catch (streamError) {
+    // Return the data stream response without modifying headers
+    // The AI SDK sets the correct content type for streaming
+    return result.toDataStreamResponse();    } catch (streamError) {
       console.error('❌ Chat API: streamText failed:', streamError);
-      throw streamError;
+      
+      // Return a proper JSON error response that AI SDK can handle
+      return new Response(
+        JSON.stringify({ 
+          error: 'STREAM_ERROR',
+          message: streamError instanceof Error ? streamError.message : 'Stream processing failed',
+          details: 'There was an error processing your request. Please try again.'
+        }),
+        { 
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
     }
-    
-  } catch (error) {
+      } catch (error) {
     console.error('❌ Chat API Error:', error);
     
     return new Response(
       JSON.stringify({ 
-        error: 'Failed to process request',
-        message: 'Sorry, I encountered an error while processing your request.'
+        error: 'CHAT_API_ERROR',
+        message: error instanceof Error ? error.message : 'Failed to process request',
+        details: 'Sorry, I encountered an error while processing your request.'
       }),
       { 
         status: 500,

@@ -10,66 +10,33 @@ import { FileAttachment } from '../types/chat'
 export default function Home() {
   const [currentSessionId, setCurrentSessionId] = React.useState<string>('')
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
-  
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
+    const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
     id: currentSessionId,
-    onFinish: async (message) => {
-      // Save message to database after completion
-      if (currentSessionId) {
-        try {
-          await fetch(`/api/chat-history/${currentSessionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              message: {
-                id: message.id,
-                role: message.role,
-                content: message.content,
-                toolInvocations: message.toolInvocations,
-              }
-            })
-          })
-        } catch (error) {
-          console.error('Failed to save message:', error)
-        }
-      }
+    api: '/api/chat',
+    maxSteps: 5, // Allow multiple tool calls
+    onError: (error) => {
+      console.error('Chat error:', error);
+    },    onFinish: async (message) => {
+      // Message storage is now handled by the chat API
+      // No need to store separately here
     }
-  })
-  // Save user messages immediately when sent
+  })  // Save user messages immediately when sent
   const handleChatSubmit = async (e: React.FormEvent, attachments?: FileAttachment[]) => {
     handleSubmit(e)
     
-    // Save user message to database
-    if (currentSessionId && input.trim()) {
-      try {
-        await fetch(`/api/chat-history/${currentSessionId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            message: {
-              id: `user-${Date.now()}`,
-              role: 'user',
-              content: input.trim(),
-              attachments: attachments || []
-            }
-          })
-        })
-      } catch (error) {
-        console.error('Failed to save user message:', error)
-      }
-    }
+    // User message storage is now handled by the chat API
+    // No need to store separately here
   }
-
   // Generate session ID on first message
   React.useEffect(() => {
     if (messages.length > 0 && !currentSessionId) {
-      const newSessionId = `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
       setCurrentSessionId(newSessionId)
     }
   }, [messages.length, currentSessionId])
 
   const startNewChat = () => {
-    const newSessionId = `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
     setCurrentSessionId(newSessionId)
     setMessages([])
     setSidebarOpen(false)

@@ -7,6 +7,7 @@ export interface ChatSession {
   id: string;
   title: string;
   messages: any[];
+  messageCount?: number; // Optional for when we only need metadata
   createdAt: Date;
   updatedAt: Date;
 }
@@ -155,13 +156,13 @@ export class ChatHistoryDatabase {
     `);
     
     const rows = stmt.all() as any[];
-    
-    return rows.map(row => ({
+      return rows.map(row => ({
       id: row.id,
       title: row.title,
       messages: [], // We'll load messages separately when needed
+      messageCount: row.message_count || 0, // Include message count for sidebar display
       createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
+      updatedAt: new Date(row.updated_at || row.last_message_at || row.created_at),
     }));
   }
 

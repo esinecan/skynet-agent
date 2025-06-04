@@ -5,17 +5,23 @@ import { MCPServerConfig } from '../types/mcp';
 export class MCPManager {
   private clients: Map<string, Client> = new Map();
   private transports: Map<string, StdioClientTransport> = new Map();
-
   async connectToServer(config: MCPServerConfig): Promise<void> {
     if (this.clients.has(config.name)) {
       return; // Already connected
     }
 
-    try {
-      // Create stdio transport for the server
+    try {      // Create stdio transport for the server with environment variables
       const transport = new StdioClientTransport({
         command: config.command!,
-        args: config.args || []
+        args: config.args || [],
+        env: {
+          // Include existing environment (filter out undefined values)
+          ...Object.fromEntries(
+            Object.entries(process.env).filter(([_, value]) => value !== undefined)
+          ) as Record<string, string>,
+          // Override with config-specific env vars
+          ...(config.env || {})
+        }
       });
 
       // Create client
@@ -58,8 +64,7 @@ export class MCPManager {
         console.error(`Error disconnecting from ${serverName}:`, error);
       }
     }
-  }
-  async callTool(serverName: string, toolName: string, args: any): Promise<any> {
+  }  async callTool(serverName: string, toolName: string, args: any): Promise<any> {
     console.log(`🔧 MCP Manager: Calling tool ${toolName} on server ${serverName}`);
     console.log(`🔧 MCP Manager: Tool arguments:`, JSON.stringify(args, null, 2));
     
@@ -77,10 +82,31 @@ export class MCPManager {
         arguments: args
       });
       console.log(`✅ MCP Manager: Tool call succeeded:`, JSON.stringify(result, null, 2));
+      
+      // Ensure the result is properly serializable
+      if (result && typeof result === 'object') {
+        try {
+          // Test serialization
+          JSON.stringify(result);
+          return result;
+        } catch (serializationError) {
+          console.warn(`⚠️ MCP Manager: Result not serializable, converting:`, serializationError);
+          return { message: String(result) };
+        }
+      }
+      
       return result;
     } catch (error) {
       console.error(`❌ MCP Manager: Error calling tool ${toolName} on ${serverName}:`, error);
-      throw error;
+      
+      // Don't throw, return a structured error response
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        error: true,
+        message: `MCP tool call failed: ${errorMessage}`,
+        server: serverName,
+        tool: toolName
+      };
     }
   }
 
