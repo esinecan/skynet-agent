@@ -1,4 +1,4 @@
-# 🧠 Skynet-Agent: One LLM Client to Rule Them All (Feat RAG + MCP)
+# 🧠 Skynet-Agent: One LLM Client to Rule Them All (Feat RAG + MCP) (In Development But Usable)
 
 > *"What if AI could not only access memories, but consciously choose what to remember? With MCP tool access fully supported?"*
 ![New Project](https://github.com/user-attachments/assets/453e192b-805c-4275-a3fe-358f37c50470)
