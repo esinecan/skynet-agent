@@ -518,11 +518,11 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
         limit: 1000, // Large limit to get most memories
         sessionId: options.sessionId,
         minScore: -1.0 // Very low to get everything
-      });
-
-      // Handle multi-word phrases and individual keywords
-      const originalQuery = query.toLowerCase().trim();
-      const keywords = originalQuery.split(/\s+/).filter(word => word.length > 1); // Allow 2+ letter words
+      });      // Handle multi-word phrases and individual keywords
+      const originalQuery = query.trim();
+      const originalQueryLower = originalQuery.toLowerCase();
+      const keywords = originalQuery.split(/\s+/).filter(word => word.length > 1); // Keep original case for proper noun detection
+      const keywordsLower = keywords.map(word => word.toLowerCase()); // Lowercase versions for matching
       
       console.log(`🔍 Keyword search for: "${originalQuery}" (split into: ${keywords.join(', ')})`);
       
@@ -535,25 +535,28 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
           let phraseBonus = 0;
           
           // Check for exact phrase match first (highest score)
-          if (text.includes(originalQuery)) {
+          if (text.includes(originalQueryLower)) {
             phraseBonus = 1.0;
             keywordScore += 1.0;
             console.log(`🎯 Exact phrase match found in memory ${memory.id}`);
           }
           
           // Check individual keywords
-          for (const keyword of keywords) {
-            if (text.includes(keyword)) {
+          for (let i = 0; i < keywords.length; i++) {
+            const keyword = keywords[i];          // Original case for proper noun detection
+            const keywordLower = keywordsLower[i]; // Lowercase for matching
+            
+            if (text.includes(keywordLower)) {
               exactMatches++;
               keywordScore += 0.4; // Higher base score
               
-              // Bonus for exact word boundary matches
-              const wordRegex = new RegExp(`\\b${keyword}\\b`, 'i');
+              // Bonus for exact word boundary matches (case insensitive)
+              const wordRegex = new RegExp(`\\b${keywordLower}\\b`, 'i');
               if (wordRegex.test(text)) {
                 keywordScore += 0.3; // Higher word boundary bonus
               }
               
-              // Extra bonus for proper nouns (capitalized words)
+              // Extra bonus for proper nouns (capitalized words in original query)
               if (keyword[0] === keyword[0].toUpperCase() && keyword.length > 2) {
                 keywordScore += 0.2;
                 console.log(`🏷️ Proper noun bonus for "${keyword}" in memory ${memory.id}`);
