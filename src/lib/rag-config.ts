@@ -10,6 +10,11 @@ export interface RAGConfig {
   chromaUrl: string;
   chromaCollection: string;
   googleApiKey?: string;
+  summarization: {
+    enabled: boolean;
+    threshold: number;
+    provider: 'google' | 'openai';
+  };
 }
 
 export function getRAGConfig(): RAGConfig {
@@ -21,6 +26,11 @@ export function getRAGConfig(): RAGConfig {
     chromaUrl: process.env.CHROMA_URL || 'http://localhost:8000',
     chromaCollection: process.env.CHROMA_COLLECTION || 'mcp_chat_memories',
     googleApiKey: process.env.GOOGLE_API_KEY,
+    summarization: {
+      enabled: process.env.RAG_ENABLE_SUMMARIZATION !== 'false',
+      threshold: parseInt(process.env.RAG_SUMMARIZATION_THRESHOLD || '1000'),
+      provider: (process.env.RAG_SUMMARIZATION_PROVIDER as 'google' | 'openai') || 'google'
+    }
   };
 }
 

@@ -8,6 +8,17 @@ import { join } from 'path';
 // Global LLM service instance
 let llmService: LLMService | null = null;
 
+// Add diagnostic logging for debugging
+function logDiagnostics() {
+  console.log('🔍 Chat API Diagnostics:');
+  console.log('  - RAG_ENABLED:', process.env.RAG_ENABLED);
+  console.log('  - RAG_ENABLE_SUMMARIZATION:', process.env.RAG_ENABLE_SUMMARIZATION);
+  console.log('  - GOOGLE_API_KEY exists:', !!process.env.GOOGLE_API_KEY);
+  console.log('  - CHROMA_URL:', process.env.CHROMA_URL);
+  //WILL YOU FUCKING STOP DOING THIS? PUT A SINGLE LOG STATEMENT AND MAKE IT INFORMATIVE
+  //STOP SPAMMING THE CONSOLE WITH REDUNDANT LOGS
+}
+
 // Helper function to load system prompt
 function loadSystemPrompt(): string {
   try {
@@ -60,6 +71,9 @@ function extractUserMessage(messages: any[]): string {
 
 export async function POST(request: NextRequest) {
   try {
+    // Add diagnostic logging at the start
+    logDiagnostics();
+    
     const body = await request.json();
     console.log('🔍 Chat API: Received request body keys:', Object.keys(body));
     console.log('🔍 Chat API: Request body.sessionId:', body.sessionId);
@@ -116,10 +130,7 @@ export async function POST(request: NextRequest) {
               role: 'system',
               content: ragResult.context
             };
-            
-            console.log('🔍 Chat API: RAG context:', ragResult.context.slice(0, 200) + '...');
-            console.log('🔍 Chat API: Enhanced messages count:', enhancedMessages.length);
-            console.log('🔍 Chat API: System message being added:', JSON.stringify(systemMessage, null, 2));
+              console.log(`RAG: Added ${ragResult.memories.length} memories, ${enhancedMessages.length} total messages, roles: ${enhancedMessages.map(m => m.role).join(',')}`);
             
             // Insert system message before the last user message
             enhancedMessages = [
@@ -127,21 +138,12 @@ export async function POST(request: NextRequest) {
               systemMessage,
               messages[messages.length - 1]
             ];
-            
-            console.log('🔍 Chat API: Messages after RAG enhancement:', enhancedMessages.length);
-            console.log('🔍 Chat API: All message roles:', enhancedMessages.map(m => m.role).join(', '));
-            
-            console.log('🧠 Chat API: Enhanced with RAG context');
-            console.log('� Chat API: Retrieved memories:', ragResult.memories.length);
           }
-        }
-      } catch (ragError) {
-        console.warn('⚠️  Chat API: RAG enhancement failed, continuing without memory:', ragError);
-      }    }
-      
-    // Process attachments and add them to the last user message
+        }      } catch (ragError) {
+        console.error('❌ Chat API: RAG enhancement FAILED:', ragError);
+      }}    // Process attachments and add them to the last user message
     if (attachments && attachments.length > 0) {
-      console.log('📎 Chat API: Processing', attachments.length, 'attachments');
+      console.log(`Attachments: Processing ${attachments.length} files`);
       
       // Find the last user message in enhancedMessages
       const lastUserMessageIndex = enhancedMessages.map(m => m.role).lastIndexOf('user');
@@ -211,16 +213,20 @@ export async function POST(request: NextRequest) {
         messages: enhancedMessages,
         tools: tools,
         maxTokens: parseInt(process.env.MAX_TOKENS || '4096'),
-        temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
-        maxSteps: 5, // Allow multiple tool calls
+        temperature: parseFloat(process.env.TEMPERATURE || '0.7'),        maxSteps: 5, // Allow multiple tool calls
         onFinish: async (finishResult) => {
+        console.log('🏁 Chat API: onFinish callback started');
+        console.log('🏁 finishResult.text length:', finishResult.text?.length || 0);
+        
         // Store conversation in memory after successful completion
         if (enableRAG && userMessage && finishResult.text) {
           try {
+            console.log('💾 Chat API: Storing conversation in memory...');
             await service.storeConversationInMemory(userMessage, finishResult.text, sessionId);
-            console.log('💾 Chat API: Conversation stored in memory');
-          } catch (memoryError) {
-            console.warn('⚠️  Chat API: Failed to store conversation in memory:', memoryError);
+            console.log('💾 Chat API: Conversation stored in memory');          } catch (memoryError) {
+            console.error('❌ Chat API: Memory storage FAILED:', memoryError);
+            console.error('❌ Memory Error stack:', (memoryError as Error).stack);
+            throw memoryError; // Don't suppress this error
           }
         }
         
@@ -294,9 +300,6 @@ export async function POST(request: NextRequest) {
               console.log('✅ Found step-level tool call:', step.toolCallId);
             }
           });
-            console.log('🔧 Chat API: Complete tool calls from steps:', completeToolCalls.length);
-          console.log('🔧 Chat API: Tool calls being stored:', JSON.stringify(completeToolCalls, null, 2));
-          console.log('🔍 Chat API: Steps detail:', JSON.stringify(finishResult.steps, null, 2));
           
           // Store assistant response
           await chatHistory.addMessage({
@@ -307,25 +310,26 @@ export async function POST(request: NextRequest) {
             toolInvocations: completeToolCalls,
           });
           
-          console.log('📝 Chat API: Conversation stored in chat history');
-        } catch (historyError) {
-          console.warn('⚠️  Chat API: Failed to store in chat history:', historyError);
+          console.log('📝 Chat API: Conversation stored in chat history');        } catch (historyError) {
+          console.error('❌ Chat API: History storage FAILED:', historyError);
+          console.error('❌ History Error stack:', (historyError as Error).stack);
+          throw historyError; // Don't suppress this error
         }
-      },
-    });    console.log('✅ Chat API: streamText completed successfully');
-    
-    // Return the data stream response without modifying headers
-    // The AI SDK sets the correct content type for streaming
-    return result.toDataStreamResponse();    } catch (streamError) {
-      console.error('❌ Chat API: streamText failed:', streamError);
-      
-      // Return a proper JSON error response that AI SDK can handle
-      return new Response(
-        JSON.stringify({ 
-          error: 'STREAM_ERROR',
-          message: streamError instanceof Error ? streamError.message : 'Stream processing failed',
-          details: 'There was an error processing your request. Please try again.'
-        }),
+      },    }); 
+
+    const dataStreamResponse = result.toDataStreamResponse();
+    console.log('✅ Chat API: stream response: ', dataStreamResponse.json);
+    return dataStreamResponse;
+  } catch (streamError) {
+    console.error('❌ Chat API: streamText failed:', streamError);
+
+    // Return a proper JSON error response that AI SDK can handle
+    return new Response(
+      JSON.stringify({
+        error: 'STREAM_ERROR',
+        message: streamError instanceof Error ? streamError.message : 'Stream processing failed',
+        details: 'There was an error processing your request. Please try again.'
+      }),
         { 
           status: 500,
           headers: { 'Content-Type': 'application/json' }
