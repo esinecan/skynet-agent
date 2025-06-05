@@ -203,16 +203,48 @@ export class ChatHistoryDatabase {
         createdAt: new Date(row.created_at),
       });
       return acc;
-    }, {} as Record<string, FileAttachment[]>);
-
-    const messages = messageRows.map(row => ({
-      id: row.id,
-      role: row.role,
-      content: row.content,
-      toolInvocations: row.tool_invocations ? JSON.parse(row.tool_invocations) : undefined,
-      attachments: attachmentsByMessage[row.id] || [],
-      createdAt: new Date(row.created_at),
-    }));
+    }, {} as Record<string, FileAttachment[]>);    const messages = messageRows.map(row => {
+      let toolInvocations = undefined;
+      
+      if (row.tool_invocations) {
+        try {
+          toolInvocations = JSON.parse(row.tool_invocations);
+        } catch (error) {
+          console.error('❌ Failed to parse tool invocations for message:', row.id, error);
+          console.error('❌ Raw tool_invocations:', row.tool_invocations);
+          toolInvocations = undefined; // Safe fallback
+        }
+      }
+      
+      if (toolInvocations) {
+        console.log('🔧 Loading message with tool calls:', row.id);
+        console.log('🔧 Tool calls from DB:', JSON.stringify(toolInvocations, null, 2));
+          // KEEP THE FILTER - but update it for the new storage format
+        const completeToolCalls = toolInvocations.filter((call: any) => {
+          const hasResult = 'result' in call; // Check if result property exists, not if it's truthy
+          
+          if (!hasResult) {
+            console.log('⚠️ Filtering out incomplete tool call:', call.toolCallId || call.id);
+            console.log('⚠️ Call structure:', Object.keys(call));
+          } else {
+            console.log('✅ Keeping complete tool call:', call.toolCallId || call.id);
+          }
+          return hasResult;
+        });
+        
+        toolInvocations = completeToolCalls.length > 0 ? completeToolCalls : undefined;
+        console.log('🔧 After filtering:', toolInvocations?.length || 0, 'complete tool calls');
+      }
+      
+      return {
+        id: row.id,
+        role: row.role,
+        content: row.content,
+        toolInvocations,
+        attachments: attachmentsByMessage[row.id] || [],
+        createdAt: new Date(row.created_at),
+      };
+    });
     
     return {
       id: sessionRow.id,
@@ -244,7 +276,15 @@ export class ChatHistoryDatabase {
         VALUES (?, ?, ?, ?, ?, ?)
       `);
       
-      const toolInvocationsJson = message.toolInvocations ? JSON.stringify(message.toolInvocations) : null;
+      const toolInvocationsJson = message.toolInvocations ? (() => {
+        try {
+          return JSON.stringify(message.toolInvocations);
+        } catch (error) {
+          console.error('❌ Failed to serialize tool invocations:', error);
+          console.error('❌ Tool invocations data:', message.toolInvocations);
+          return null; // Store null instead of crashing
+        }
+      })() : null;
       
       stmt.run(
         message.id,

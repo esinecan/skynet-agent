@@ -77,7 +77,7 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
 
   React.useEffect(() => {
     if (!sessionId && onNewSession) {
-      const newSessionId = `session-${Date.now()}`
+      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
       onNewSession(newSessionId)
     }
   }, [sessionId, onNewSession])

@@ -8,7 +8,10 @@ import { ChatSession } from '../lib/chat-history'
 import { FileAttachment } from '../types/chat'
 
 export default function Home() {
-  const [currentSessionId, setCurrentSessionId] = React.useState<string>('')
+  // Generate session ID immediately, before useChat
+  const [currentSessionId, setCurrentSessionId] = React.useState<string>(() => 
+    `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
+  )
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
     const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
     id: currentSessionId,
@@ -27,13 +30,8 @@ export default function Home() {
     // User message storage is now handled by the chat API
     // No need to store separately here
   }
-  // Generate session ID on first message
-  React.useEffect(() => {
-    if (messages.length > 0 && !currentSessionId) {
-      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
-      setCurrentSessionId(newSessionId)
-    }
-  }, [messages.length, currentSessionId])
+  // Session ID is now generated immediately in useState initializer
+  // No need for useEffect to set it after first message
 
   const startNewChat = () => {
     const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
@@ -42,10 +40,34 @@ export default function Home() {
     setSidebarOpen(false)
   }
 
-  const loadSession = (session: ChatSession) => {
-    setCurrentSessionId(session.id)
-    setMessages(session.messages)
-    setSidebarOpen(false)
+  const loadSession = async (session: ChatSession) => {
+    console.log('🔍 Loading session:', session.id)
+    console.log('🔍 Session has', session.messages.length, 'messages')
+    console.log('🔍 Messages:', session.messages.map(m => ({ role: m.role, content: m.content.slice(0, 50) + '...' })))
+    
+    // CRITICAL FIX: Load session data fresh from API to avoid stale data
+    try {
+      const response = await fetch(`/api/chat-history/${session.id}`)
+      const data = await response.json()
+      
+      if (response.ok && data.session) {
+        setCurrentSessionId(session.id)
+        setMessages(data.session.messages || [])
+        setSidebarOpen(false)
+      } else {
+        console.error('Failed to load session:', data.error)
+        // Fallback to passed session data
+        setCurrentSessionId(session.id)
+        setMessages(session.messages)
+        setSidebarOpen(false)
+      }
+    } catch (error) {
+      console.error('Error loading session:', error)
+      // Fallback to passed session data
+      setCurrentSessionId(session.id)
+      setMessages(session.messages)
+      setSidebarOpen(false)
+    }
   }
 
   return (

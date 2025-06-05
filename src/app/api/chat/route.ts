@@ -258,7 +258,45 @@ export async function POST(request: NextRequest) {
               data: att.data,
               createdAt: new Date(),
             })) : undefined,
+          });          // Extract complete tool calls from steps - check all step types
+          const completeToolCalls: any[] = [];
+          
+          finishResult.steps?.forEach((step: any, index: number) => {
+            console.log(`🔍 Step ${index}:`, {
+              stepType: step.stepType,
+              toolCallsCount: step.toolCalls?.length || 0,
+              toolResultsCount: step.toolResults?.length || 0,
+              hasResult: !!step.result
+            });
+            
+            // Look for tool calls in various step structures
+            if (step.toolCalls?.length > 0) {
+              step.toolCalls.forEach((call: any) => {
+                const matchingResult = step.toolResults?.find((r: any) => r.toolCallId === call.toolCallId);                if (call.result || matchingResult) {
+                  // CRITICAL FIX: Merge tool call with its result + ensure AI SDK compatibility
+                  const completeCall = {
+                    type: 'tool-call',
+                    toolCallId: call.toolCallId || call.id,
+                    toolName: call.toolName,
+                    args: call.args,
+                    result: call.result || matchingResult,
+                    state: 'result' // Mark as completed for AI SDK
+                  };
+                  completeToolCalls.push(completeCall);
+                  console.log('✅ Found complete tool call:', call.toolCallId);
+                }
+              });
+            }
+            
+            // Also check if the step itself is a tool call
+            if (step.type === 'tool-call' && step.result) {
+              completeToolCalls.push(step);
+              console.log('✅ Found step-level tool call:', step.toolCallId);
+            }
           });
+            console.log('🔧 Chat API: Complete tool calls from steps:', completeToolCalls.length);
+          console.log('🔧 Chat API: Tool calls being stored:', JSON.stringify(completeToolCalls, null, 2));
+          console.log('🔍 Chat API: Steps detail:', JSON.stringify(finishResult.steps, null, 2));
           
           // Store assistant response
           await chatHistory.addMessage({
@@ -266,7 +304,7 @@ export async function POST(request: NextRequest) {
             sessionId: sessionId,
             role: 'assistant',
             content: finishResult.text,
-            toolInvocations: finishResult.toolCalls,
+            toolInvocations: completeToolCalls,
           });
           
           console.log('📝 Chat API: Conversation stored in chat history');
