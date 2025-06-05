@@ -15,8 +15,6 @@ function logDiagnostics() {
   console.log('  - RAG_ENABLE_SUMMARIZATION:', process.env.RAG_ENABLE_SUMMARIZATION);
   console.log('  - GOOGLE_API_KEY exists:', !!process.env.GOOGLE_API_KEY);
   console.log('  - CHROMA_URL:', process.env.CHROMA_URL);
-  //WILL YOU FUCKING STOP DOING THIS? PUT A SINGLE LOG STATEMENT AND MAKE IT INFORMATIVE
-  //STOP SPAMMING THE CONSOLE WITH REDUNDANT LOGS
 }
 
 // Helper function to load system prompt
