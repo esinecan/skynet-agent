@@ -13,61 +13,20 @@ export default function Home() {
     `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
   )
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
-    const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
-    id: currentSessionId,
-    api: '/api/chat',
-    maxSteps: 5, // Allow multiple tool calls
-    onError: (error) => {
-      console.error('Chat error:', error);
-    },    onFinish: async (message) => {
-      // Message storage is now handled by the chat API
-      // No need to store separately here
-    }
-  })  // Save user messages immediately when sent
-  const handleChatSubmit = async (e: React.FormEvent, attachments?: FileAttachment[]) => {
-    handleSubmit(e)
-    
-    // User message storage is now handled by the chat API
-    // No need to store separately here
-  }
-  // Session ID is now generated immediately in useState initializer
-  // No need for useEffect to set it after first message
 
   const startNewChat = () => {
     const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
     setCurrentSessionId(newSessionId)
-    setMessages([])
     setSidebarOpen(false)
   }
 
   const loadSession = async (session: ChatSession) => {
     console.log('🔍 Loading session:', session.id)
-    console.log('🔍 Session has', session.messages.length, 'messages')
-    console.log('🔍 Messages:', session.messages.map(m => ({ role: m.role, content: m.content.slice(0, 50) + '...' })))
+    console.log('🔍 Session has', session.messages.length, 'messages from sidebar (should be 0)')
     
-    // CRITICAL FIX: Load session data fresh from API to avoid stale data
-    try {
-      const response = await fetch(`/api/chat-history/${session.id}`)
-      const data = await response.json()
-      
-      if (response.ok && data.session) {
-        setCurrentSessionId(session.id)
-        setMessages(data.session.messages || [])
-        setSidebarOpen(false)
-      } else {
-        console.error('Failed to load session:', data.error)
-        // Fallback to passed session data
-        setCurrentSessionId(session.id)
-        setMessages(session.messages)
-        setSidebarOpen(false)
-      }
-    } catch (error) {
-      console.error('Error loading session:', error)
-      // Fallback to passed session data
-      setCurrentSessionId(session.id)
-      setMessages(session.messages)
-      setSidebarOpen(false)
-    }
+    // Simply set the session ID - let the ChatComponent handle the rest
+    setCurrentSessionId(session.id)
+    setSidebarOpen(false)
   }
 
   return (
@@ -80,16 +39,101 @@ export default function Home() {
         currentSessionId={currentSessionId}
       />
       
-      <main className="flex min-h-screen flex-col items-center justify-between p-24">
-        <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">          {/* Header with sidebar toggle */}
-          <div className="flex items-center justify-between mb-8">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
-            >
-              <span>☰</span>
-              History
-            </button>
+      {/* Use key to force remount when session changes */}
+      <ChatComponent 
+        key={currentSessionId} 
+        sessionId={currentSessionId} 
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        onNewChat={startNewChat}
+      />
+    </>
+  )
+}
+
+// Separate component to handle chat functionality
+function ChatComponent({ 
+  sessionId, 
+  onToggleSidebar,
+  onNewChat 
+}: { 
+  sessionId: string, 
+  onToggleSidebar: () => void,
+  onNewChat: () => void
+}) {
+  const [initialMessages, setInitialMessages] = React.useState<any[]>([])
+  const [isLoadingSession, setIsLoadingSession] = React.useState(true)
+
+  // Load messages when sessionId changes
+  React.useEffect(() => {
+    console.log('Loading messages for session:', sessionId)
+    setIsLoadingSession(true)
+    
+    // Make GET request to load existing messages
+    fetch(`/api/chat?sessionId=${sessionId}`)
+      .then(response => {
+        if (response.ok) {
+          return response.json()
+        } else {
+          console.log('No existing messages for session:', sessionId)
+          return { messages: [] }
+        }
+      })
+      .then(data => {
+        console.log('Loaded', data.messages?.length || 0, 'messages for session')
+        setInitialMessages(data.messages || [])
+        setIsLoadingSession(false)
+      })
+      .catch(error => {
+        console.error('Error loading messages:', error)
+        setInitialMessages([])
+        setIsLoadingSession(false)
+      })
+  }, [sessionId])
+
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    id: sessionId,
+    api: '/api/chat',
+    initialMessages: initialMessages,
+    maxSteps: 5, // Allow multiple tool calls
+    onError: (error) => {
+      console.error('Chat error:', error);
+    },
+    onFinish: async (message) => {
+      // Message storage is now handled by the chat API
+      // No need to store separately here
+    }
+  })
+
+  // Log when component mounts/remounts with new session
+  React.useEffect(() => {
+    console.log('� ChatComponent mounted with session:', sessionId)
+    console.log('� Messages loaded:', messages.length)
+  }, [sessionId])
+
+  React.useEffect(() => {
+    console.log('� Messages changed:', messages.length)
+  }, [messages.length])
+
+  // Save user messages immediately when sent
+  const handleChatSubmit = async (e: React.FormEvent, attachments?: FileAttachment[]) => {
+    handleSubmit(e)
+    
+    // User message storage is now handled by the chat API
+    // No need to store separately here
+  }
+
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-between p-24">
+      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
+        {/* Header with sidebar toggle */}
+        <div className="flex items-center justify-between mb-8">
+          <button
+            onClick={onToggleSidebar}
+            className="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
+          >
+            <span>☰</span>
+            History
+          </button>
             
             <div className="flex-1 flex justify-center">
               <h1 className="text-4xl font-bold">
@@ -116,7 +160,7 @@ export default function Home() {
               </a>
               
               <button
-                onClick={startNewChat}
+                onClick={onNewChat}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
               >
                 <span>+</span>
@@ -185,6 +229,5 @@ export default function Home() {
         </div>
       </div>
     </main>
-    </>
   )
 }

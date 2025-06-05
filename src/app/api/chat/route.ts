@@ -69,6 +69,41 @@ function extractUserMessage(messages: any[]): string {
   return lastUserMessage?.content || '';
 }
 
+// GET handler to load existing chat sessions for useChat hook
+export async function GET(request: NextRequest) {
+  try {
+    const url = new URL(request.url);
+    const sessionId = url.searchParams.get('sessionId');
+    
+    if (!sessionId) {
+      return Response.json({ error: 'sessionId parameter is required' }, { status: 400 });
+    }
+      console.log('📥 Loading chat session:', sessionId);
+    
+    const chatHistory = ChatHistoryDatabase.getInstance();
+    const session = chatHistory.getSession(sessionId);
+    
+    if (!session) {
+      console.log('❌ Session not found:', sessionId);
+      return Response.json({ error: 'Session not found' }, { status: 404 });
+    }
+    
+    console.log('✅ Loaded session with', session.messages.length, 'messages');
+    
+    // Return messages in the format expected by useChat hook
+    return Response.json({
+      messages: session.messages
+    });
+    
+  } catch (error) {
+    console.error('❌ Error loading chat session:', error);
+    return Response.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Add diagnostic logging at the start

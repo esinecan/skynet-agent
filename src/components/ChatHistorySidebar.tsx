@@ -148,24 +148,9 @@ export default function ChatHistorySidebar({
       }
     }
   }
-
-  const loadSessionDetails = async (session: ChatSession) => {
-    try {
-      const response = await fetch(`/api/chat-history/${session.id}`)
-      const data = await response.json()
-      
-      if (response.ok) {
-        onSelectSession(data.session)
-      } else {
-        console.error('Failed to load session details:', data.error)
-        // Fallback to basic session data
-        onSelectSession(session)
-      }
-    } catch (error) {
-      console.error('Error loading session details:', error)
-      // Fallback to basic session data
-      onSelectSession(session)
-    }
+  const handleSessionSelect = (session: ChatSession) => {
+    // Let the main page handle fetching fresh session data
+    onSelectSession(session)
   }
 
   const formatDate = (date: Date | string) => {
@@ -290,7 +275,7 @@ export default function ChatHistorySidebar({
                       : 'hover:bg-gray-800'
                     }
                   `}
-                  onClick={() => loadSessionDetails(session)}
+                  onClick={() => handleSessionSelect(session)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
