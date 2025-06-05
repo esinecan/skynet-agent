@@ -7,6 +7,7 @@ export interface MCPServerConfig {
   type: 'http' | 'stdio';
   command?: string;
   args?: string[];
+  env?: { [key: string]: string };
 }
 
 export class MCPClient {

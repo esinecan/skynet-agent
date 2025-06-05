@@ -1,4 +1,6 @@
 import { MCPServerConfig } from '../types/mcp';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 export interface MCPConfig {
   mcp: {
@@ -6,51 +8,40 @@ export interface MCPConfig {
       [serverName: string]: {
         command: string;
         args: string[];
+        env?: { [key: string]: string };
       };
     };
   };
 }
 
-// Load configuration from environment or use defaults
-export const mcpConfig: MCPConfig = {
-  mcp: {
-    servers: {
-      filesystem: {
-        command: 'npx',
-        args: [
-          '-y',
-          '@modelcontextprotocol/server-filesystem',
-          process.env.FILESYSTEM_PATH || 'C:/Users/yepis/agent-personal-space'
-        ]
-      },
-      'windows-cli': {
-        command: 'npx',
-        args: [
-          '-y',
-          '@simonb97/server-win-cli'
-        ]
-      },
-      playwright: {
-        command: 'npx',
-        args: ['@playwright/mcp@latest']
-      },
-      'sequential-thinking': {
-        command: 'npx',
-        args: [
-          '-y',
-          '@modelcontextprotocol/server-sequential-thinking'
-        ]
-      },
-      'conscious-memory': {
-        command: 'npx',
-        args: [
-          'tsx',
-          './src/lib/mcp-servers/conscious-memory-server.ts'
-        ]
+// Load configuration from config.json
+function loadMCPConfig(): MCPConfig {
+  try {
+    const configPath = join(process.cwd(), 'config.json');
+    const configFile = readFileSync(configPath, 'utf8');
+    const config = JSON.parse(configFile);
+    return config as MCPConfig;
+  } catch (error) {
+    console.error('Failed to load config.json, using fallback configuration:', error);
+    // Fallback configuration if config.json is not available
+    return {
+      mcp: {
+        servers: {
+          'sequential-thinking': {
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+          },
+          'conscious-memory': {
+            command: 'npx',
+            args: ['tsx', './src/lib/mcp-servers/conscious-memory-server.ts']
+          }
+        }
       }
-    }
+    };
   }
-};
+}
+
+export const mcpConfig: MCPConfig = loadMCPConfig();
 
 export function getMCPServerConfig(serverName: string): MCPServerConfig | undefined {
   const serverConfig = mcpConfig.mcp.servers[serverName];
@@ -69,6 +60,7 @@ export function getAllMCPServers(): MCPServerConfig[] {
     name: serverName,
     type: 'stdio',
     command: mcpConfig.mcp.servers[serverName].command,
-    args: mcpConfig.mcp.servers[serverName].args
+    args: mcpConfig.mcp.servers[serverName].args,
+    env: mcpConfig.mcp.servers[serverName].env || {}
   }));
 }

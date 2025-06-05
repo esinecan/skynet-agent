@@ -159,8 +159,7 @@ export class LLMService {
       provider: this.provider,
       model: this.modelName
     };
-  }
-  async initialize(): Promise<void> {
+  }  async initialize(): Promise<void> {
     // Connect to all configured MCP servers
     const serverConfigs = getAllMCPServers();
     
@@ -179,7 +178,7 @@ export class LLMService {
     await this.initializeRAG();
   }async generateResponse(userMessage: string, options?: LLMOptions): Promise<string> {
     try {
-      console.log('🔍 Starting response generation for:', userMessage);
+      //console.log('🔍 Starting response generation for:', userMessage);
       
       // Use RAG-enhanced generation if sessionId is provided and RAG is enabled
       if (options?.sessionId && options?.enableRAG !== false) {
@@ -187,7 +186,7 @@ export class LLMService {
         return result.text;
       }        // Fall back to basic generation without memory
       const tools = await this.getAvailableTools();
-      console.log('🔧 Available tools:', Object.keys(tools));
+      //console.log('🔧 Available tools:', Object.keys(tools));
       
       // Get system prompt
       const systemPrompt = this.getSystemPrompt();
@@ -201,21 +200,20 @@ export class LLMService {
         temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
       });
 
-      console.log('✅ Generated response:', result.text);
-      console.log('🔧 Tool calls made:', result.toolCalls?.length || 0);
-      
-      if (result.toolCalls && result.toolCalls.length > 0) {
-        console.log('🔧 Tool call details:', JSON.stringify(result.toolCalls, null, 2));
+      //console.log('✅ Generated response:', result.text);
+      //console.log('🔧 Tool calls made:', result.toolCalls?.length || 0);
+        if (result.toolCalls && result.toolCalls.length > 0) {
+        console.log(`Tool calls: ${result.toolCalls.length}`);
       }
 
       return result.text;    } catch (error) {
-      console.error('❌ Error generating response:', error);
+      console.error('Error generating response:', error);
       
       // Log the full error details
       if (error instanceof Error) {
-        console.error('❌ Error name:', error.name);
-        console.error('❌ Error message:', error.message);
-        console.error('❌ Error stack:', error.stack);
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
       }
       
       throw new Error('Failed to generate response');
@@ -223,46 +221,53 @@ export class LLMService {
   }
 
   async getAvailableTools(): Promise<Record<string, any>> {
-    console.log('🔍 Getting available tools from MCP servers...');
+    //console.log('🔍 Getting available tools from MCP servers...');
     const tools: Record<string, any> = {};
     const connectedServers = this.mcpManager.getConnectedServers();
-    console.log('🔍 Connected servers:', connectedServers);
+    //console.log('🔍 Connected servers:', connectedServers);
     
     for (const serverName of connectedServers) {
       try {
-        console.log(`🔍 Getting tools from server: ${serverName}`);
+        //console.log(`🔍 Getting tools from server: ${serverName}`);
         const serverTools = await this.mcpManager.listTools(serverName);
-        console.log(`🔍 Server ${serverName} has ${serverTools.length} tools:`, serverTools.map(t => t.name));
-        
-        for (const mcpTool of serverTools) {
+        //console.log(`🔍 Server ${serverName} has ${serverTools.length} tools:`, serverTools.map(t => t.name));
+          for (const mcpTool of serverTools) {
           const toolKey = `${serverName}_${mcpTool.name}`;
-          console.log(`🔍 Processing tool: ${toolKey}`);
-          console.log(`🔍 Tool schema:`, JSON.stringify(mcpTool.inputSchema, null, 2));
           
           // Convert MCP JSON Schema to Zod schema
-          const parameters = this.convertJsonSchemaToZod(mcpTool.inputSchema);
-          console.log(`🔍 Converted Zod schema for ${toolKey}`);
-          
-          tools[toolKey] = tool({
-            description: mcpTool.description || `Tool ${mcpTool.name} from ${serverName}`,
-            parameters: parameters,
-            execute: async (args: any) => {
-              console.log(`🔧 Executing tool ${serverName}_${mcpTool.name} with args:`, JSON.stringify(args, null, 2));
-              try {
-                const result = await this.mcpManager.callTool(serverName, mcpTool.name, args);
-                console.log(`✅ Tool ${serverName}_${mcpTool.name} succeeded:`, JSON.stringify(result, null, 2));
-                return result;
-              } catch (error) {
-                console.error(`❌ Tool ${serverName}_${mcpTool.name} failed:`, error);
-                throw error;
+          const parameters = this.convertJsonSchemaToZod(mcpTool.inputSchema);tools[toolKey] = tool({
+              description: mcpTool.description || `Tool ${mcpTool.name} from ${serverName}`,
+              parameters: parameters,              execute: async (args: any) => {                try {
+                  const result = await this.mcpManager.callTool(serverName, mcpTool.name, args);
+                  
+                  // Ensure we return a clean result
+                  if (result && typeof result === 'object') {
+                    // If the result has a content field, return that
+                    if (result.content) {
+                      return result.content;
+                    }
+                    // Otherwise return the full result but ensure it's serializable
+                    return JSON.parse(JSON.stringify(result));
+                  }
+                  
+                  return result;
+                } catch (error) {
+                  console.error(`TOOL_ERROR: ${serverName}_${mcpTool.name} failed`);
+                  
+                  // Return a structured error response instead of throwing
+                  const errorMessage = error instanceof Error ? error.message : String(error);
+                  return {
+                    error: true,
+                    message: `Tool execution failed: ${errorMessage}`,
+                    tool: `${serverName}_${mcpTool.name}`
+                  };
+                }
               }
-            }
-          });
-        }
-      } catch (error) {
-        console.warn(`⚠️ Failed to get tools from ${serverName}:`, error);
+            });
+        }      } catch (error) {
+        console.warn(`Failed to get tools from ${serverName}:`, error);
       }
-    }    console.log('🔍 Final tool list:', Object.keys(tools));
+    }    //console.log('🔍 Final tool list:', Object.keys(tools));
     return tools;
   }
 
@@ -362,7 +367,7 @@ export class LLMService {
     options: LLMOptions = {}
   ): Promise<{ text: string; ragResult?: RAGResult }> {
     try {
-      console.log('🧠 Starting RAG-enhanced response generation for:', userMessage);
+      //console.log('🧠 Starting RAG-enhanced response generation for:', userMessage);
       
       let ragResult: RAGResult | undefined;
       let enhancedPrompt = userMessage;
@@ -374,12 +379,12 @@ export class LLMService {
         if (ragResult.shouldRetrieve && ragResult.context) {
           // Enhance the prompt with memory context
           enhancedPrompt = this.formatPromptWithMemoryContext(userMessage, ragResult.context);
-          console.log('🧠 Enhanced prompt with memory context');
+          //console.log('🧠 Enhanced prompt with memory context');
         }
       }
         // Get available tools from connected MCP servers
       const tools = await this.getAvailableTools();
-      console.log('🔧 Available tools:', Object.keys(tools));
+      //console.log('🔧 Available tools:', Object.keys(tools));
       
       // Get system prompt
       const systemPrompt = this.getSystemPrompt();
@@ -393,22 +398,21 @@ export class LLMService {
         temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
       });
 
-      console.log('✅ Generated RAG-enhanced response:', result.text);
-      console.log('🔧 Tool calls made:', result.toolCalls?.length || 0);
-      
-      if (result.toolCalls && result.toolCalls.length > 0) {
-        console.log('🔧 Tool call details:', JSON.stringify(result.toolCalls, null, 2));
+      //console.log('✅ Generated RAG-enhanced response:', result.text);
+      //console.log('🔧 Tool calls made:', result.toolCalls?.length || 0);
+        if (result.toolCalls && result.toolCalls.length > 0) {
+        console.log(`RAG tool calls: ${result.toolCalls.length}`);
       }
 
       return { text: result.text, ragResult };
     } catch (error) {
-      console.error('❌ Error generating RAG-enhanced response:', error);
+      console.error('Error generating RAG-enhanced response:', error);
       
       // Log the full error details
       if (error instanceof Error) {
-        console.error('❌ Error name:', error.name);
-        console.error('❌ Error message:', error.message);
-        console.error('❌ Error stack:', error.stack);
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
       }
       
       throw new Error('Failed to generate response');
@@ -422,12 +426,10 @@ export class LLMService {
     userMessage: string,
     assistantResponse: string,
     sessionId: string
-  ): Promise<void> {
-    try {
+  ): Promise<void> {    try {
       await this.ragService.storeConversation(userMessage, assistantResponse, sessionId);
-      console.log('💾 Conversation stored in memory');
     } catch (error) {
-      console.error('❌ Failed to store conversation in memory:', error);
+      console.error('Failed to store conversation in memory:', error);
       // Don't throw - memory storage failure shouldn't break the chat
     }
   }
@@ -441,15 +443,15 @@ export class LLMService {
       const content = readFileSync(systemPromptPath, 'utf-8').trim();
       
       if (content) {
-        console.log('📝 Loaded system prompt from system-prompt.md');
+        //console.log('📝 Loaded system prompt from system-prompt.md');
         return content;
       } else {
-        console.log('📝 system-prompt.md is empty, using no system prompt');
+        //console.log('📝 system-prompt.md is empty, using no system prompt');
         return '';
       }
     } catch (error) {
       if ((error as any).code === 'ENOENT') {
-        console.log('📝 system-prompt.md not found, using no system prompt');
+        //console.log('📝 system-prompt.md not found, using no system prompt');
       } else {
         console.warn('📝 Error reading system-prompt.md:', error);
       }
@@ -486,13 +488,12 @@ export class LLMService {
 
   /**
    * Initialize RAG service
-   */
-  async initializeRAG(): Promise<void> {
+   */  async initializeRAG(): Promise<void> {
     try {
       await this.ragService.initialize();
-      console.log('🧠 RAG service initialized successfully');
+      console.log('RAG service initialized');
     } catch (error) {
-      console.error('❌ Failed to initialize RAG service:', error);
+      console.error('Failed to initialize RAG service:', error);
       // Don't throw - RAG failure shouldn't prevent chat functionality
     }
   }

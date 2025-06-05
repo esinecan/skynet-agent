@@ -6,6 +6,8 @@
 import type { MemoryRetrievalResult, MemorySearchOptions } from '../types/memory';
 import { getMemoryStore } from './memory-store';
 import { getEmbeddingService } from './embeddings';
+import { getRAGConfig } from './rag-config';
+import { summarizeText, shouldSummarize } from './text-summarizer';
 
 export interface RAGConfig {
   enabled: boolean;
@@ -130,29 +132,63 @@ export class RAGService {
 
   /**
    * Store a conversation exchange in memory
-   */
-  async storeConversation(
+   */  async storeConversation(
     userMessage: string,
     assistantMessage: string,
     sessionId: string
   ): Promise<{ userMemoryId: string; assistantMemoryId: string }> {
     try {
       const timestamp = new Date().toISOString();
+      const config = getRAGConfig();
+      
+      // Process user message (with potential summarization)
+      let processedUserMessage = userMessage;
+      if (shouldSummarize(userMessage, config.summarization)) {
+        console.log(`📝 User message (${userMessage.length} chars) exceeds threshold, summarizing...`);
+        try {
+          const result = await summarizeText(userMessage, {
+            maxLength: Math.floor(config.summarization.threshold * 0.8),
+            preserveContext: `User message in session ${sessionId}`,
+            provider: config.summarization.provider
+          });
+          processedUserMessage = result.summary;
+          console.log(`✅ User message summarized: ${result.originalLength} → ${result.summaryLength} chars`);
+        } catch (error) {
+          console.warn('⚠️ User message summarization failed, storing original:', error);
+        }
+      }
+      
+      // Process assistant message (with potential summarization)
+      let processedAssistantMessage = assistantMessage;
+      if (shouldSummarize(assistantMessage, config.summarization)) {
+        console.log(`📝 Assistant message (${assistantMessage.length} chars) exceeds threshold, summarizing...`);
+        try {
+          const result = await summarizeText(assistantMessage, {
+            maxLength: Math.floor(config.summarization.threshold * 0.8),
+            preserveContext: `Assistant response in session ${sessionId}`,
+            provider: config.summarization.provider
+          });
+          processedAssistantMessage = result.summary;
+          console.log(`✅ Assistant message summarized: ${result.originalLength} → ${result.summaryLength} chars`);
+        } catch (error) {
+          console.warn('⚠️ Assistant message summarization failed, storing original:', error);
+        }
+      }
       
       // Store user message
-      const userMemoryId = await this.memoryStore.storeMemory(userMessage, {
+      const userMemoryId = await this.memoryStore.storeMemory(processedUserMessage, {
         sessionId,
         timestamp,
         messageType: 'user',
-        textLength: userMessage.length
+        textLength: processedUserMessage.length
       });
       
       // Store assistant message
-      const assistantMemoryId = await this.memoryStore.storeMemory(assistantMessage, {
+      const assistantMemoryId = await this.memoryStore.storeMemory(processedAssistantMessage, {
         sessionId,
         timestamp,
         messageType: 'assistant',
-        textLength: assistantMessage.length
+        textLength: processedAssistantMessage.length
       });
       
       console.log(`Conversation stored: user=${userMemoryId}, assistant=${assistantMemoryId}`);

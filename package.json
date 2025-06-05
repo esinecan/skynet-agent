@@ -1,9 +1,10 @@
 {
   "name": "mcp-chat-client",
   "version": "0.1.0",
-  "private": true,
-  "scripts": {
+  "private": true,  "scripts": {
     "dev": "next dev",
+    "dev:debug": "cross-env NODE_OPTIONS='--inspect' next dev",
+    "dev:gui": "npm run dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -37,6 +38,7 @@
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "autoprefixer": "^10.4.21",
+    "cross-env": "^7.0.3",
     "eslint": "^8.0.0",
     "eslint-config-next": "15.0.0",
     "postcss": "^8.5.4",

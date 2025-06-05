@@ -12,29 +12,42 @@ interface ChatInterfaceProps {
   sessionId?: string
 }
 
-export default function ChatInterface({ onNewSession, sessionId }: ChatInterfaceProps) {
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
+export default function ChatInterface({ onNewSession, sessionId }: ChatInterfaceProps) {  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, error } = useChat({
     id: sessionId,
-    onFinish: async (message) => {
-      // Save message to database after completion
-      if (sessionId) {
-        try {
-          await fetch(`/api/chat-history/${sessionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              message: {
-                id: message.id,
-                role: message.role,
-                content: message.content,
-                toolInvocations: message.toolInvocations,
-              }
-            })
-          })
-        } catch (error) {
-          console.error('Failed to save message:', error)
-        }
+    api: '/api/chat',
+    maxSteps: 5, // Allow multiple tool calls
+    onError: async (error) => {
+      console.error('🚨 Full error object:', error);
+      console.error('🚨 Error message:', error.message);
+      console.error('🚨 Error stack:', error.stack);
+      console.error('🚨 Error cause:', (error as any).cause);
+      
+      // Try to get the original response if available
+      if ((error as any).cause && typeof (error as any).cause === 'object') {
+        console.error('🚨 Error cause details:', (error as any).cause);
       }
+      
+      // Try to fetch the last response to see actual server error
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            messages: [{ role: 'user', content: 'test error' }],
+            id: sessionId 
+          })
+        });
+        
+        if (!response.ok) {
+          const errorBody = await response.text();
+          console.error('🚨 Server error response:', errorBody);
+        }
+      } catch (fetchError) {
+        console.error('🚨 Fetch error:', fetchError);
+      }
+    },    onFinish: async (message) => {
+      // Message storage is now handled by the chat API
+      // No need to store separately here
     }
   })
 
@@ -62,36 +75,10 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
         createdAt: new Date(),
         attachments
       }
+        setMessages(prev => [...prev, userMessage])
       
-      setMessages(prev => [...prev, userMessage])
-      
-      // Save user message to database with attachments
-      if (sessionId) {
-        try {
-          await fetch(`/api/chat-history/${sessionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              message: {
-                id: userMessage.id,
-                role: 'user',
-                content: input,
-                attachments: attachments.map(att => ({
-                  id: att.id,
-                  messageId: userMessage.id,
-                  name: att.name,
-                  type: att.type,
-                  size: att.size,
-                  data: att.data,
-                  createdAt: new Date()
-                }))
-              }
-            })
-          })
-        } catch (error) {
-          console.error('Failed to save user message with attachments:', error)
-        }
-      }
+      // User message storage is now handled by the chat API
+      // No need to store separately here
       
       // Send to chat API with attachment info in the message content
       const attachmentInfo = attachments.map(att => 
@@ -107,34 +94,17 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
       handleInputChange(syntheticEvent)
       handleSubmit(e)
       
-    } else {
-      // Regular submit without attachments
+    } else {      // Regular submit without attachments
       handleSubmit(e)
       
-      // Save user message to database
-      if (sessionId && input.trim()) {
-        try {
-          await fetch(`/api/chat-history/${sessionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              message: {
-                id: `user-${Date.now()}`,
-                role: 'user',
-                content: input,
-              }
-            })
-          })
-        } catch (error) {
-          console.error('Failed to save user message:', error)
-        }
-      }
+      // User message storage is now handled by the chat API
+      // No need to store separately here
     }
   }
 
   React.useEffect(() => {
     if (!sessionId && onNewSession) {
-      const newSessionId = `session-${Date.now()}`
+      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
       onNewSession(newSessionId)
     }
   }, [sessionId, onNewSession])
@@ -178,6 +148,25 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
             <div className="flex items-center gap-2 text-gray-500">
               <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
               AI is thinking...
+            </div>
+          </div>
+        )}
+        {error && (
+          <div className="mx-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <div className="text-red-500 text-xl">⚠️</div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-800 mb-1">Chat Error</h3>
+                <p className="text-red-700 text-sm">{error.message}</p>
+                <details className="mt-2">
+                  <summary className="text-xs text-red-600 cursor-pointer hover:text-red-800">
+                    Show technical details
+                  </summary>
+                  <pre className="mt-2 text-xs text-red-600 bg-red-100 p-2 rounded overflow-auto max-h-32">
+                    {error.stack || JSON.stringify(error, null, 2)}
+                  </pre>
+                </details>
+              </div>
             </div>
           </div>
         )}
