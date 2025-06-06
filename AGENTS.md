@@ -12,129 +12,116 @@ This file stores notes and instructions for future Codex agents working in this 
 You can extensively test this application using curl to simulate user flows. Below are the key testing patterns:
 
 ### Flow 1: New Chat Creation
-```powershell
+```bash
 # 1. Start new chat (POST to /api/chat creates session automatically)
-$body = @{
-    messages = @(
-        @{
-            role = "user"
-            content = "Hello, how are you?"
-        }
-    )
-} | ConvertTo-Json -Depth 3
-
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat" -Method POST -Body $body -ContentType "application/json"
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Hello, how are you?"}
+    ]
+  }'
 # Response will be streamed, includes session ID in metadata
 
 # 2. List sessions to see the new chat
+curl http://localhost:3000/api/chat-history
+```
+
+### Flow 2: Load Existing Chat
+```bash
+# 1. Get session list
+curl http://localhost:3000/api/chat-history
+
+# 2. Load specific session (using sessionId from step 1)
+curl "http://localhost:3000/api/chat-history/[sessionId]"
+
+# 3. Continue conversation in that session
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Previous message", "sessionId": "[sessionId]"},
+      {"role": "assistant", "content": "Previous response"},
+      {"role": "user", "content": "New message"}
+    ],
+    "sessionId": "[sessionId]"
+  }'
+```
+
+### Flow 3: Tool Calls
+```bash
+# Send message that triggers tool usage
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Remember that I like pizza"}
+    ]
+  }'
+# Response will include tool_calls in the stream for memory operations
+
+# Check if memory was stored
+curl -X POST http://localhost:3000/api/conscious-memory \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "search",
+    "query": "pizza"
+  }'
+```
+
+### Flow 4: File Attachments
+```bash
+# 1. Upload file first
+curl -X POST http://localhost:3000/api/upload \
+  -F "files=@test.txt"
+# Returns base64 data and metadata
+
+# 2. Include attachment in chat
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Analyze this file"}
+    ],
+    "attachments": [
+      {
+        "name": "test.txt",
+        "type": "text/plain",
+        "data": "[base64-from-upload]"
+      }
+    ]
+  }'
+```
+
+### Memory System Testing
+```bash
+# Test RAG memory
+curl -X POST http://localhost:3000/api/memory \
+  -H "Content-Type: application/json" \
+  -d '{"action": "search", "query": "test query"}'
+
+# Test conscious memory stats
+curl -X POST http://localhost:3000/api/conscious-memory \
+  -H "Content-Type: application/json" \
+  -d '{"action": "stats"}'
+```
+
+### Session Management
+```bash
+# Search sessions
+curl "http://localhost:3000/api/chat-history/search?q=pizza"
+
+# Delete session
+curl -X DELETE "http://localhost:3000/api/chat-history?sessionId=[sessionId]"
+
+# Delete all sessions
+curl -X DELETE "http://localhost:3000/api/chat-history?sessionId=all"
+```
 
 ## Exploratory Testing Notes
 - `npm run build` originally failed with a type error in `src/app/api/chat-history/[sessionId]/route.ts` because the handler context expected `params` to be a `Promise`. Restoring the asynchronous parameter resolved the issue.
 - `npm run dev` worked even when the build failed. Using `curl` against `/api/chat-history` returned the list of sessions (empty by default). Posting to `/api/chat-history` and then `/api/chat-history/[sessionId]` successfully created and retrieved sessions.
 - After reverting to `Promise`-based params, `npm run type-check` succeeds with no errors.
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history" -Method GET
-```
-
-### Flow 2: Load Existing Chat
-```powershell
-# 1. Get session list
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history" -Method GET
-
-# 2. Load specific session (using sessionId from step 1)
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history/[sessionId]" -Method GET
-
-# 3. Continue conversation in that session
-$continueBody = @{
-    messages = @(
-        @{role = "user"; content = "Previous message"; sessionId = "[sessionId]"},
-        @{role = "assistant"; content = "Previous response"},
-        @{role = "user"; content = "New message"}
-    )
-    sessionId = "[sessionId]"
-} | ConvertTo-Json -Depth 3
-
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat" -Method POST -Body $continueBody -ContentType "application/json"
-```
-
-### Flow 3: Tool Calls
-```powershell
-# Send message that triggers tool usage
-$toolBody = @{
-    messages = @(
-        @{
-            role = "user"
-            content = "Remember that I like pizza"
-        }
-    )
-} | ConvertTo-Json -Depth 3
-
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat" -Method POST -Body $toolBody -ContentType "application/json"
-# Response will include tool_calls in the stream for memory operations
-
-# Check if memory was stored
-$searchBody = @{
-    action = "search"
-    query = "pizza"
-} | ConvertTo-Json
-
-Invoke-WebRequest -Uri "http://localhost:3000/api/conscious-memory" -Method POST -Body $searchBody -ContentType "application/json"
-```
-
-### Flow 4: File Attachments
-```powershell
-# 1. Upload file first
-$fileContent = [System.IO.File]::ReadAllBytes("test.txt")
-$fileBase64 = [System.Convert]::ToBase64String($fileContent)
-
-# 2. Include attachment in chat
-$attachBody = @{
-    messages = @(
-        @{
-            role = "user"
-            content = "Analyze this file"
-        }
-    )
-    attachments = @(
-        @{
-            name = "test.txt"
-            type = "text/plain"
-            data = $fileBase64
-        }
-    )
-} | ConvertTo-Json -Depth 3
-
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat" -Method POST -Body $attachBody -ContentType "application/json"
-```
-
-### Memory System Testing
-```powershell
-# Test RAG memory
-$ragBody = @{
-    action = "search"
-    query = "test query"
-} | ConvertTo-Json
-
-Invoke-WebRequest -Uri "http://localhost:3000/api/memory" -Method POST -Body $ragBody -ContentType "application/json"
-
-# Test conscious memory stats
-$statsBody = @{
-    action = "stats"
-} | ConvertTo-Json
-
-Invoke-WebRequest -Uri "http://localhost:3000/api/conscious-memory" -Method POST -Body $statsBody -ContentType "application/json"
-```
-
-### Session Management
-```powershell
-# Search sessions
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history/search?q=pizza" -Method GET
-
-# Delete session
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history?sessionId=[sessionId]" -Method DELETE
-
-# Delete all sessions
-Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history?sessionId=all" -Method DELETE
-```
 
 ## API Overview
 The Next.js API routes are under `src/app/api`. Key endpoints include:
