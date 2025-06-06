@@ -21,6 +21,7 @@ export interface ExtractedEntity {
 }
 
 export interface ExtractedRelationship {
+  id?: string; // Optional unique identifier for the relationship
   sourceEntityId: string; // ID of the source entity
   targetEntityId: string; // ID of the target entity
   type: string; // Type of the relationship (e.g., "WORKS_FOR", "RELATED_TO", "USES_TOOL")
@@ -198,7 +199,7 @@ export class LLMService {
     await this.initializeRAG();
   }async generateResponse(userMessage: string, options?: LLMOptions): Promise<string> {
     try {
-      //console.log('🔍 Starting response generation for:', userMessage);
+      //console.log(' Starting response generation for:', userMessage);
       
       // Use RAG-enhanced generation if sessionId is provided and RAG is enabled
       if (options?.sessionId && options?.enableRAG !== false) {
@@ -206,7 +207,7 @@ export class LLMService {
         return result.text;
       }        // Fall back to basic generation without memory
       const tools = await this.getAvailableTools();
-      //console.log('🔧 Available tools:', Object.keys(tools));
+      //console.log(' Available tools:', Object.keys(tools));
       
       // Get system prompt
       const systemPrompt = this.getSystemPrompt();
@@ -220,8 +221,8 @@ export class LLMService {
         temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
       });
 
-      //console.log('✅ Generated response:', result.text);
-      //console.log('🔧 Tool calls made:', result.toolCalls?.length || 0);
+      //console.log(' Generated response:', result.text);
+      //console.log(' Tool calls made:', result.toolCalls?.length || 0);
         if (result.toolCalls && result.toolCalls.length > 0) {
         console.log(`Tool calls: ${result.toolCalls.length}`);
       }
@@ -241,16 +242,16 @@ export class LLMService {
   }
 
   async getAvailableTools(): Promise<Record<string, any>> {
-    //console.log('🔍 Getting available tools from MCP servers...');
+    //console.log(' Getting available tools from MCP servers...');
     const tools: Record<string, any> = {};
     const connectedServers = this.mcpManager.getConnectedServers();
-    //console.log('🔍 Connected servers:', connectedServers);
+    //console.log(' Connected servers:', connectedServers);
     
     for (const serverName of connectedServers) {
       try {
-        //console.log(`🔍 Getting tools from server: ${serverName}`);
+        //console.log(` Getting tools from server: ${serverName}`);
         const serverTools = await this.mcpManager.listTools(serverName);
-        //console.log(`🔍 Server ${serverName} has ${serverTools.length} tools:`, serverTools.map(t => t.name));
+        //console.log(` Server ${serverName} has ${serverTools.length} tools:`, serverTools.map(t => t.name));
           for (const mcpTool of serverTools) {
           const toolKey = `${serverName}_${mcpTool.name}`;
           
@@ -287,7 +288,7 @@ export class LLMService {
         }      } catch (error) {
         console.warn(`Failed to get tools from ${serverName}:`, error);
       }
-    }    //console.log('🔍 Final tool list:', Object.keys(tools));
+    }    //console.log(' Final tool list:', Object.keys(tools));
     return tools;
   }
 
@@ -387,7 +388,7 @@ export class LLMService {
     options: LLMOptions = {}
   ): Promise<{ text: string; ragResult?: RAGResult }> {
     try {
-      //console.log('🧠 Starting RAG-enhanced response generation for:', userMessage);
+      //console.log(' Starting RAG-enhanced response generation for:', userMessage);
       
       let ragResult: RAGResult | undefined;
       let enhancedPrompt = userMessage;
@@ -399,12 +400,12 @@ export class LLMService {
         if (ragResult.shouldRetrieve && ragResult.context) {
           // Enhance the prompt with memory context
           enhancedPrompt = this.formatPromptWithMemoryContext(userMessage, ragResult.context);
-          //console.log('🧠 Enhanced prompt with memory context');
+          //console.log(' Enhanced prompt with memory context');
         }
       }
         // Get available tools from connected MCP servers
       const tools = await this.getAvailableTools();
-      //console.log('🔧 Available tools:', Object.keys(tools));
+      //console.log(' Available tools:', Object.keys(tools));
       
       // Get system prompt
       const systemPrompt = this.getSystemPrompt();
@@ -418,8 +419,8 @@ export class LLMService {
         temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
       });
 
-      //console.log('✅ Generated RAG-enhanced response:', result.text);
-      //console.log('🔧 Tool calls made:', result.toolCalls?.length || 0);
+      //console.log(' Generated RAG-enhanced response:', result.text);
+      //console.log(' Tool calls made:', result.toolCalls?.length || 0);
         if (result.toolCalls && result.toolCalls.length > 0) {
         console.log(`RAG tool calls: ${result.toolCalls.length}`);
       }
@@ -463,17 +464,17 @@ export class LLMService {
       const content = readFileSync(systemPromptPath, 'utf-8').trim();
       
       if (content) {
-        //console.log('📝 Loaded system prompt from system-prompt.md');
+        //console.log(' Loaded system prompt from system-prompt.md');
         return content;
       } else {
-        //console.log('📝 system-prompt.md is empty, using no system prompt');
+        //console.log(' system-prompt.md is empty, using no system prompt');
         return '';
       }
     } catch (error) {
       if ((error as any).code === 'ENOENT') {
-        //console.log('📝 system-prompt.md not found, using no system prompt');
+        //console.log(' system-prompt.md not found, using no system prompt');
       } else {
-        console.warn('📝 Error reading system-prompt.md:', error);
+        console.warn(' Error reading system-prompt.md:', error);
       }
       return '';
     }
@@ -516,5 +517,144 @@ export class LLMService {
       console.error('Failed to initialize RAG service:', error);
       // Don't throw - RAG failure shouldn't prevent chat functionality
     }
+  }
+
+  /**
+   * Extract entities and relationships from text using structured LLM output
+   * This is a critical method for knowledge graph population
+   */
+  async extractKnowledge(text: string, context?: string): Promise<KnowledgeExtractionResult> {
+    try {
+      console.log(' Extracting knowledge from text:', text.substring(0, 100) + '...');
+      
+      // Define the schema for structured output
+      const extractionSchema = z.object({
+        entities: z.array(z.object({
+          id: z.string().describe('Unique identifier for the entity (e.g., "Person_JohnDoe", "Concept_AI")'),
+          label: z.string().describe('Type/category of the entity (e.g., "Person", "Organization", "Concept", "Event", "Tool", "File")'),
+          properties: z.record(z.any()).describe('Properties of the entity like name, description, attributes')
+        })),
+        relationships: z.array(z.object({
+          id: z.string().optional().describe('Optional unique identifier for the relationship'),
+          sourceEntityId: z.string().describe('ID of the source entity'),
+          targetEntityId: z.string().describe('ID of the target entity'),
+          type: z.string().describe('Type of relationship (e.g., "WORKS_FOR", "RELATED_TO", "USES_TOOL", "MENTIONED_IN")'),
+          properties: z.record(z.any()).describe('Properties of the relationship like strength, context, metadata')
+        }))
+      });
+
+      // Create the extraction prompt
+      let extractionPrompt = `You are a knowledge extraction expert. Extract entities and relationships from the following text.
+
+GUIDELINES:
+- Extract meaningful entities like people, organizations, concepts, tools, files, events, locations
+- Create unique IDs using format "EntityType_Name" (e.g., "Person_JohnDoe", "Tool_VSCode", "Concept_AI")
+- Identify relationships between entities with descriptive types
+- Include relevant properties for entities and relationships
+- Focus on factual, concrete information
+- Avoid overly generic or vague entities
+
+TEXT TO ANALYZE:
+${text}`;
+
+      if (context) {
+        extractionPrompt += `\n\nCONTEXT:
+${context}`;
+      }
+
+      extractionPrompt += `\n\nExtract entities and relationships in the following JSON format:
+{
+  "entities": [
+    {
+      "id": "EntityType_Name",
+      "label": "EntityType",
+      "properties": {
+        "name": "...",
+        "description": "...",
+        "other_attributes": "..."
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "sourceEntityId": "Entity1_ID",
+      "targetEntityId": "Entity2_ID", 
+      "type": "RELATIONSHIP_TYPE",
+      "properties": {
+        "context": "...",
+        "strength": "..."
+      }
+    }
+  ]
+}
+
+Return ONLY the JSON object, no additional text.`;      const result = await generateText({
+        model: this.model,
+        prompt: extractionPrompt,
+        maxTokens: 2000,
+        temperature: 0.1, // Low temperature for consistent extraction
+      });
+
+      // Parse the structured response - the LLM should return JSON
+      let extractedData: KnowledgeExtractionResult;
+      try {
+        // Attempt to parse JSON from the response
+        const responseText = result.text.trim();
+        // Remove any markdown code block markers if present
+        const cleanJson = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        extractedData = JSON.parse(cleanJson);
+      } catch (parseError) {
+        console.error(' Failed to parse extraction result as JSON:', parseError);
+        // Try to extract JSON from the response using regex
+        const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            extractedData = JSON.parse(jsonMatch[0]);
+          } catch {
+            console.error(' Could not extract valid JSON from response');
+            return { entities: [], relationships: [] };
+          }
+        } else {
+          return { entities: [], relationships: [] };
+        }
+      }
+      
+      console.log(` Extracted ${extractedData.entities.length} entities and ${extractedData.relationships.length} relationships`);
+      
+      // Validate and clean the extracted data
+      const validatedResult = this.validateExtractionResult(extractedData);
+      
+      return validatedResult;
+      
+    } catch (error) {
+      console.error(' Knowledge extraction failed:', error);
+      // Return empty result rather than throwing to prevent sync failures
+      return { entities: [], relationships: [] };
+    }
+  }
+
+  /**
+   * Validate and clean extracted knowledge data
+   */
+  private validateExtractionResult(result: KnowledgeExtractionResult): KnowledgeExtractionResult {
+    // Filter out invalid entities
+    const validEntities = result.entities.filter(entity => {
+      return entity.id && entity.label && typeof entity.properties === 'object';
+    });
+
+    // Filter out invalid relationships and ensure referenced entities exist
+    const entityIds = new Set(validEntities.map(e => e.id));
+    const validRelationships = result.relationships.filter(rel => {
+      return rel.sourceEntityId && 
+             rel.targetEntityId && 
+             rel.type &&
+             entityIds.has(rel.sourceEntityId) &&
+             entityIds.has(rel.targetEntityId);
+    });
+
+    return {
+      entities: validEntities,
+      relationships: validRelationships
+    };
   }
 }

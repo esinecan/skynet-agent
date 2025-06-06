@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto'; // For generating unique IDs
 import { createHash } from 'crypto'; // For hashing file paths
 
 // Re-export for consistency, or define specific ones if they diverge
-export { ExtractedEntity, ExtractedRelationship };
+export type { ExtractedEntity, ExtractedRelationship };
 
 export interface RuleBasedExtractionResult {
   entities: ExtractedEntity[];
@@ -17,7 +17,7 @@ export interface RuleBasedExtractionResult {
  * For file paths, it uses a hash. For tags, it uses the tag name.
  * For others, it might use a combination of type and a primary property or a UUID.
  */
-function generateEntityId(label: string, primaryProperty: string | Record<string, any>): string {
+export function generateEntityId(label: string, primaryProperty: string | Record<string, any>): string {
   if (label === 'FilePath' && typeof primaryProperty === 'string') {
     return `filepath-${createHash('sha256').update(primaryProperty).digest('hex').substring(0, 16)}`;
   }

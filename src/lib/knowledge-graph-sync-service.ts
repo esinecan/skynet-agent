@@ -3,7 +3,8 @@ import { KgNode } from '../types/knowledge-graph';
 import { LLMService, ExtractedEntity, ExtractedRelationship, KnowledgeExtractionResult } from './llm-service';
 import { extractUsingRules, RuleBasedExtractionResult } from './rule-based-extractor';
 import { ChatHistoryDatabase, ChatMessage, ChatSession } from './chat-history';
-import { ConsciousMemoryService, SearchResult } from './conscious-memory'; // Assuming ConsciousMemoryService can fetch memories
+import { getConsciousMemoryService } from './conscious-memory'; // Import the service getter function
+import type { ConsciousMemoryService, ConsciousMemorySearchResult, ConsciousMemory, ConsciousMemoryMetadata } from '../types/memory'; // Import types
 import { ChromaMemoryStore } from './memory-store'; // For RAG memories, if separate processing is needed
 
 // Define a simple structure for tracking sync progress
@@ -24,12 +25,10 @@ export class KnowledgeGraphSyncService {
   constructor() {
     this.kgService = knowledgeGraphService; // Singleton instance
     this.llmService = new LLMService(); // Assuming default constructor is fine
-    this.chatHistoryDB = new ChatHistoryDatabase(); // Assuming default constructor
+    this.chatHistoryDB = ChatHistoryDatabase.getInstance(); // Use singleton pattern
 
-    // Initialize ConsciousMemoryService. It might need ChromaMemoryStore internally.
-    // Adjust if ChromaMemoryStore needs to be passed or if ConsciousMemoryService is a singleton.
-    const ragMemoryStore = new ChromaMemoryStore();
-    this.consciousMemoryService = new ConsciousMemoryService(ragMemoryStore);
+    // Initialize ConsciousMemoryService using singleton pattern
+    this.consciousMemoryService = getConsciousMemoryService();
 
     // Ensure Neo4j driver is ready (connect method in KnowledgeGraphService)
     // This might be better handled explicitly before sync, or internally by KnowledgeGraphService methods
@@ -103,31 +102,33 @@ export class KnowledgeGraphSyncService {
 
   private async processChatMessage(message: ChatMessage): Promise<{ entities: ExtractedEntity[]; relationships: ExtractedRelationship[] }> {
     console.log(`[Sync Service] Processing chat message ID: ${message.id}, Session ID: ${message.sessionId}`);
-    const llmExtraction = await this.llmService.extractKnowledge(message.content, `Context: Chat message from session ${message.sessionId}`);
-
-    let toolExtraction: RuleBasedExtractionResult = { entities: [], relationships: [] };
+    const llmExtraction = await this.llmService.extractKnowledge(message.content, `Context: Chat message from session ${message.sessionId}`);    let toolExtraction: RuleBasedExtractionResult = { entities: [], relationships: [] };
     if (message.toolInvocations) {
-      toolExtraction = extractUsingRules(undefined, message.toolInvocations);
+      // Convert tool invocations to JSON string for rule-based extraction
+      const toolInvocationsJson = JSON.stringify(message.toolInvocations);
+      toolExtraction = extractUsingRules(undefined, toolInvocationsJson, undefined);
     }
 
-    const filePathExtraction = extractUsingRules(message.content);
+    const filePathExtraction = extractUsingRules(message.content, undefined, undefined);
 
     return this.mergeExtractions([llmExtraction, toolExtraction, filePathExtraction]);
   }
 
-  private async processConsciousMemory(memory: SearchResult): Promise<{ entities: ExtractedEntity[]; relationships: ExtractedRelationship[] }> {
+  private async processConsciousMemory(memory: ConsciousMemorySearchResult): Promise<{ entities: ExtractedEntity[]; relationships: ExtractedRelationship[] }> {
     console.log(`[Sync Service] Processing conscious memory ID: ${memory.id}`);
-    const llmExtraction = await this.llmService.extractKnowledge(memory.text, `Context: Conscious Memory, Source: ${memory.metadata.source}`);
-
-    // The 'extractUsingRules' function can take a ConsciousMemory object.
+    const llmExtraction = await this.llmService.extractKnowledge(memory.text, `Context: Conscious Memory, Source: ${memory.metadata.source}`);    // The 'extractUsingRules' function can take a ConsciousMemory object.
     // We need to reconstruct a partial one or adapt extractUsingRules.
     // For now, assuming SearchResult has enough data or we can fetch the full memory object.
     // This might require a method in ConsciousMemoryService to get a full memory object by ID.
-    const ruleInputMemory = { // Simulating a ConsciousMemory object for rule extraction
+    const ruleInputMemory: ConsciousMemory = { // Proper ConsciousMemory object for rule extraction
         id: memory.id,
         content: memory.text,
-        metadata: memory.metadata as any, // Cast if SearchResult metadata matches ConsciousMemoryMetadata
-        embeddings: [], // Not used by rule extractor
+        tags: memory.tags || [],
+        importance: memory.importance || 5,
+        source: memory.source || 'derived',
+        context: memory.context,
+        metadata: memory.metadata as ConsciousMemoryMetadata,
+        createdAt: new Date().toISOString(),
     };
     const ruleExtraction = extractUsingRules(undefined, undefined, ruleInputMemory);
 
@@ -151,7 +152,7 @@ export class KnowledgeGraphSyncService {
         // TODO: Implement fetching messages since lastSync for incremental updates
         // For now, fetching all messages in a session if any message is new, or if full resync.
         // This requires message timestamps in ChatHistoryDatabase.
-        const messages = await this.chatHistoryDB.getMessages(session.id);
+        const messages = session.messages; // Messages are already loaded with the session
         for (const message of messages) {
             // Basic check: if message.createdAt > lastSync (needs createdAt on message)
             // if (options.forceFullResync || !lastSync || (message.createdAt && new Date(message.createdAt) > new Date(lastSync))) {
@@ -167,10 +168,9 @@ export class KnowledgeGraphSyncService {
       // 2. Fetch Conscious Memories
       console.log('[Sync Service] Fetching conscious memories...');
       // Assuming searchMemories with empty query and large limit fetches all.
-      // Needs pagination or streaming for very large datasets.
-      // Also needs filtering by timestamp for incremental syncs.
+      // Needs pagination or streaming for very large datasets.      // Also needs filtering by timestamp for incremental syncs.
       const consciousMemories = await this.consciousMemoryService.searchMemories('', { limit: 10000 }); // High limit
-      for (const memory of consciousMemories.results) {
+      for (const memory of consciousMemories) {
          // Basic check: if memory.metadata.updatedAt > lastSync
          // if (options.forceFullResync || !lastSync || (memory.metadata.updatedAt && new Date(memory.metadata.updatedAt) > new Date(lastSync))) {
          // For now, processing all memories if not doing proper timestamp check

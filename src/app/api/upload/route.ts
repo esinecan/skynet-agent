@@ -66,7 +66,7 @@ export async function GET() {
   return NextResponse.json({
     maxFileSize: MAX_FILE_SIZE,
     maxFiles: 20,
-    message: "Upload any file type - let the AI model decide what it can handle! 🚀",
+    message: "Upload any file type - let the AI model decide what it can handle! ",
     supportedByModels: {
       "Gemini": ["Images", "Text", "Audio", "Video", "Documents"],
       "GPT-4V": ["Images", "Text", "Documents"],

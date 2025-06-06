@@ -1,20 +1,20 @@
-# 🚀 LLM Provider Support
+#  LLM Provider Support
 
 **Skynet-Agent** supports a wide range of LLM providers, giving you flexibility to choose the best model for your use case, budget, and performance needs.
 
-## 🎯 Supported Providers
+##  Supported Providers
 
 | Provider                  | Type              | Best For                              | Models Available                                      |
 |---------------------------|-------------------|---------------------------------------|-------------------------------------------------------|
-| **🧠 Anthropic**          | Cloud             | Advanced reasoning, analysis & safety | `claude-4-sonnet`, `claude-4-opus`                     |
-| **🏎️ Groq**              | Cloud             | Ultra‑fast inference                  | `grok-3-mini`, `grok-3-beta`                           |
-| **💻 Mistral**            | Cloud             | Natural language & code generation    | `mistral-7b-instruct`, `mistral-coder-7b`               |
-| **🔄 OpenAI-Compatible**  | Cloud / Self‑Hosted | Broad ecosystem integration           | `gpt-4o-chat`, `gpt-4o-code`, and more                  |
-| **🏠 Ollama**             | Local             | Privacy-focused, truly free           | Any local model (Llama 3, Qwen3, etc.)                  |
-| **🤖 Google Gemini**      | Cloud             | Multimodal integration & high speed   | `gemini-2.5-flash`, `gemini-2.5-pro`                    |
-| **🚀 DeepSeek**           | Cloud             | Cost‑effective, robust performance    | `deepseek-chat-r1`, `deepseek-coder-r1`                 |
+| ** Anthropic**          | Cloud             | Advanced reasoning, analysis & safety | `claude-4-sonnet`, `claude-4-opus`                     |
+| ** Groq**              | Cloud             | Ultra‑fast inference                  | `grok-3-mini`, `grok-3-beta`                           |
+| ** Mistral**            | Cloud             | Natural language & code generation    | `mistral-7b-instruct`, `mistral-coder-7b`               |
+| ** OpenAI-Compatible**  | Cloud / Self‑Hosted | Broad ecosystem integration           | `gpt-4o-chat`, `gpt-4o-code`, and more                  |
+| ** Ollama**             | Local             | Privacy-focused, truly free           | Any local model (Llama 3, Qwen3, etc.)                  |
+| ** Google Gemini**      | Cloud             | Multimodal integration & high speed   | `gemini-2.5-flash`, `gemini-2.5-pro`                    |
+| ** DeepSeek**           | Cloud             | Cost‑effective, robust performance    | `deepseek-chat-r1`, `deepseek-coder-r1`                 |
 
-## 📦 Quick Setup
+##  Quick Setup
 
 ### Installation
 ```bash
@@ -43,9 +43,9 @@ OLLAMA_BASE_URL=http://localhost:11434
 OPENAI_BASE_URL=https://api.together.xyz/v1  # Example: Together.ai
 ```
 
-## 🎨 Provider-Specific Examples
+##  Provider-Specific Examples
 
-### 🧠 **Anthropic** (Best for Complex Reasoning)
+###  **Anthropic** (Best for Complex Reasoning)
 ```env
 LLM_PROVIDER=anthropic
 LLM_MODEL=claude-3-5-sonnet-20241022
@@ -53,7 +53,7 @@ LLM_MODEL=claude-3-5-sonnet-20241022
 - **Strengths**: Complex analysis, ethical reasoning, long conversations
 - **Models**: `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`
 
-### 🏎️ **Groq** (Fastest Inference)
+###  **Groq** (Fastest Inference)
 ```env
 LLM_PROVIDER=groq
 LLM_MODEL=llama-3.3-70b-versatile
@@ -61,7 +61,7 @@ LLM_MODEL=llama-3.3-70b-versatile
 - **Strengths**: Ultra-fast responses, real-time applications
 - **Models**: `llama-3.3-70b-versatile`, `mixtral-8x7b-32768`
 
-### 💻 **Mistral** (Code Specialist)
+###  **Mistral** (Code Specialist)
 ```env
 LLM_PROVIDER=mistral
 LLM_MODEL=mistral-large-latest
@@ -69,7 +69,7 @@ LLM_MODEL=mistral-large-latest
 - **Strengths**: Code generation, European provider
 - **Models**: `mistral-large-latest`, `codestral-latest` (new!)
 
-### 🏠 **Ollama** (Local & Private)
+###  **Ollama** (Local & Private)
 ```env
 LLM_PROVIDER=ollama
 LLM_MODEL=llama3.2:latest
@@ -78,7 +78,7 @@ LLM_MODEL=llama3.2:latest
 - **Setup**: Run `ollama serve` first
 - **Popular Models**: `llama3.2:latest`, `qwen2.5:14b`, `mistral-nemo:latest`
 
-### 🔄 **OpenAI-Compatible** (Maximum Flexibility)
+###  **OpenAI-Compatible** (Maximum Flexibility)
 ```env
 LLM_PROVIDER=openai-compatible
 LLM_MODEL=gpt-4o-mini
@@ -93,7 +93,7 @@ OPENAI_BASE_URL=https://api.openai.com/v1  # Or any compatible provider
 | Together.ai | `https://api.together.xyz/v1` | `meta-llama/Llama-3.3-70B-Instruct` |
 | Perplexity | `https://api.perplexity.ai` | `llama-3.1-sonar-huge-128k-online` |
 
-## 🛠️ Usage Examples
+##  Usage Examples
 
 ### Environment-Based Configuration
 Set your preferred provider globally:
@@ -128,7 +128,7 @@ const localLLM = new LLMService({
 });
 ```
 
-## 🧪 Testing Your Setup
+##  Testing Your Setup
 
 1. **Start the application**: `npm run dev`
 2. **Check provider status**: The UI shows active provider/model
@@ -146,7 +146,7 @@ curl -X POST http://localhost:3000/api/chat \
   -d '{"message": "Local model test", "provider": "ollama"}'
 ```
 
-## 🔧 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -177,7 +177,7 @@ const providerInfo = llm.getProviderInfo();
 console.log(`Active: ${providerInfo.provider} - ${providerInfo.model}`);
 ```
 
-## 💡 Best Practices
+##  Best Practices
 
 ### **For Development**
 - Use **Ollama** for privacy and zero costs

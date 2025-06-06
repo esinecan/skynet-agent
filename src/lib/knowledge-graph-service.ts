@@ -16,24 +16,36 @@ export interface KgRelationship {
 }
 
 class KnowledgeGraphService {
-  private driver: Driver;
+  private driver: Driver | null = null;
   private session: Session | null = null;
+  private initializationError: string | null = null;
 
   constructor() {
-    const uri = process.env.NEO4J_URI;
-    const user = process.env.NEO4J_USER;
-    const password = process.env.NEO4J_PASSWORD;
+    // Don't throw during construction - defer to connect() method
+    try {
+      const uri = process.env.NEO4J_URI;
+      const user = process.env.NEO4J_USER;
+      const password = process.env.NEO4J_PASSWORD;
 
-    if (!uri || !user || !password) {
-      throw new Error(
-        'Missing Neo4j connection details in environment variables (NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)',
-      );
+      if (!uri || !user || !password) {
+        this.initializationError = 'Missing Neo4j connection details in environment variables (NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)';
+        return;
+      }
+
+      this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
+    } catch (error) {
+      this.initializationError = `Failed to initialize Neo4j driver: ${error}`;
+    }
+  }
+  async connect(): Promise<void> {
+    if (this.initializationError) {
+      throw new Error(this.initializationError);
     }
 
-    this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
-  }
+    if (!this.driver) {
+      throw new Error('Neo4j driver not initialized');
+    }
 
-  async connect(): Promise<void> {
     if (this.session) {
       return;
     }
@@ -46,20 +58,27 @@ class KnowledgeGraphService {
       throw error;
     }
   }
-
   async close(): Promise<void> {
     if (this.session) {
       await this.session.close();
       this.session = null;
       console.log('Neo4j session closed');
     }
-    await this.driver.close();
-    console.log('Neo4j driver closed');
+    if (this.driver) {
+      await this.driver.close();
+      this.driver = null;
+      console.log('Neo4j driver closed');
+    }
   }
-
   // Placeholder for adding a node
   async addNode(node: KgNode): Promise<KgNode> {
     if (!this.session) await this.connect();
+
+    // Serialize any Date objects to ISO strings for Neo4j compatibility
+    const sanitizedProperties = this.sanitizeProperties({
+      ...node.properties, 
+      createdAt: node.createdAt ? node.createdAt.toISOString() : new Date().toISOString()
+    });
 
     const query = `
       MERGE (n:${node.type} {id: $id})
@@ -69,7 +88,7 @@ class KnowledgeGraphService {
 
     const result = await this.session!.run(query, {
       id: node.id,
-      properties: { ...node.properties, createdAt: node.createdAt || new Date() }
+      properties: sanitizedProperties
     });
 
     // Note: The provided snippet returns the input 'node'.
@@ -90,17 +109,11 @@ class KnowledgeGraphService {
   //   relationshipType: string; // e.g. 'SENT'
   //   properties?: Record<string, any>;
   // }
-
   async addRelationship(relationship: KgRelationship): Promise<void> {
     if (!this.session) await this.connect();
 
-    // Assuming sourceNodeType and targetNodeType are part of KgRelationship
-    // If not, this query would need adjustment or those types passed differently.
-    // For now, we assume they are NOT part of the existing KgRelationship.
-    // The prompt's example KgRelationship had them, but the one in this file does not.
-    // We will need to adjust the query to match the existing KgRelationship interface.
-    // The prompt's example relationship also used relationship.relationshipType.
-    // The existing KgRelationship uses 'type' for the relationship type.
+    // Sanitize relationship properties for Neo4j compatibility
+    const sanitizedProperties = this.sanitizeProperties(relationship.properties || {});
 
     const query = `
       MATCH (a {id: $sourceNodeId})
@@ -113,27 +126,274 @@ class KnowledgeGraphService {
     await this.session!.run(query, {
       sourceNodeId: relationship.sourceNodeId,
       targetNodeId: relationship.targetNodeId,
-      properties: relationship.properties || {}
+      properties: sanitizedProperties
     });
   }
-
-  async deleteNode(nodeId: string): Promise<void> {
+  // Enhanced node deletion with safety and cascade options
+  async deleteNode(nodeId: string, options?: {
+    nodeType?: string;
+    cascadeDelete?: boolean;
+    skipDependencyCheck?: boolean;
+  }): Promise<{ deleted: boolean; reason?: string }> {
     if (!this.session) await this.connect();
-    console.log(`[KnowledgeGraphService] Attempting to delete node with ID: ${nodeId}`);
-    // Basic query to detach and delete a node by its generic 'id' property
-    // This assumes 'id' is a unique identifier across all node types you wish to delete this way
-    const query = `
-      MATCH (n {id: $nodeId})
-      DETACH DELETE n
-    `;
+    
+    const { nodeType, cascadeDelete = false, skipDependencyCheck = false } = options || {};
+    
+    console.log(`[KnowledgeGraphService] Attempting to delete node with ID: ${nodeId}${nodeType ? ` (type: ${nodeType})` : ''}`);
+    
     try {
-      await this.session!.run(query, { nodeId });
-      console.log(`[KnowledgeGraphService] Successfully deleted node with ID: ${nodeId}`);
+      // Safety check: verify node exists and get its type
+      const nodeCheckQuery = nodeType 
+        ? `MATCH (n:${nodeType} {id: $nodeId}) RETURN n, labels(n) as labels`
+        : `MATCH (n {id: $nodeId}) RETURN n, labels(n) as labels`;
+      
+      const nodeCheckResult = await this.session!.run(nodeCheckQuery, { nodeId });
+      
+      if (nodeCheckResult.records.length === 0) {
+        console.log(`[KnowledgeGraphService] Node ${nodeId} not found`);
+        return { deleted: false, reason: 'Node not found' };
+      }
+      
+      const nodeLabels = nodeCheckResult.records[0].get('labels') as string[];
+      console.log(`[KnowledgeGraphService] Found node ${nodeId} with labels: ${nodeLabels.join(', ')}`);
+      
+      // Dependency check (unless skipped)
+      if (!skipDependencyCheck && !cascadeDelete) {
+        const dependencyCheck = await this.checkNodeDependencies(nodeId);
+        if (dependencyCheck.hasIncomingRelationships) {
+          console.log(`[KnowledgeGraphService] Node ${nodeId} has incoming relationships, aborting deletion`);
+          return { 
+            deleted: false, 
+            reason: `Node has ${dependencyCheck.incomingCount} incoming relationships. Use cascadeDelete=true or delete relationships first.` 
+          };
+        }
+      }
+      
+      // Perform deletion
+      let deleteQuery: string;
+      if (cascadeDelete) {
+        // Delete node and all its relationships
+        deleteQuery = nodeType 
+          ? `MATCH (n:${nodeType} {id: $nodeId}) DETACH DELETE n RETURN count(n) as deletedCount`
+          : `MATCH (n {id: $nodeId}) DETACH DELETE n RETURN count(n) as deletedCount`;
+      } else {
+        // Delete only outgoing relationships and the node (safer)
+        deleteQuery = nodeType
+          ? `MATCH (n:${nodeType} {id: $nodeId}) DETACH DELETE n RETURN count(n) as deletedCount`
+          : `MATCH (n {id: $nodeId}) DETACH DELETE n RETURN count(n) as deletedCount`;
+      }
+      
+      const deleteResult = await this.session!.run(deleteQuery, { nodeId });
+      const deletedCount = deleteResult.records[0]?.get('deletedCount')?.toNumber() || 0;
+      
+      if (deletedCount > 0) {
+        console.log(`[KnowledgeGraphService] Successfully deleted node with ID: ${nodeId}`);
+        return { deleted: true };
+      } else {
+        console.log(`[KnowledgeGraphService] Failed to delete node with ID: ${nodeId}`);
+        return { deleted: false, reason: 'Delete operation returned 0 affected nodes' };
+      }
+      
     } catch (error) {
       console.error(`[KnowledgeGraphService] Error deleting node ${nodeId}:`, error);
-      // Decide on error handling: re-throw, or log and continue, etc.
-      throw error; // Re-throwing for now
+      throw error;
     }
+  }
+
+  // Check if a node has dependencies (incoming relationships)
+  async checkNodeDependencies(nodeId: string): Promise<{
+    hasIncomingRelationships: boolean;
+    incomingCount: number;
+    outgoingCount: number;
+    relationshipTypes: string[];
+  }> {
+    if (!this.session) await this.connect();
+    
+    const query = `
+      MATCH (n {id: $nodeId})
+      OPTIONAL MATCH (other)-[incoming]->(n)
+      OPTIONAL MATCH (n)-[outgoing]->(target)
+      RETURN 
+        count(DISTINCT incoming) as incomingCount,
+        count(DISTINCT outgoing) as outgoingCount,
+        collect(DISTINCT type(incoming)) as incomingTypes,
+        collect(DISTINCT type(outgoing)) as outgoingTypes
+    `;
+    
+    const result = await this.session!.run(query, { nodeId });
+    const record = result.records[0];
+    
+    const incomingCount = record.get('incomingCount').toNumber();
+    const outgoingCount = record.get('outgoingCount').toNumber();
+    const incomingTypes = record.get('incomingTypes').filter((t: string) => t !== null);
+    const outgoingTypes = record.get('outgoingTypes').filter((t: string) => t !== null);
+    
+    return {
+      hasIncomingRelationships: incomingCount > 0,
+      incomingCount,
+      outgoingCount,
+      relationshipTypes: [...new Set([...incomingTypes, ...outgoingTypes])]
+    };
+  }
+
+  // Delete a specific relationship between two nodes
+  async deleteRelationship(sourceNodeId: string, targetNodeId: string, relationshipType?: string): Promise<{
+    deleted: boolean;
+    deletedCount: number;
+  }> {
+    if (!this.session) await this.connect();
+    
+    const query = relationshipType
+      ? `
+        MATCH (a {id: $sourceNodeId})-[r:${relationshipType}]->(b {id: $targetNodeId})
+        DELETE r
+        RETURN count(r) as deletedCount
+      `
+      : `
+        MATCH (a {id: $sourceNodeId})-[r]->(b {id: $targetNodeId})
+        DELETE r
+        RETURN count(r) as deletedCount
+      `;
+    
+    const result = await this.session!.run(query, { sourceNodeId, targetNodeId });
+    const deletedCount = result.records[0]?.get('deletedCount')?.toNumber() || 0;
+    
+    console.log(`[KnowledgeGraphService] Deleted ${deletedCount} relationship(s) from ${sourceNodeId} to ${targetNodeId}`);
+    
+    return {
+      deleted: deletedCount > 0,
+      deletedCount
+    };
+  }
+
+  // Batch delete nodes by type and optional filter
+  async deleteNodesByType(nodeType: string, filter?: Record<string, any>): Promise<{
+    deletedCount: number;
+  }> {
+    if (!this.session) await this.connect();
+    
+    let query = `MATCH (n:${nodeType})`;
+    const parameters: Record<string, any> = {};
+    
+    if (filter && Object.keys(filter).length > 0) {
+      const sanitizedFilter = this.sanitizeProperties(filter);
+      const whereConditions = Object.keys(sanitizedFilter).map(key => {
+        parameters[key] = sanitizedFilter[key];
+        return `n.${key} = $${key}`;
+      });
+      query += ` WHERE ${whereConditions.join(' AND ')}`;
+    }
+    
+    query += ` DETACH DELETE n RETURN count(n) as deletedCount`;
+    
+    const result = await this.session!.run(query, parameters);
+    const deletedCount = result.records[0]?.get('deletedCount')?.toNumber() || 0;
+    
+    console.log(`[KnowledgeGraphService] Deleted ${deletedCount} nodes of type ${nodeType}`);
+    
+    return { deletedCount };
+  }
+
+  // Cascade delete a session and all related data
+  async cascadeDeleteSession(sessionId: string): Promise<{
+    deletedNodes: number;
+    deletedRelationships: number;
+  }> {
+    if (!this.session) await this.connect();
+    
+    console.log(`[KnowledgeGraphService] Starting cascade deletion of session ${sessionId}`);
+    
+    // First, get counts for reporting
+    const countQuery = `
+      MATCH (session:Session {id: $sessionId})
+      OPTIONAL MATCH (session)-[:HAS_MESSAGE]->(message:Message)
+      OPTIONAL MATCH (message)-[:INVOKES_TOOL]->(toolInv:ToolInvocation)
+      OPTIONAL MATCH (message)-[:HAS_ATTACHMENT]->(file:File)
+      OPTIONAL MATCH (memory:Memory)-[:FROM_SESSION]->(session)
+      RETURN 
+        count(DISTINCT session) as sessionCount,
+        count(DISTINCT message) as messageCount,
+        count(DISTINCT toolInv) as toolInvCount,
+        count(DISTINCT file) as fileCount,
+        count(DISTINCT memory) as memoryCount
+    `;
+    
+    const countResult = await this.session!.run(countQuery, { sessionId });
+    const counts = countResult.records[0];
+    
+    // Perform cascade deletion
+    const deleteQuery = `
+      MATCH (session:Session {id: $sessionId})
+      OPTIONAL MATCH (session)-[:HAS_MESSAGE]->(message:Message)
+      OPTIONAL MATCH (message)-[:INVOKES_TOOL]->(toolInv:ToolInvocation)
+      OPTIONAL MATCH (message)-[:HAS_ATTACHMENT]->(file:File)
+      OPTIONAL MATCH (memory:Memory)-[:FROM_SESSION]->(session)
+      DETACH DELETE session, message, toolInv, file, memory
+      RETURN count(*) as totalDeleted
+    `;
+    
+    const deleteResult = await this.session!.run(deleteQuery, { sessionId });
+    const totalDeleted = deleteResult.records[0]?.get('totalDeleted')?.toNumber() || 0;
+    
+    console.log(`[KnowledgeGraphService] Cascade deletion complete:`, {
+      sessionId,
+      deletedNodes: totalDeleted,
+      breakdown: {
+        sessions: counts.get('sessionCount').toNumber(),
+        messages: counts.get('messageCount').toNumber(),
+        toolInvocations: counts.get('toolInvCount').toNumber(),
+        files: counts.get('fileCount').toNumber(),
+        memories: counts.get('memoryCount').toNumber()
+      }
+    });
+    
+    return {
+      deletedNodes: totalDeleted,
+      deletedRelationships: 0 // Relationships are automatically deleted with DETACH DELETE
+    };
+  }
+
+  // Clean up orphaned nodes (nodes with no relationships)
+  async cleanupOrphanedNodes(excludeNodeTypes: string[] = []): Promise<{
+    deletedCount: number;
+    deletedNodeTypes: Record<string, number>;
+  }> {
+    if (!this.session) await this.connect();
+    
+    console.log(`[KnowledgeGraphService] Starting orphaned node cleanup`);
+    
+    let query = `
+      MATCH (n)
+      WHERE NOT (n)--() 
+    `;
+    
+    if (excludeNodeTypes.length > 0) {
+      const excludeConditions = excludeNodeTypes.map(type => `NOT n:${type}`);
+      query += ` AND ${excludeConditions.join(' AND ')}`;
+    }
+    
+    query += `
+      WITH n, labels(n) as nodeLabels
+      DETACH DELETE n
+      RETURN count(n) as deletedCount, collect(DISTINCT nodeLabels[0]) as deletedTypes
+    `;
+    
+    const result = await this.session!.run(query);
+    const deletedCount = result.records[0]?.get('deletedCount')?.toNumber() || 0;
+    const deletedTypes = result.records[0]?.get('deletedTypes') || [];
+    
+    // Count by type for reporting
+    const deletedNodeTypes: Record<string, number> = {};
+    deletedTypes.forEach((type: string) => {
+      deletedNodeTypes[type] = (deletedNodeTypes[type] || 0) + 1;
+    });
+    
+    console.log(`[KnowledgeGraphService] Cleanup complete: deleted ${deletedCount} orphaned nodes`);
+    
+    return {
+      deletedCount,
+      deletedNodeTypes
+    };
   }
 
   async healthCheck(): Promise<boolean> {
@@ -149,23 +409,62 @@ class KnowledgeGraphService {
       return false;
     }
   }
-
   // Placeholder for running a generic Cypher query
   async runQuery(query: string, parameters?: Record<string, any>): Promise<any> {
     if (!this.session) {
       await this.connect();
     }
-    // This is a non-null assertion. We ensure session is not null by calling connect.
-    // However, TypeScript compiler might not infer this correctly in all paths.
-    // A runtime check or more sophisticated type guarding might be needed in a real app.
+    
+    // Automatically sanitize parameters for Neo4j compatibility
+    const sanitizedParameters = parameters ? this.sanitizeProperties(parameters) : undefined;
+    
     const session = this.session!;
     try {
-      const result = await session.run(query, parameters);
+      const result = await session.run(query, sanitizedParameters);
       return result.records.map(record => record.toObject());
     } catch (error) {
       console.error(`Error running query "${query}":`, error);
       throw error;
     }
+  }
+  // Helper method to sanitize properties for Neo4j compatibility
+  // Neo4j only supports: null, boolean, number, string, and arrays of these types
+  private sanitizeProperties(properties: Record<string, any>): Record<string, any> {
+    const sanitized: Record<string, any> = {};
+    
+    for (const [key, value] of Object.entries(properties)) {
+      if (value === null || value === undefined) {
+        sanitized[key] = null;
+      } else if (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
+        // Primitive types are already compatible
+        sanitized[key] = value;
+      } else if (value instanceof Date) {
+        // Convert Date objects to ISO strings
+        sanitized[key] = value.toISOString();
+      } else if (Array.isArray(value)) {
+        // Recursively sanitize array elements
+        sanitized[key] = value.map(item => {
+          if (item === null || item === undefined) return null;
+          if (typeof item === 'boolean' || typeof item === 'number' || typeof item === 'string') return item;
+          if (item instanceof Date) return item.toISOString();
+          if (typeof item === 'object') return JSON.stringify(item);
+          return String(item); // Convert anything else to string as fallback
+        });
+      } else if (typeof value === 'object') {
+        // Convert complex objects to JSON strings
+        try {
+          sanitized[key] = JSON.stringify(value);
+        } catch (error) {
+          console.warn(`Failed to serialize object property "${key}":`, error);
+          sanitized[key] = String(value); // Fallback to string conversion
+        }
+      } else {
+        // Convert any other type to string as fallback
+        sanitized[key] = String(value);
+      }
+    }
+    
+    return sanitized;
   }
 }
 

@@ -10,7 +10,7 @@ import { LLMService } from '../lib/llm-service';
 import { getRAGConfig, validateRAGConfig } from '../lib/rag-config';
 
 async function testEmbeddingService() {
-  console.log('\n🧠 Testing Embedding Service...');
+  console.log('\n Testing Embedding Service...');
   
   try {
     const embeddingService = getEmbeddingService();
@@ -25,7 +25,7 @@ async function testEmbeddingService() {
     const embedding2 = await embeddingService.generateEmbedding(text2);
     const embedding3 = await embeddingService.generateEmbedding(text3);
     
-    console.log(`✅ Embeddings generated successfully:`);
+    console.log(` Embeddings generated successfully:`);
     console.log(`   - Text 1: ${embedding1.length} dimensions`);
     console.log(`   - Text 2: ${embedding2.length} dimensions`);
     console.log(`   - Text 3: ${embedding3.length} dimensions`);
@@ -35,25 +35,25 @@ async function testEmbeddingService() {
     const similarity12 = GoogleEmbeddingService.cosineSimilarity(embedding1, embedding2);
     const similarity13 = GoogleEmbeddingService.cosineSimilarity(embedding1, embedding3);
     
-    console.log(`📊 Similarity scores:`);
+    console.log(` Similarity scores:`);
     console.log(`   - Similar texts (1-2): ${similarity12.toFixed(4)}`);
     console.log(`   - Different texts (1-3): ${similarity13.toFixed(4)}`);
     
     if (similarity12 > similarity13) {
-      console.log('✅ Similarity test passed - similar texts have higher similarity');
+      console.log(' Similarity test passed - similar texts have higher similarity');
     } else {
-      console.log('⚠️  Similarity test inconclusive - this is normal with fallback embeddings');
+      console.log('  Similarity test inconclusive - this is normal with fallback embeddings');
     }
     
     return true;
   } catch (error) {
-    console.error('❌ Embedding service test failed:', error);
+    console.error(' Embedding service test failed:', error);
     return false;
   }
 }
 
 async function testMemoryStore() {
-  console.log('\n💾 Testing Memory Store...');
+  console.log('\n Testing Memory Store...');
   
   try {
     const memoryStore = getMemoryStore();
@@ -61,11 +61,11 @@ async function testMemoryStore() {
     // Test initialization
     console.log('Initializing ChromaDB connection...');
     await memoryStore.initialize();
-    console.log('✅ ChromaDB initialized successfully');
+    console.log(' ChromaDB initialized successfully');
     
     // Test health check
     const isHealthy = await memoryStore.healthCheck();
-    console.log(`✅ Health check: ${isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
+    console.log(` Health check: ${isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
     
     // Test memory storage
     console.log('Storing test memories...');
@@ -84,7 +84,7 @@ async function testMemoryStore() {
         textLength: memory.text.length
       });
       memoryIds.push(id);
-      console.log(`   ✅ Stored: ${id}`);
+      console.log(`    Stored: ${id}`);
     }
     
     // Test memory retrieval
@@ -92,25 +92,25 @@ async function testMemoryStore() {
     const query = "weather information";
     const results = await memoryStore.retrieveMemories(query, { limit: 5 });
     
-    console.log(`✅ Retrieved ${results.length} memories for query: "${query}"`);
+    console.log(` Retrieved ${results.length} memories for query: "${query}"`);
     results.forEach((result, index) => {
       console.log(`   ${index + 1}. [Score: ${result.score.toFixed(3)}] ${result.text.slice(0, 50)}...`);
     });
     
     // Test memory count
     const count = await memoryStore.getMemoryCount();
-    console.log(`✅ Total memories in store: ${count}`);
+    console.log(` Total memories in store: ${count}`);
     
     return true;
   } catch (error) {
-    console.error('❌ Memory store test failed:', error);
-    console.log('💡 Make sure ChromaDB is running: docker run -p 8000:8000 chromadb/chroma');
+    console.error(' Memory store test failed:', error);
+    console.log(' Make sure ChromaDB is running: docker run -p 8000:8000 chromadb/chroma');
     return false;
   }
 }
 
 async function testRAGService() {
-  console.log('\n🔍 Testing RAG Service...');
+  console.log('\n Testing RAG Service...');
   
   try {
     const ragService = getRAGService({
@@ -121,7 +121,7 @@ async function testRAGService() {
     // Test initialization
     console.log('Initializing RAG service...');
     await ragService.initialize();
-    console.log('✅ RAG service initialized');
+    console.log(' RAG service initialized');
     
     // Test retrieval decision logic
     const simpleQueries = ['hi', 'hello', 'what is 2 + 2'];
@@ -145,7 +145,7 @@ async function testRAGService() {
       'test-session-123'
     );
     
-    console.log(`✅ RAG retrieval completed in ${ragResult.retrievalTime}ms`);
+    console.log(` RAG retrieval completed in ${ragResult.retrievalTime}ms`);
     console.log(`   - Should retrieve: ${ragResult.shouldRetrieve}`);
     console.log(`   - Memories found: ${ragResult.memories.length}`);
     if (ragResult.context) {
@@ -160,21 +160,21 @@ async function testRAGService() {
       'The capital of France is Paris.',
       'test-session-456'
     );
-    console.log(`✅ Conversation stored: user=${userMemoryId}, assistant=${assistantMemoryId}`);
+    console.log(` Conversation stored: user=${userMemoryId}, assistant=${assistantMemoryId}`);
     
     // Test memory stats
     const stats = await ragService.getMemoryStats();
-    console.log(`✅ Memory stats:`, stats);
+    console.log(` Memory stats:`, stats);
     
     return true;
   } catch (error) {
-    console.error('❌ RAG service test failed:', error);
+    console.error(' RAG service test failed:', error);
     return false;
   }
 }
 
 async function testPhase2Integration() {
-  console.log('\n🔗 Testing Phase 2 Integration...');
+  console.log('\n Testing Phase 2 Integration...');
   
   try {
     // Test RAG configuration
@@ -182,7 +182,7 @@ async function testPhase2Integration() {
     const config = getRAGConfig();
     const validation = validateRAGConfig(config);
     
-    console.log(`✅ RAG Config loaded:`, {
+    console.log(` RAG Config loaded:`, {
       enabled: config.enabled,
       maxMemories: config.maxMemories,
       minSimilarity: config.minSimilarity,
@@ -190,9 +190,9 @@ async function testPhase2Integration() {
       hasGoogleApiKey: !!config.googleApiKey
     });
     
-    console.log(`📋 Config validation: ${validation.valid ? 'VALID' : 'ISSUES FOUND'}`);
+    console.log(` Config validation: ${validation.valid ? 'VALID' : 'ISSUES FOUND'}`);
     if (validation.issues.length > 0) {
-      validation.issues.forEach(issue => console.log(`   ⚠️  ${issue}`));
+      validation.issues.forEach(issue => console.log(`     ${issue}`));
     }
     
     // Test LLM Service with RAG integration
@@ -211,13 +211,13 @@ async function testPhase2Integration() {
       includeMemoryContext: true
     });
     
-    console.log(`✅ RAG-enhanced response generated (${response.length} chars)`);
+    console.log(` RAG-enhanced response generated (${response.length} chars)`);
     console.log(`   Preview: ${response.slice(0, 100)}...`);
     
     // Store the conversation in memory
     console.log('Testing conversation storage...');
     await llmService.storeConversationInMemory(testMessage, response, testSessionId);
-    console.log('✅ Conversation stored successfully');
+    console.log(' Conversation stored successfully');
     
     // Test follow-up with memory context
     const followUpMessage = 'Can you explain that in simpler terms?';
@@ -229,7 +229,7 @@ async function testPhase2Integration() {
       includeMemoryContext: true
     });
     
-    console.log(`✅ Follow-up response with memory context (${followUpResponse.length} chars)`);
+    console.log(` Follow-up response with memory context (${followUpResponse.length} chars)`);
     
     // Test memory API endpoints (simulate)
     console.log('Testing memory search functionality...');
@@ -239,7 +239,7 @@ async function testPhase2Integration() {
       testSessionId
     );
     
-    console.log(`✅ Memory search completed:`);
+    console.log(` Memory search completed:`);
     console.log(`   - Should retrieve: ${searchResult.shouldRetrieve}`);
     console.log(`   - Memories found: ${searchResult.memories.length}`);
     console.log(`   - Retrieval time: ${searchResult.retrievalTime}ms`);
@@ -249,13 +249,13 @@ async function testPhase2Integration() {
     
     return true;
   } catch (error) {
-    console.error('❌ Phase 2 integration test failed:', error);
+    console.error(' Phase 2 integration test failed:', error);
     return false;
   }
 }
 
 async function testEndToEndRAGFlow() {
-  console.log('\n🎯 Testing End-to-End RAG Flow...');
+  console.log('\n Testing End-to-End RAG Flow...');
   
   try {
     const ragService = getRAGService();
@@ -300,7 +300,7 @@ async function testEndToEndRAGFlow() {
       // Store the conversation
       await ragService.storeConversation(turn.user, turn.assistant, sessionId);
       console.log(`Assistant: ${turn.assistant.slice(0, 100)}...`);
-      console.log('✅ Conversation stored');
+      console.log(' Conversation stored');
     }
     
     // Test final memory retrieval to show context building
@@ -310,19 +310,19 @@ async function testEndToEndRAGFlow() {
       sessionId
     );
     
-    console.log(`✅ End-to-end test completed:`);
+    console.log(` End-to-end test completed:`);
     console.log(`   - Final memory count: ${finalResult.memories.length}`);
     console.log(`   - Context quality: ${finalResult.context ? 'GOOD' : 'NONE'}`);
     
     return true;
   } catch (error) {
-    console.error('❌ End-to-end RAG flow test failed:', error);
+    console.error(' End-to-end RAG flow test failed:', error);
     return false;
   }
 }
 
 async function runAllTests() {
-  console.log('🚀 Starting RAG System Phase 1 & 2 Tests');
+  console.log(' Starting RAG System Phase 1 & 2 Tests');
   console.log('==========================================');
   
   const results = [
@@ -336,18 +336,18 @@ async function runAllTests() {
   const passed = results.filter(Boolean).length;
   const total = results.length;
   
-  console.log('\n📊 Test Results');
+  console.log('\n Test Results');
   console.log('================');
-  console.log(`✅ Passed: ${passed}/${total}`);
+  console.log(` Passed: ${passed}/${total}`);
     if (passed === total) {
-    console.log('🎉 All tests passed! RAG System Phase 1 & 2 are ready.');
-    console.log('\n🔧 Next Steps:');
+    console.log(' All tests passed! RAG System Phase 1 & 2 are ready.');
+    console.log('\n Next Steps:');
     console.log('1. Start ChromaDB: docker-compose up -d chromadb');
     console.log('2. Set your Google API key in .env.local');
     console.log('3. Test the chat API with RAG: npm run dev');
     console.log('4. Try asking follow-up questions to see memory in action!');
   } else {
-    console.log('⚠️  Some tests failed. Check the logs above for details.');
+    console.log('  Some tests failed. Check the logs above for details.');
   }
   
   return passed === total;

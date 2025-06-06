@@ -84,7 +84,7 @@ export class ChromaMemoryStore implements MemoryStore {
   /**
    * Store a new memory in ChromaDB
    */
-  async storeMemory(text: string, metadata: MemoryMetadata): Promise<string> {
+  async storeMemory(text: string, metadata: MemoryMetadata, id?: string): Promise<string> {
     if (!this.initialized) {
       await this.initialize();
     }
@@ -93,8 +93,8 @@ export class ChromaMemoryStore implements MemoryStore {
       // Generate embedding for the text
       const embedding = await this.embeddingService.generateEmbedding(text);
       
-      // Generate a unique ID
-      const id = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      // Use provided ID or generate a unique one
+      const memoryId = id || `mem_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
       
       // Prepare metadata for storage
       const fullMetadata = {
@@ -103,14 +103,15 @@ export class ChromaMemoryStore implements MemoryStore {
         timestamp: new Date().toISOString(),
         textLength: text.length
       };
-        // Store in ChromaDB
+
+      // Store in ChromaDB
       await this.collection.add({
-        ids: [id],
+        ids: [memoryId],
         embeddings: [embedding],
         metadatas: [fullMetadata]
       });
       
-      console.log(`Memory stored successfully: ${id} (${text.length} chars)`);
+      console.log(`Memory stored successfully: ${memoryId} (${text.length} chars)`);
       console.log(`Debug - Stored embedding dimensions: ${embedding.length}`);
       console.log(`Debug - Stored metadata:`, fullMetadata);
       
@@ -118,7 +119,7 @@ export class ChromaMemoryStore implements MemoryStore {
       const currentCount = await this.collection.count();
       console.log(`Debug - Collection count after storage: ${currentCount}`);
       
-      return id;
+      return memoryId;
     } catch (error) {
       console.error('Failed to store memory in ChromaDB:', error);
       throw error;
@@ -204,6 +205,41 @@ export class ChromaMemoryStore implements MemoryStore {
     } catch (error) {
       console.error('Failed to retrieve memories from ChromaDB:', error);
       return [];
+    }
+  }
+
+  /**
+   * Get a specific memory by ID
+   */
+  async getMemoryById(id: string): Promise<MemoryRetrievalResult | null> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    try {
+      const results = await this.collection.get({
+        ids: [id]
+      });
+
+      if (results.ids && results.ids.length > 0 && results.metadatas && results.metadatas.length > 0) {
+        const metadata = results.metadatas[0];
+        return {
+          id: results.ids[0],
+          text: metadata.text,
+          score: 1.0, // Perfect match since we're getting by exact ID
+          metadata: {
+            sessionId: metadata.sessionId,
+            timestamp: metadata.timestamp,
+            messageType: metadata.messageType,
+            textLength: metadata.textLength
+          }
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Failed to get memory by ID:', error);
+      return null;
     }
   }
 

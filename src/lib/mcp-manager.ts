@@ -65,23 +65,23 @@ export class MCPManager {
       }
     }
   }  async callTool(serverName: string, toolName: string, args: any): Promise<any> {
-    console.log(`🔧 MCP Manager: Calling tool ${toolName} on server ${serverName}`);
-    console.log(`🔧 MCP Manager: Tool arguments:`, JSON.stringify(args, null, 2));
+    console.log(` MCP Manager: Calling tool ${toolName} on server ${serverName}`);
+    console.log(` MCP Manager: Tool arguments:`, JSON.stringify(args, null, 2));
     
     const client = this.clients.get(serverName);
     if (!client) {
       const error = `Not connected to server: ${serverName}`;
-      console.error(`❌ MCP Manager: ${error}`);
+      console.error(` MCP Manager: ${error}`);
       throw new Error(error);
     }
 
     try {
-      console.log(`🔧 MCP Manager: Calling client.callTool...`);
+      console.log(` MCP Manager: Calling client.callTool...`);
       const result = await client.callTool({
         name: toolName,
         arguments: args
       });
-      console.log(`✅ MCP Manager: Tool call succeeded:`, JSON.stringify(result, null, 2));
+      console.log(` MCP Manager: Tool call succeeded:`, JSON.stringify(result, null, 2));
       
       // Ensure the result is properly serializable
       if (result && typeof result === 'object') {
@@ -90,14 +90,14 @@ export class MCPManager {
           JSON.stringify(result);
           return result;
         } catch (serializationError) {
-          console.warn(`⚠️ MCP Manager: Result not serializable, converting:`, serializationError);
+          console.warn(` MCP Manager: Result not serializable, converting:`, serializationError);
           return { message: String(result) };
         }
       }
       
       return result;
     } catch (error) {
-      console.error(`❌ MCP Manager: Error calling tool ${toolName} on ${serverName}:`, error);
+      console.error(` MCP Manager: Error calling tool ${toolName} on ${serverName}:`, error);
       
       // Don't throw, return a structured error response
       const errorMessage = error instanceof Error ? error.message : String(error);

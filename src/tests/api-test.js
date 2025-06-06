@@ -5,7 +5,7 @@
 async function testConsciousMemoryAPI() {
   const BASE_URL = 'http://localhost:3000';
   
-  console.log('🧠 Testing Conscious Memory API...');
+  console.log(' Testing Conscious Memory API...');
   
   try {
     // Test 1: Health check
@@ -57,10 +57,10 @@ async function testConsciousMemoryAPI() {
     const tagsData = await tagsResponse.json();
     console.log('Tags:', tagsData);
     
-    console.log('\n✅ All API tests completed!');
+    console.log('\n All API tests completed!');
     
   } catch (error) {
-    console.error('❌ API test failed:', error);
+    console.error(' API test failed:', error);
   }
 }
 

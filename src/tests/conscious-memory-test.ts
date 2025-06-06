@@ -5,7 +5,7 @@
 import { getConsciousMemoryService } from '../lib/conscious-memory.js';
 
 async function testConsciousMemory() {
-  console.log('🧠 Testing Conscious Memory System...');
+  console.log(' Testing Conscious Memory System...');
   
   try {
     const memoryService = getConsciousMemoryService();
@@ -17,10 +17,10 @@ async function testConsciousMemory() {
     // Test health check
     console.log('2. Health check...');
     const isHealthy = await memoryService.healthCheck();
-    console.log(`   Health: ${isHealthy ? '✅ Healthy' : '❌ Unhealthy'}`);
+    console.log(`   Health: ${isHealthy ? ' Healthy' : ' Unhealthy'}`);
     
     if (!isHealthy) {
-      console.log('❌ Memory system is not healthy, stopping test');
+      console.log(' Memory system is not healthy, stopping test');
       return false;
     }
     
@@ -57,11 +57,11 @@ async function testConsciousMemory() {
     console.log(`   Average importance: ${stats.averageImportance}`);
     console.log(`   Source breakdown:`, stats.sourceBreakdown);
     
-    console.log('✅ All tests passed!');
+    console.log(' All tests passed!');
     return true;
     
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error(' Test failed:', error);
     return false;
   }
 }

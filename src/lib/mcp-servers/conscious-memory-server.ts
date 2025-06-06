@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { getConsciousMemoryService } from '../conscious-memory.js';
 
 async function main() {
-  console.log('🧠 Starting Conscious Memory MCP Server...');
+  console.log(' Starting Conscious Memory MCP Server...');
 
   // Create MCP server
   const server = new McpServer({
@@ -41,7 +41,7 @@ async function main() {
         let safeImportance = importance || 5;
         if (safeImportance > 0 && safeImportance < 1) {
           safeImportance = Math.max(1, Math.floor(10 * safeImportance));
-          console.log(`🔧 Converted importance from ${importance} to ${safeImportance}`);
+          console.log(` Converted importance from ${importance} to ${safeImportance}`);
         }
         
         const id = await memoryService.saveMemory({
@@ -411,8 +411,8 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.log('✅ Conscious Memory MCP Server started successfully');
-  console.log('🧠 Available tools:');
+  console.log(' Conscious Memory MCP Server started successfully');
+  console.log(' Available tools:');
   console.log('   - save_memory: Save important information');
   console.log('   - search_memories: Search through conscious memories');
   console.log('   - update_memory: Update existing memories');
@@ -424,17 +424,17 @@ async function main() {
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('🛑 Shutting down Conscious Memory MCP Server...');
+  console.log(' Shutting down Conscious Memory MCP Server...');
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  console.log('🛑 Shutting down Conscious Memory MCP Server...');
+  console.log(' Shutting down Conscious Memory MCP Server...');
   process.exit(0);
 });
 
 // Start the server
 main().catch((error) => {
-  console.error('💥 Failed to start Conscious Memory MCP Server:', error);
+  console.error(' Failed to start Conscious Memory MCP Server:', error);
   process.exit(1);
 });

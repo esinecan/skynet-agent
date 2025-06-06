@@ -210,30 +210,30 @@ export class ChatHistoryDatabase {
         try {
           toolInvocations = JSON.parse(row.tool_invocations);
         } catch (error) {
-          console.error('❌ Failed to parse tool invocations for message:', row.id, error);
-          console.error('❌ Raw tool_invocations:', row.tool_invocations);
+          console.error(' Failed to parse tool invocations for message:', row.id, error);
+          console.error(' Raw tool_invocations:', row.tool_invocations);
           toolInvocations = undefined; // Safe fallback
         }
       }
       
       if (toolInvocations) {
-        console.log('🔧 Loading message with tool calls:', row.id);
-        console.log('🔧 Tool calls from DB:', JSON.stringify(toolInvocations, null, 2));
+        console.log(' Loading message with tool calls:', row.id);
+        console.log(' Tool calls from DB:', JSON.stringify(toolInvocations, null, 2));
           // KEEP THE FILTER - but update it for the new storage format
         const completeToolCalls = toolInvocations.filter((call: any) => {
           const hasResult = 'result' in call; // Check if result property exists, not if it's truthy
           
           if (!hasResult) {
-            console.log('⚠️ Filtering out incomplete tool call:', call.toolCallId || call.id);
-            console.log('⚠️ Call structure:', Object.keys(call));
+            console.log(' Filtering out incomplete tool call:', call.toolCallId || call.id);
+            console.log(' Call structure:', Object.keys(call));
           } else {
-            console.log('✅ Keeping complete tool call:', call.toolCallId || call.id);
+            console.log(' Keeping complete tool call:', call.toolCallId || call.id);
           }
           return hasResult;
         });
         
         toolInvocations = completeToolCalls.length > 0 ? completeToolCalls : undefined;
-        console.log('🔧 After filtering:', toolInvocations?.length || 0, 'complete tool calls');
+        console.log(' After filtering:', toolInvocations?.length || 0, 'complete tool calls');
       }
       
       return {
@@ -280,8 +280,8 @@ export class ChatHistoryDatabase {
         try {
           return JSON.stringify(message.toolInvocations);
         } catch (error) {
-          console.error('❌ Failed to serialize tool invocations:', error);
-          console.error('❌ Tool invocations data:', message.toolInvocations);
+          console.error(' Failed to serialize tool invocations:', error);
+          console.error(' Tool invocations data:', message.toolInvocations);
           return null; // Store null instead of crashing
         }
       })() : null;

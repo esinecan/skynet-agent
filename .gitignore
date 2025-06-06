@@ -42,6 +42,7 @@ next-env.d.ts
 
 # SQLite database files
 /data/
+/md_store/
 *.db
 *.db-journal
 *.db-shm

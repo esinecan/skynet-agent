@@ -1,4 +1,4 @@
-# 🧠 Skynet-Agent: One LLM Client to Rule Them All (Feat RAG + MCP) (In Development But Usable)
+#  Skynet-Agent: One LLM Client to Rule Them All (Feat RAG + MCP) (In Development But Usable)
 
 > *"What if AI could not only access memories, but consciously choose what to remember? With MCP tool access fully supported?"*
 
@@ -12,52 +12,52 @@
 
 **Skynet-Agent Client** is a revolutionary AI conversation platform that implements a **dual-layer memory architecture** inspired by human cognition. It combines automatic background memory (like human non-volitional memory) with conscious, deliberate memory operations that AI can control. It also has the tool access powers similar to those of Claude Desktop. [With Long Task Automation Coming Soon](motive-force.md)
 
-## 🎯 Minimal But Powerful
+##  Minimal But Powerful
 
-### 🔄 Dual-Layer Memory Architecture
+###  Dual-Layer Memory Architecture
 - **Automatic Layer (RAG)**: Background conversation storage and retrieval
 - **Conscious Layer**: Explicit, volitional memory operations controlled by AI
 - **Hybrid Search**: Solves embedding similarity limitations with semantic + keyword search
 
-### 🛠️ MCP Tool Integration
+###  MCP Tool Integration
 - Exposes conscious memory as **Model Context Protocol tools**
 - AI naturally saves and recalls memories during conversation
 - Clean separation between UI, memory, and AI operations
 
-### 🔍 Advanced Search Capabilities
+###  Advanced Search Capabilities
 - **Semantic Search**: Vector embeddings for conceptual similarity
 - **Keyword Fallback**: Exact text matching when embeddings fail
 - **Smart Merging**: Combines results with intelligent ranking
 
 ---
 
-## 🏗️ Architecture Overview
+##  Architecture Overview
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   User Interface│────│  Next.js Chat   │────│   Chat API      │
-│   (React/TS)    │    │   Client        │    │   Routes        │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                                       │
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │  LLM Service    │────│  MCP Manager    │
-                       │  (Anthropic)    │    │                 │
-                       └─────────────────┘    └─────────────────┘
-                                                       │
-                                              ┌─────────────────┐
-                                              │ Conscious Memory│
-                                              │  MCP Server     │
-                                              └─────────────────┘
-                                                       │
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Memory UI     │────│ Conscious Memory│────│ ChromaDB Memory │
-│   Dashboard     │    │    Service      │    │     Store       │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                                       │
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │   RAG System    │────│  Google         │
-                       │  (Automatic)    │    │  Embeddings     │
-                       └─────────────────┘    └─────────────────┘
+        
+   User Interface  Next.js Chat      Chat API      
+   (React/TS)           Client               Routes        
+        
+                                                       
+                           
+                         LLM Service      MCP Manager    
+                         (Anthropic)                         
+                           
+                                                       
+                                              
+                                               Conscious Memory
+                                                MCP Server     
+                                              
+                                                       
+        
+   Memory UI      Conscious Memory ChromaDB Memory 
+   Dashboard             Service               Store       
+        
+                                                       
+                           
+                          RAG System      Google         
+                         (Automatic)          Embeddings     
+                           
 ```
 
 ### Core Components
@@ -70,23 +70,23 @@
 | **Hybrid Search** | Semantic + keyword matching | Custom algorithm |
 | **MCP Integration** | Tool-based AI memory access | Model Context Protocol |
 
-## 🤖 Multi-Provider LLM Support
+##  Multi-Provider LLM Support
 
 **Skynet-Agent** supports **7 different LLM providers**, giving you unmatched flexibility to choose the perfect model for any task:
 
 | Provider                  | Type              | Best For                              | Models Available                                      |
 |---------------------------|-------------------|---------------------------------------|-------------------------------------------------------|
-| **🧠 Anthropic**          | Cloud             | Advanced reasoning, analysis & safety | `claude-4-sonnet`, `claude-4-opus`                     |
-| **🏎️ Groq**              | Cloud             | Ultra‑fast inference                  | `grok-3-mini`, `grok-3-beta`                           |
-| **💻 Mistral**            | Cloud             | Natural language & code generation    | `mistral-7b-instruct`, `mistral-coder-7b`               |
-| **🔄 OpenAI-Compatible**  | Cloud / Self‑Hosted | Broad ecosystem integration           | `gpt-4o-chat`, `gpt-4o-code`, and more                  |
-| **🏠 Ollama**             | Local             | Privacy-focused, truly free           | Any local model (Llama 3, Qwen3, etc.)                  |
-| **🤖 Google Gemini**      | Cloud             | Multimodal integration & high speed   | `gemini-2.5-flash`, `gemini-2.5-pro`                    |
-| **🚀 DeepSeek**           | Cloud             | Cost‑effective, robust performance    | `deepseek-chat-r1`, `deepseek-coder-r1`                 |
+| ** Anthropic**          | Cloud             | Advanced reasoning, analysis & safety | `claude-4-sonnet`, `claude-4-opus`                     |
+| ** Groq**              | Cloud             | Ultra‑fast inference                  | `grok-3-mini`, `grok-3-beta`                           |
+| ** Mistral**            | Cloud             | Natural language & code generation    | `mistral-7b-instruct`, `mistral-coder-7b`               |
+| ** OpenAI-Compatible**  | Cloud / Self‑Hosted | Broad ecosystem integration           | `gpt-4o-chat`, `gpt-4o-code`, and more                  |
+| ** Ollama**             | Local             | Privacy-focused, truly free           | Any local model (Llama 3, Qwen3, etc.)                  |
+| ** Google Gemini**      | Cloud             | Multimodal integration & high speed   | `gemini-2.5-flash`, `gemini-2.5-pro`                    |
+| ** DeepSeek**           | Cloud             | Cost‑effective, robust performance    | `deepseek-chat-r1`, `deepseek-coder-r1`                 |
 
 
 
-### 🔧 Quick Provider Setup
+###  Quick Provider Setup
 ```env
 # Choose your provider
 LLM_PROVIDER=anthropic
@@ -96,11 +96,11 @@ LLM_MODEL=claude-3-5-sonnet-20241022
 ANTHROPIC_API_KEY=sk-ant-your-key
 ```
 
-**👉 [Complete Provider Setup Guide](PROVIDERS.md)** - Installation, configuration, and usage examples for all providers.
+** [Complete Provider Setup Guide](PROVIDERS.md)** - Installation, configuration, and usage examples for all providers.
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 
@@ -148,23 +148,23 @@ CHROMA_URL=http://localhost:8000
 
 ---
 
-## 💡 Usage Examples
+##  Usage Examples
 
-### 🤖 Natural Memory Operations
+###  Natural Memory Operations
 
 The AI automatically handles memory operations through conversation:
 
 ```
 User: "Remember that I'm working on a React project with TypeScript and prefer functional components"
 
-AI: "💾 I've saved this to memory: Your React project preferences - TypeScript with functional components"
+AI: " I've saved this to memory: Your React project preferences - TypeScript with functional components"
 
 User: "What were my frontend preferences again?"
 
-AI: "🧠 From memory: You're working on a React project with TypeScript and prefer functional components. You also mentioned preferring Tailwind for styling earlier."
+AI: " From memory: You're working on a React project with TypeScript and prefer functional components. You also mentioned preferring Tailwind for styling earlier."
 ```
 
-### 🔧 Explicit Memory Commands
+###  Explicit Memory Commands
 
 ```
 User: "Save this debugging approach for React performance issues"
@@ -177,7 +177,7 @@ User: "What have I learned about Next.js?"
 AI: [Searches both conscious and RAG memories]
 ```
 
-### 🎯 Memory Types
+###  Memory Types
 
 | Type | Description | Example |
 |------|-------------|---------|
@@ -188,7 +188,7 @@ AI: [Searches both conscious and RAG memories]
 
 ---
 
-## 🔬 Technical Deep Dive
+##  Technical Deep Dive
 
 ### Memory Architecture
 
@@ -274,28 +274,28 @@ Each tool returns structured content that the LLM can use naturally in conversat
 
 ---
 
-## 🌟 Key Features
+##  Key Features
 
-### 🧠 Intelligent Memory Management
+###  Intelligent Memory Management
 - **Automatic Importance Scoring**: AI determines memory significance
 - **Tag-Based Organization**: Categorize memories for easy retrieval
 - **Relationship Mapping**: Link related memories together
 - **Memory Editing**: Update and refine stored information
 
-### 🔍 Advanced Search Capabilities
+###  Advanced Search Capabilities
 - **Multi-Modal Search**: Semantic understanding + exact keyword matching
 - **Contextual Filtering**: Search by tags, importance, date ranges
 - **Cross-Memory Search**: Find connections across different memory types
 - **Relevance Ranking**: Smart scoring combines multiple signals
 
-### 🎨 Beautiful User Interface
+###  Beautiful User Interface
 - **Real-Time Chat**: Smooth conversation experience
 - **Memory Dashboard**: Visual memory management interface
 - **Smart Suggestions**: AI-powered memory recommendations
 - **Export/Import**: Backup and share memory collections
 - **Actually Looks Very Ugly**: I suck at UI design
 
-### ⚡ Performance Optimizations
+###  Performance Optimizations
 - **Efficient Embeddings**: Google's latest text-embedding-004 model
 - **Caching Layer**: Reduces API calls and improves response times
 - **Batch Operations**: Handle multiple memories efficiently
@@ -303,7 +303,7 @@ Each tool returns structured content that the LLM can use naturally in conversat
 
 ---
 
-## 🔧 API Reference
+##  API Reference
 
 ### Conscious Memory API
 
@@ -385,47 +385,47 @@ The conscious memory system exposes these tools to the LLM:
 
 ---
 
-## 🏛️ Project Structure
+##  Project Structure
 
 ```
 skynet-agent/
-├── src/
-│   ├── app/                    # Next.js app router
-│   │   ├── api/               # API routes
-│   │   │   ├── chat/          # Chat endpoints
-│   │   │   ├── conscious-memory/ # Memory API
-│   │   │   └── chat-history/  # Chat history API
-│   │   ├── conscious-memory/  # Memory dashboard page
-│   │   └── globals.css        # Global styles
-│   ├── components/            # React components
-│   │   ├── ChatInterface.tsx  # Main chat UI
-│   │   ├── ChatMessage.tsx    # Message components
-│   │   ├── MessageInput.tsx   # Input handling
-│   │   └── ToolCallDisplay.tsx # Tool visualization
-│   ├── lib/                   # Core libraries
-│   │   ├── mcp-servers/       # MCP server implementations
-│   │   │   └── conscious-memory-server.ts
-│   │   ├── chat-history.ts    # SQLite chat storage
-│   │   ├── conscious-memory.ts # Memory service
-│   │   ├── embeddings.ts      # Google embeddings
-│   │   ├── llm-service.ts     # AI service
-│   │   ├── mcp-manager.ts     # MCP orchestration
-│   │   ├── memory-store.ts    # ChromaDB interface
-│   │   └── rag.ts            # RAG implementation
-│   └── types/                 # TypeScript definitions
-│       ├── chat.ts           # Chat types
-│       ├── memory.ts         # Memory types
-│       ├── mcp.ts            # MCP types
-│       └── tool.ts           # Tool types
-├── config.json               # MCP server configuration
-├── docker-compose.yml        # ChromaDB setup
-├── package.json             # Dependencies
-└── README.md               # This file
+ src/
+    app/                    # Next.js app router
+       api/               # API routes
+          chat/          # Chat endpoints
+          conscious-memory/ # Memory API
+          chat-history/  # Chat history API
+       conscious-memory/  # Memory dashboard page
+       globals.css        # Global styles
+    components/            # React components
+       ChatInterface.tsx  # Main chat UI
+       ChatMessage.tsx    # Message components
+       MessageInput.tsx   # Input handling
+       ToolCallDisplay.tsx # Tool visualization
+    lib/                   # Core libraries
+       mcp-servers/       # MCP server implementations
+          conscious-memory-server.ts
+       chat-history.ts    # SQLite chat storage
+       conscious-memory.ts # Memory service
+       embeddings.ts      # Google embeddings
+       llm-service.ts     # AI service
+       mcp-manager.ts     # MCP orchestration
+       memory-store.ts    # ChromaDB interface
+       rag.ts            # RAG implementation
+    types/                 # TypeScript definitions
+        chat.ts           # Chat types
+        memory.ts         # Memory types
+        mcp.ts            # MCP types
+        tool.ts           # Tool types
+ config.json               # MCP server configuration
+ docker-compose.yml        # ChromaDB setup
+ package.json             # Dependencies
+ README.md               # This file
 ```
 
 ---
 
-## 🔬 Research & Innovation
+##  Research & Innovation
 
 ### Memory Architecture Inspiration
 
@@ -449,7 +449,7 @@ Combines relevance scores with user-defined importance ratings for smarter memor
 
 ---
 
-## 🧪 Development & Testing
+##  Development & Testing
 
 ### Running Tests
 
@@ -503,7 +503,7 @@ curl http://localhost:3000/api/conscious-memory?action=stats
 
 ---
 
-## 🚀 Deployment
+##  Deployment
 
 ### Production Deployment
 
@@ -555,7 +555,7 @@ CMD ["npm", "start"]
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 We welcome contributions! Here's how to get started:
 
@@ -577,22 +577,22 @@ We welcome contributions! Here's how to get started:
 
 ### Areas for Contribution
 
-- 🧠 **Memory algorithms**: Improve search and relevance scoring
-- 🎨 **UI/UX**: Enhance the memory management interface  
-- 🔧 **MCP tools**: Add new memory operations and capabilities
-- 📚 **Documentation**: Improve guides and examples
-- 🧪 **Testing**: Add comprehensive test coverage
-- 🚀 **Performance**: Optimize memory operations and search
+-  **Memory algorithms**: Improve search and relevance scoring
+-  **UI/UX**: Enhance the memory management interface  
+-  **MCP tools**: Add new memory operations and capabilities
+-  **Documentation**: Improve guides and examples
+-  **Testing**: Add comprehensive test coverage
+-  **Performance**: Optimize memory operations and search
 
 ---
 
-## 📄 License
+##  License
 
 MIT License - Lok Tar Ogar!
 
 ---
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - **ChromaDB Team** for the excellent vector database
 - **Google AI** for the powerful embedding models

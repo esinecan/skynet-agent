@@ -92,7 +92,7 @@ SUMMARY:`;
     
     // Ensure summary is actually shorter than original
     if (summary.length >= originalLength * 0.8) {
-      console.warn('⚠️ Summary not significantly shorter than original, using truncated original');
+      console.warn(' Summary not significantly shorter than original, using truncated original');
       const truncated = text.substring(0, maxLength) + '...';
       return {
         summary: truncated,
@@ -103,7 +103,7 @@ SUMMARY:`;
       };
     }
     
-    console.log(`📝 Summarized ${originalLength} chars → ${summary.length} chars`);
+    console.log(` Summarized ${originalLength} chars → ${summary.length} chars`);
     return {
       summary,
       originalLength,
@@ -113,7 +113,7 @@ SUMMARY:`;
     };
     
   } catch (error) {
-    console.error('❌ Summarization failed:', error);
+    console.error(' Summarization failed:', error);
     // Fallback: truncate original text
     const truncated = text.substring(0, maxLength) + '...';
     return {
