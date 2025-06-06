@@ -27,6 +27,13 @@ Invoke-WebRequest -Uri "http://localhost:3000/api/chat" -Method POST -Body $body
 # Response will be streamed, includes session ID in metadata
 
 # 2. List sessions to see the new chat
+
+## Exploratory Testing Notes
+- Running `npm run build` currently fails with a type error in `src/app/api/chat-history/[sessionId]/route.ts`. Next.js expects the handler context to include `params` as a `Promise<Record<string, string | string[]>>`.
+- Despite the build failure, `npm run dev` works and the chat history endpoints respond correctly. Using `curl` against `/api/chat-history` returns the list of sessions (empty by default). Posting to `/api/chat-history` and then `/api/chat-history/[sessionId]` successfully creates and retrieves sessions.
+
+
+- `npm run type-check` also fails with the same type error.
 Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history" -Method GET
 ```
 
