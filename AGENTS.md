@@ -7,6 +7,130 @@ This file stores notes and instructions for future Codex agents working in this 
 - Commands that require interactive input (e.g., `npm run lint`) cannot be completed.
 - Focus on static code inspection and running non-interactive scripts such as `npm run type-check`.
 
+## Testing with curl
+
+You can extensively test this application using curl to simulate user flows. Below are the key testing patterns:
+
+### Flow 1: New Chat Creation
+```powershell
+# 1. Start new chat (POST to /api/chat creates session automatically)
+$body = @{
+    messages = @(
+        @{
+            role = "user"
+            content = "Hello, how are you?"
+        }
+    )
+} | ConvertTo-Json -Depth 3
+
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat" -Method POST -Body $body -ContentType "application/json"
+# Response will be streamed, includes session ID in metadata
+
+# 2. List sessions to see the new chat
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history" -Method GET
+```
+
+### Flow 2: Load Existing Chat
+```powershell
+# 1. Get session list
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history" -Method GET
+
+# 2. Load specific session (using sessionId from step 1)
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history/[sessionId]" -Method GET
+
+# 3. Continue conversation in that session
+$continueBody = @{
+    messages = @(
+        @{role = "user"; content = "Previous message"; sessionId = "[sessionId]"},
+        @{role = "assistant"; content = "Previous response"},
+        @{role = "user"; content = "New message"}
+    )
+    sessionId = "[sessionId]"
+} | ConvertTo-Json -Depth 3
+
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat" -Method POST -Body $continueBody -ContentType "application/json"
+```
+
+### Flow 3: Tool Calls
+```powershell
+# Send message that triggers tool usage
+$toolBody = @{
+    messages = @(
+        @{
+            role = "user"
+            content = "Remember that I like pizza"
+        }
+    )
+} | ConvertTo-Json -Depth 3
+
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat" -Method POST -Body $toolBody -ContentType "application/json"
+# Response will include tool_calls in the stream for memory operations
+
+# Check if memory was stored
+$searchBody = @{
+    action = "search"
+    query = "pizza"
+} | ConvertTo-Json
+
+Invoke-WebRequest -Uri "http://localhost:3000/api/conscious-memory" -Method POST -Body $searchBody -ContentType "application/json"
+```
+
+### Flow 4: File Attachments
+```powershell
+# 1. Upload file first
+$fileContent = [System.IO.File]::ReadAllBytes("test.txt")
+$fileBase64 = [System.Convert]::ToBase64String($fileContent)
+
+# 2. Include attachment in chat
+$attachBody = @{
+    messages = @(
+        @{
+            role = "user"
+            content = "Analyze this file"
+        }
+    )
+    attachments = @(
+        @{
+            name = "test.txt"
+            type = "text/plain"
+            data = $fileBase64
+        }
+    )
+} | ConvertTo-Json -Depth 3
+
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat" -Method POST -Body $attachBody -ContentType "application/json"
+```
+
+### Memory System Testing
+```powershell
+# Test RAG memory
+$ragBody = @{
+    action = "search"
+    query = "test query"
+} | ConvertTo-Json
+
+Invoke-WebRequest -Uri "http://localhost:3000/api/memory" -Method POST -Body $ragBody -ContentType "application/json"
+
+# Test conscious memory stats
+$statsBody = @{
+    action = "stats"
+} | ConvertTo-Json
+
+Invoke-WebRequest -Uri "http://localhost:3000/api/conscious-memory" -Method POST -Body $statsBody -ContentType "application/json"
+```
+
+### Session Management
+```powershell
+# Search sessions
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history/search?q=pizza" -Method GET
+
+# Delete session
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history?sessionId=[sessionId]" -Method DELETE
+
+# Delete all sessions
+Invoke-WebRequest -Uri "http://localhost:3000/api/chat-history?sessionId=all" -Method DELETE
+```
+
 ## API Overview
 The Next.js API routes are under `src/app/api`. Key endpoints include:
 
