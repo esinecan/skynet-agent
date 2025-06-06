@@ -122,11 +122,14 @@ npm install
 cp .env.example .env.local
 # Edit .env.local with your API keys
 
-# Start ChromaDB
+# Start ChromaDB and Neo4j
 docker-compose up -d
 
 # Start the development server
 npm run dev
+
+# Sync chat history into Neo4j
+npm run sync:neo4j
 ```
 
 ### Environment Configuration
@@ -136,6 +139,9 @@ npm run dev
 GOOGLE_AI_API_KEY=your_google_ai_api_key
 ANTHROPIC_API_KEY=your_anthropic_api_key
 CHROMA_URL=http://localhost:8000
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=neo4j
 ```
 
 ### First Run

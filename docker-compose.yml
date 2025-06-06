@@ -19,3 +19,18 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+  neo4j:
+    image: neo4j:5
+    container_name: mcp-chat-neo4j
+    ports:
+      - "7687:7687"
+      - "7474:7474"
+    environment:
+      - NEO4J_AUTH=neo4j/neo4j
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:7474"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
