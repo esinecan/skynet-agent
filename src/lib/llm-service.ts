@@ -13,6 +13,26 @@ import { MCPManager } from './mcp-manager';
 import { getAllMCPServers } from '../config/default-mcp-servers';
 import { getRAGService, RAGResult } from './rag';
 
+// --- Knowledge Extraction Structures ---
+export interface ExtractedEntity {
+  id: string; // Unique identifier for the entity (e.g., "Person_JohnDoe", "Concept_AI")
+  label: string; // Type of the entity (e.g., "Person", "Organization", "Concept", "Event", "Tool", "FilePath")
+  properties: Record<string, any>; // Properties of the entity (e.g., { "name": "John Doe", "description": "..." })
+}
+
+export interface ExtractedRelationship {
+  sourceEntityId: string; // ID of the source entity
+  targetEntityId: string; // ID of the target entity
+  type: string; // Type of the relationship (e.g., "WORKS_FOR", "RELATED_TO", "USES_TOOL")
+  properties: Record<string, any>; // Properties of the relationship (e.g., { "role": "developer" })
+}
+
+export interface KnowledgeExtractionResult {
+  entities: ExtractedEntity[];
+  relationships: ExtractedRelationship[];
+}
+// --- End Knowledge Extraction Structures ---
+
 export interface LLMOptions {
   enableRAG?: boolean;
   sessionId?: string;
