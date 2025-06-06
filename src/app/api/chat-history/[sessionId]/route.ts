@@ -3,10 +3,10 @@ import { ChatHistoryDatabase } from '../../../../lib/chat-history';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
+  { params }: { params: { sessionId: string } }
 ) {
   try {
-    const { sessionId } = await params;
+    const { sessionId } = params;
     const db = ChatHistoryDatabase.getInstance();
     const session = db.getSession(sessionId);
     
@@ -29,10 +29,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
+  { params }: { params: { sessionId: string } }
 ) {
   try {
-    const { sessionId } = await params;
+    const { sessionId } = params;
     const { message } = await request.json();
     
     if (!message || !message.role || !message.content) {
