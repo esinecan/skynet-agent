@@ -12,14 +12,15 @@ if (-not (Test-Path ".env.local")) {
     Write-Host "✅ .env.local found" -ForegroundColor Green
 }
 
-# Start ChromaDB
-Write-Host "🐳 Starting ChromaDB..." -ForegroundColor Cyan
+# Start ChromaDB and Neo4j
+Write-Host "🐳 Starting ChromaDB and Neo4j..." -ForegroundColor Cyan
 try {
-    docker-compose up -d chromadb
+    docker-compose up -d chromadb neo4j
     Write-Host "✅ ChromaDB started on http://localhost:8000" -ForegroundColor Green
+    Write-Host "✅ Neo4j started on http://localhost:7474" -ForegroundColor Green
 } catch {
-    Write-Host "❌ Failed to start ChromaDB. Please ensure Docker is running" -ForegroundColor Red
-    Write-Host "   Alternative: docker run -p 8000:8000 chromadb/chroma" -ForegroundColor Yellow
+    Write-Host "❌ Failed to start ChromaDB and/or Neo4j. Please ensure Docker is running" -ForegroundColor Red
+    Write-Host "   Make sure docker-compose.yml is correctly configured." -ForegroundColor Yellow
 }
 
 # Wait for ChromaDB to be ready
@@ -30,7 +31,23 @@ for ($i = 1; $i -le 30; $i++) {
         Write-Host "✅ ChromaDB is ready!" -ForegroundColor Green
         break
     } catch {
-        Write-Host "   Waiting... ($i/30)" -ForegroundColor Yellow
+        Write-Host "   ChromaDB not ready... ($i/30)" -ForegroundColor Yellow
+        Start-Sleep 2
+    }
+}
+
+# Wait for Neo4j to be ready
+Write-Host "⏳ Waiting for Neo4j to be ready..." -ForegroundColor Yellow
+for ($i = 1; $i -le 30; $i++) {
+    try {
+        # Neo4j health check is done via docker-compose healthcheck, but we can try a simple port check or HTTP GET
+        # For now, we'll try to connect to the HTTP port. A more robust check would use cypher-shell or GET /db/data/
+        $response = Invoke-WebRequest -Uri "http://localhost:7474" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        # A successful response (even if it's an auth error page) means the server is up.
+        Write-Host "✅ Neo4j HTTP endpoint is responsive!" -ForegroundColor Green
+        break
+    } catch {
+        Write-Host "   Neo4j not ready... ($i/30)" -ForegroundColor Yellow
         Start-Sleep 2
     }
 }

@@ -1,8 +1,5 @@
-import knowledgeGraphService, {
-  KnowledgeGraphService,
-  KgNode,
-  KgRelationship,
-} from './knowledge-graph-service';
+import knowledgeGraphService, { KgRelationship } from './knowledge-graph-service';
+import { KgNode } from '../types/knowledge-graph';
 import { LLMService, ExtractedEntity, ExtractedRelationship, KnowledgeExtractionResult } from './llm-service';
 import { extractUsingRules, RuleBasedExtractionResult } from './rule-based-extractor';
 import { ChatHistoryDatabase, ChatMessage, ChatSession } from './chat-history';
@@ -18,7 +15,7 @@ interface SyncState {
 const SYNC_STATE_FILE_PATH = './sync_state.json'; // Or use a database
 
 export class KnowledgeGraphSyncService {
-  private kgService: KnowledgeGraphService;
+  private kgService: typeof knowledgeGraphService;
   private llmService: LLMService;
   private chatHistoryDB: ChatHistoryDatabase;
   private consciousMemoryService: ConsciousMemoryService;

@@ -14,24 +14,45 @@ else
     echo "✅ .env.local found"
 fi
 
-# Start ChromaDB
-echo "🐳 Starting ChromaDB..."
+# Start ChromaDB and Neo4j
+echo "🐳 Starting ChromaDB and Neo4j..."
 if command -v docker-compose &> /dev/null; then
-    docker-compose up -d chromadb
-    echo "✅ ChromaDB started on http://localhost:8000"
+    docker-compose up -d chromadb neo4j
+    if [ $? -eq 0 ]; then
+        echo "✅ ChromaDB started on http://localhost:8000"
+        echo "✅ Neo4j started on http://localhost:7474"
+    else
+        echo "❌ Failed to start ChromaDB and/or Neo4j with docker-compose."
+        echo "   Please ensure Docker is running and docker-compose.yml is correct."
+        # Optionally, exit here or allow script to continue if some parts are optional
+    fi
 else
-    echo "❌ Docker Compose not found. Please install Docker and Docker Compose"
-    echo "   Or start ChromaDB manually: docker run -p 8000:8000 chromadb/chroma"
+    echo "❌ Docker Compose not found. Please install Docker and Docker Compose."
+    echo "   Cannot start ChromaDB or Neo4j automatically."
 fi
 
 # Wait for ChromaDB to be ready
 echo "⏳ Waiting for ChromaDB to be ready..."
 for i in {1..30}; do
-    if curl -s http://localhost:8000/api/v1/heartbeat > /dev/null 2>&1; then
+    if curl -s -f "http://localhost:8000/api/v1/heartbeat" > /dev/null 2>&1; then
         echo "✅ ChromaDB is ready!"
         break
     fi
-    echo "   Waiting... ($i/30)"
+    echo "   ChromaDB not ready... ($i/30)"
+    sleep 2
+done
+
+# Wait for Neo4j to be ready
+echo "⏳ Waiting for Neo4j to be ready..."
+for i in {1..30}; do
+    # Attempt to curl the Neo4j browser endpoint.
+    # Neo4j's HTTP endpoint returns 200 for the browser, even if auth is enabled.
+    # The healthcheck in docker-compose is more robust but this is a good script-level check.
+    if curl -s -f -o /dev/null "http://localhost:7474"; then
+        echo "✅ Neo4j HTTP endpoint is responsive!"
+        break
+    fi
+    echo "   Neo4j not ready... ($i/30)"
     sleep 2
 done
 

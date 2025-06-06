@@ -14,13 +14,14 @@ import {
 } from '../types/memory';
 import { getMemoryStore } from './memory-store';
 import { getEmbeddingService } from './embeddings';
-import knowledgeGraphServiceInstance, { KnowledgeGraphService, KgNode, KgRelationship } from './knowledge-graph-service'; // Import KG Service
+import knowledgeGraphServiceInstance, { KgRelationship } from './knowledge-graph-service'; // Import KG Service instance and KgRelationship
+import { KgNode } from '../types/knowledge-graph'; // Import KgNode from its new location
 import { generateEntityId } from './rule-based-extractor'; // Assuming this is exported and useful
 
 export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
   private memoryStore = getMemoryStore();
   private embeddingService = getEmbeddingService();
-  private kgService: KnowledgeGraphService; // KG Service instance
+  private kgService: typeof knowledgeGraphServiceInstance; // Use type of the instance
   private initialized = false;
 
   constructor() {
@@ -46,7 +47,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       const cmNodeId = generateEntityId('ConsciousMemory', memoryId);
       const memoryNode: KgNode = {
         id: cmNodeId,
-        label: 'ConsciousMemory',
+        type: 'ConsciousMemory', // Changed 'label' to 'type'
         properties: {
           memoryId: memoryId,
           content: content,
@@ -69,7 +70,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
           const tagId = generateEntityId('Tag', tagName);
           const tagNode: KgNode = {
             id: tagId,
-            label: 'Tag',
+            type: 'Tag', // Changed 'label' to 'type'
             properties: { name: tagName.trim() },
           };
           await this.kgService.addNode(tagNode); // addNode should be idempotent (MERGE)
@@ -90,7 +91,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
         const sessionNodeId = generateEntityId('Session', sessionIdValue);
         const sessionNode: KgNode = {
           id: sessionNodeId,
-          label: 'Session',
+          type: 'Session', // Changed 'label' to 'type'
           properties: { sessionId: sessionIdValue },
         };
         await this.kgService.addNode(sessionNode); // addNode should be idempotent

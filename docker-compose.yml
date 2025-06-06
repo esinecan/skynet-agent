@@ -19,3 +19,21 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5.20-community
+    container_name: mcp-chat-neo4j
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - ./data/neo4j/data:/data
+      - ./data/neo4j/logs:/logs
+    environment:
+      - NEO4J_AUTH=neo4j/password123
+      - NEO4J_PLUGINS=["apoc"]
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p password123 'RETURN 1'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

@@ -1,17 +1,7 @@
 import neo4j, { Driver, Session } from 'neo4j-driver';
+import { KgNode } from '../types/knowledge-graph';
 
-// Define placeholder interfaces for KgNode and KgRelationship
-export interface KgNode {
-  id: string;
-  type: string; // Entity type (e.g., "Person", "Organization", "Location")
-  properties: Record<string, any>; // Arbitrary properties (e.g., { "name": "John Doe", "age": 30 })
-  // Optional metadata
-  createdAt?: Date;
-  updatedAt?: Date;
-  // Optional source information
-  source?: string; // Where this information came from (e.g., "user_input", "document_extraction")
-}
-
+// TODO: Consider moving KgRelationship to ../types/knowledge-graph.ts as well
 export interface KgRelationship {
   id: string;
   sourceNodeId: string;
@@ -69,18 +59,95 @@ class KnowledgeGraphService {
 
   // Placeholder for adding a node
   async addNode(node: KgNode): Promise<KgNode> {
-    // TODO: Implement node creation logic
-    console.log('addNode called with:', node);
-    // For now, just return the input node
+    if (!this.session) await this.connect();
+
+    const query = `
+      MERGE (n:${node.type} {id: $id})
+      SET n += $properties, n.updatedAt = datetime()
+      RETURN n
+    `;
+
+    const result = await this.session!.run(query, {
+      id: node.id,
+      properties: { ...node.properties, createdAt: node.createdAt || new Date() }
+    });
+
+    // Note: The provided snippet returns the input 'node'.
+    // Depending on driver specifics and desired return value,
+    // you might want to map the result from Neo4j back to a KgNode.
+    // For now, sticking to the provided snippet.
     return node;
   }
 
   // Placeholder for adding a relationship
-  async addRelationship(relationship: KgRelationship): Promise<KgRelationship> {
-    // TODO: Implement relationship creation logic
-    console.log('addRelationship called with:', relationship);
-    // For now, just return the input relationship
-    return relationship;
+  // Assuming KgRelationship is defined in ../types/knowledge-graph
+  // For now, let's define a minimal one here if not present globally yet.
+  // interface KgRelationship { // This was in the prompt, but we have one above.
+  //   sourceNodeId: string;
+  //   targetNodeId: string;
+  //   sourceNodeType: string; // e.g. 'User'
+  //   targetNodeType: string; // e.g. 'Message'
+  //   relationshipType: string; // e.g. 'SENT'
+  //   properties?: Record<string, any>;
+  // }
+
+  async addRelationship(relationship: KgRelationship): Promise<void> {
+    if (!this.session) await this.connect();
+
+    // Assuming sourceNodeType and targetNodeType are part of KgRelationship
+    // If not, this query would need adjustment or those types passed differently.
+    // For now, we assume they are NOT part of the existing KgRelationship.
+    // The prompt's example KgRelationship had them, but the one in this file does not.
+    // We will need to adjust the query to match the existing KgRelationship interface.
+    // The prompt's example relationship also used relationship.relationshipType.
+    // The existing KgRelationship uses 'type' for the relationship type.
+
+    const query = `
+      MATCH (a {id: $sourceNodeId})
+      MATCH (b {id: $targetNodeId})
+      MERGE (a)-[r:${relationship.type}]->(b)
+      SET r += $properties, r.createdAt = datetime(), r.updatedAt = datetime()
+      RETURN type(r)
+    `;
+
+    await this.session!.run(query, {
+      sourceNodeId: relationship.sourceNodeId,
+      targetNodeId: relationship.targetNodeId,
+      properties: relationship.properties || {}
+    });
+  }
+
+  async deleteNode(nodeId: string): Promise<void> {
+    if (!this.session) await this.connect();
+    console.log(`[KnowledgeGraphService] Attempting to delete node with ID: ${nodeId}`);
+    // Basic query to detach and delete a node by its generic 'id' property
+    // This assumes 'id' is a unique identifier across all node types you wish to delete this way
+    const query = `
+      MATCH (n {id: $nodeId})
+      DETACH DELETE n
+    `;
+    try {
+      await this.session!.run(query, { nodeId });
+      console.log(`[KnowledgeGraphService] Successfully deleted node with ID: ${nodeId}`);
+    } catch (error) {
+      console.error(`[KnowledgeGraphService] Error deleting node ${nodeId}:`, error);
+      // Decide on error handling: re-throw, or log and continue, etc.
+      throw error; // Re-throwing for now
+    }
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      // Assuming runQuery is a method that can execute arbitrary queries.
+      // If it's not, this might need to use this.session.run directly.
+      // Let's assume a simple query execution for health check.
+      // The existing runQuery method is suitable here.
+      await this.runQuery('RETURN 1 as health');
+      return true;
+    } catch (error) {
+      console.error('Neo4j health check failed:', error);
+      return false;
+    }
   }
 
   // Placeholder for running a generic Cypher query

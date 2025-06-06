@@ -1,6 +1,6 @@
 import { McpServer, StdioServerTransport, ToolInputSchemas, ToolOutputValues } from '@modelcontextprotocol/sdk';
 import { z } from 'zod';
-import knowledgeGraphServiceInstance, { KnowledgeGraphService } from '../knowledge-graph-service'; // Assuming singleton instance
+import knowledgeGraphServiceInstance from '../knowledge-graph-service'; // Assuming singleton instance
 
 // Define input and output schemas using Zod
 const toolSchemas = {
@@ -81,7 +81,7 @@ const toolSchemas = {
 };
 
 async function main() {
-  const kgService: KnowledgeGraphService = knowledgeGraphServiceInstance;
+  const kgService: typeof knowledgeGraphServiceInstance = knowledgeGraphServiceInstance;
 
   try {
     await kgService.connect();
