@@ -1,6 +1,7 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import Database from 'better-sqlite3'
+import path from 'path'
+import fs from 'fs'
+import { getKnowledgeGraph, KnowledgeGraphService } from './knowledge-graph'
 
 // Chat history management with SQLite
 export interface ChatSession {
@@ -35,6 +36,7 @@ export interface ChatMessage {
 export class ChatHistoryDatabase {
   private db: Database.Database;
   private static instance: ChatHistoryDatabase;
+  private kg?: KnowledgeGraphService;
 
   private constructor() {
     // Create data directory if it doesn't exist
@@ -47,6 +49,12 @@ export class ChatHistoryDatabase {
     const dbPath = path.join(dataDir, 'chat-history.db');
     this.db = new Database(dbPath);
     this.initializeTables();
+
+    // Set up knowledge graph if available
+    this.kg = getKnowledgeGraph()
+    this.kg.initialize().catch(err => {
+      console.error('KnowledgeGraph initialization failed:', err)
+    })
   }
 
   static getInstance(): ChatHistoryDatabase {
@@ -111,12 +119,19 @@ export class ChatHistoryDatabase {
     `);
     
     stmt.run(session.id, session.title, now, now);
-    
-    return {
+
+    const created = {
       ...session,
       createdAt: new Date(now),
       updatedAt: new Date(now),
-    };
+
+    } as ChatSession;
+
+    this.kg?.upsertSession(created).catch(err => {
+      console.error('KnowledgeGraph upsertSession failed:', err)
+    })
+
+    return created
   }
 
   updateSession(sessionId: string, updates: Partial<Pick<ChatSession, 'title'>>): void {
@@ -141,6 +156,13 @@ export class ChatHistoryDatabase {
     `);
     
     stmt.run(...values);
+
+    const session = this.getSession(sessionId)
+    if (session) {
+      this.kg?.upsertSession(session).catch(err => {
+        console.error('KnowledgeGraph updateSession failed:', err)
+      })
+    }
   }
 
   getAllSessions(): ChatSession[] {
@@ -320,11 +342,17 @@ export class ChatHistoryDatabase {
     });
     
     transaction();
-    
-    return {
+
+    const saved: ChatMessage = {
       ...message,
-      createdAt: new Date(now),
-    };
+      createdAt: new Date(now)
+    }
+
+    this.kg?.upsertMessage({ ...saved, sessionId: message.sessionId }).catch(err => {
+      console.error('KnowledgeGraph upsertMessage failed:', err)
+    })
+
+    return saved
   }
 
   // Attachment management methods

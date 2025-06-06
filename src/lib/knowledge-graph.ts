@@ -84,6 +84,30 @@ export class KnowledgeGraphService {
       await s.close()
     }
   }
+
+  async getSessions(): Promise<ChatSession[]> {
+    const s = this.getSession()
+    try {
+      const res = await s.run(
+        `MATCH (sess:Session)
+         OPTIONAL MATCH (sess)-[:HAS_MESSAGE]->(m:Message)
+         RETURN sess.id AS id, sess.title AS title,
+                sess.createdAt AS createdAt, sess.updatedAt AS updatedAt,
+                count(m) AS messageCount
+         ORDER BY sess.updatedAt DESC`
+      )
+      return res.records.map(r => ({
+        id: r.get('id'),
+        title: r.get('title'),
+        messages: [],
+        messageCount: r.get('messageCount').toNumber ? r.get('messageCount').toNumber() : r.get('messageCount'),
+        createdAt: new Date(r.get('createdAt')),
+        updatedAt: new Date(r.get('updatedAt'))
+      }))
+    } finally {
+      await s.close()
+    }
+  }
 }
 
 let kg: KnowledgeGraphService | null = null
