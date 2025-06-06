@@ -1,7 +1,8 @@
 {
   "name": "mcp-chat-client",
   "version": "0.1.0",
-  "private": true,  "scripts": {
+  "private": true,
+  "scripts": {
     "dev": "next dev",
     "dev:debug": "cross-env NODE_OPTIONS='--inspect' next dev",
     "dev:gui": "npm run dev",
@@ -12,7 +13,8 @@
     "test:integration": "node src/tests/integration-test.js",
     "test:all": "npm run test:integration && npm run test:rag",
     "type-check": "tsc --noEmit --skipLibCheck",
-    "start:rag": "powershell -ExecutionPolicy Bypass -File start-rag.ps1"
+    "start:rag": "powershell -ExecutionPolicy Bypass -File start-rag.ps1",
+    "kg:sync": "npx tsx ./src/scripts/run-kg-sync.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
@@ -26,6 +28,7 @@
     "ai": "^4.0.0",
     "better-sqlite3": "^11.10.0",
     "chromadb": "^2.4.6",
+    "neo4j-driver": "^5.28.1",
     "next": "15.0.0",
     "ollama-ai-provider": "^1.2.0",
     "react": "^18.0.0",

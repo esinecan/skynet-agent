@@ -34,6 +34,10 @@ function loadMCPConfig(): MCPConfig {
           'conscious-memory': {
             command: 'npx',
             args: ['tsx', './src/lib/mcp-servers/conscious-memory-server.ts']
+          },
+          'knowledge-graph': {
+            command: 'npx',
+            args: ['tsx', './src/lib/mcp-servers/knowledge-graph-server.ts']
           }
         }
       }
