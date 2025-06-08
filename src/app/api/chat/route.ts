@@ -2,6 +2,7 @@ import { streamText } from 'ai';
 import { NextRequest } from 'next/server';
 import { LLMService } from '../../../lib/llm-service';
 import { ChatHistoryDatabase } from '../../../lib/chat-history';
+import knowledgeGraphSyncService from '../../../lib/knowledge-graph-sync-service';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -44,6 +45,13 @@ async function getLLMService(): Promise<LLMService> {
   if (!llmService) {
     llmService = new LLMService();
     await llmService.initialize();
+    
+    // Log knowledge graph statistics on first initialization
+    try {
+      await knowledgeGraphSyncService.logStartupStatistics();
+    } catch (kgError) {
+      console.warn(' Chat API: Could not load knowledge graph statistics:', kgError);
+    }
   }
   return llmService;
 }
@@ -256,11 +264,11 @@ export async function POST(request: NextRequest) {
           try {
             console.log(' Chat API: Storing conversation in memory...');
             await service.storeConversationInMemory(userMessage, finishResult.text, sessionId);
-            console.log(' Chat API: Conversation stored in memory');          } catch (memoryError) {
-            console.error(' Chat API: Memory storage FAILED:', memoryError);
-            console.error(' Memory Error stack:', (memoryError as Error).stack);
-            throw memoryError; // Don't suppress this error
-          }
+            console.log(' Chat API: Conversation stored in memory');        } catch (memoryError) {
+          console.error(' Chat API: Memory storage FAILED:', memoryError);
+          console.error(' Memory Error stack:', (memoryError as Error).stack);
+          // Don't throw - log the error but don't break the stream
+        }
         }
         
         // Store in chat history database
@@ -342,13 +350,18 @@ export async function POST(request: NextRequest) {
             content: finishResult.text,
             toolInvocations: completeToolCalls,
           });
-          
-          console.log(' Chat API: Conversation stored in chat history');        } catch (historyError) {
+            console.log(' Chat API: Conversation stored in chat history');          // Trigger knowledge graph sync (async, don't wait)
+          knowledgeGraphSyncService.syncKnowledgeGraph().catch(kgError => {
+            console.error(' Chat API: Knowledge graph sync failed:', kgError);
+            // Don't throw - this shouldn't block the chat response
+          });
+        } catch (historyError) {
           console.error(' Chat API: History storage FAILED:', historyError);
           console.error(' History Error stack:', (historyError as Error).stack);
-          throw historyError; // Don't suppress this error
+          // Don't throw - log the error but don't break the stream
         }
-      },    }); 
+      },
+    });
 
     const dataStreamResponse = result.toDataStreamResponse();
     console.log(' Chat API: stream response: ', dataStreamResponse.json);

@@ -17,12 +17,14 @@ import { getEmbeddingService } from './embeddings';
 import knowledgeGraphServiceInstance, { KgRelationship } from './knowledge-graph-service'; // Import KG Service instance and KgRelationship
 import { KgNode } from '../types/knowledge-graph'; // Import KgNode from its new location
 import { generateEntityId } from './rule-based-extractor'; // Assuming this is exported and useful
+import { withRetry, SyncErrorQueue, SyncQueueItem } from './kg-resilience';
 
 export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
   private memoryStore = getMemoryStore();
   private embeddingService = getEmbeddingService();
   private kgService: typeof knowledgeGraphServiceInstance; // Use type of the instance
   private initialized = false;
+  private syncErrorQueue = new SyncErrorQueue();
 
   constructor() {
     this.kgService = knowledgeGraphServiceInstance; // Use the singleton instance
@@ -39,7 +41,23 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       }
       this.initialized = true;
       console.log(' ConsciousMemoryService initialized');
+      
+      // Start periodic retry processing
+      setInterval(() => {
+        if (this.syncErrorQueue.getQueueSize() > 0) {
+          console.log(`[ConsciousMemory] Processing ${this.syncErrorQueue.getQueueSize()} items in retry queue`);
+          this.processRetryQueue();
+        }
+      }, 60000); // Process retry queue every minute
     }
+  }
+
+  private async processRetryQueue(): Promise<void> {
+    await this.syncErrorQueue.processQueue(async (item) => {
+      if (item.operation === 'save' && item.content && item.metadata) {
+        await this.syncMemoryToGraph(item.id, item.content, item.metadata);
+      }
+    });
   }
 
   private async syncMemoryToGraph(memoryId: string, content: string, metadata: ConsciousMemoryMetadata): Promise<void> {
@@ -170,7 +188,18 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
     console.log(` Conscious memory saved to ChromaDB: ${id} (importance: ${metadata.importance}, tags: ${metadata.tags?.join(', ')})`);
 
     // Sync to Knowledge Graph (fire and forget, with error handling inside)
-    this.syncMemoryToGraph(id, request.content, metadata).catch(e => console.error("Error in KG sync from saveMemory:", e));
+    this.syncMemoryToGraph(id, request.content, metadata).catch(e => {
+      console.error("Error in KG sync from saveMemory:", e);
+      this.syncErrorQueue.push({
+        id,
+        operation: 'save',
+        content: request.content,
+        metadata,
+        retryCount: 0,
+        lastError: e.message,
+        timestamp: Date.now()
+      });
+    });
     
     return id;
   }
@@ -437,7 +466,18 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       // Relationship changes (e.g. different tags) will require the syncMemoryToGraph or underlying KGService.addRelationship to be smart.
       // A simple approach is to remove all old tag relationships and add new ones if they changed.
       // However, if addNode/addRelationship use MERGE correctly, re-adding should be fine.
-      this.syncMemoryToGraph(request.id, newContent, updatedMetadata).catch(e => console.error("Error in KG sync from updateMemory:", e));
+      this.syncMemoryToGraph(request.id, newContent, updatedMetadata).catch(e => {
+        console.error("Error in KG sync from updateMemory:", e);
+        this.syncErrorQueue.push({
+          id: request.id,
+          operation: 'update',
+          content: newContent,
+          metadata: updatedMetadata,
+          retryCount: 0,
+          lastError: e.message,
+          timestamp: Date.now()
+        });
+      });
 
       return true;
     } catch (error) {
