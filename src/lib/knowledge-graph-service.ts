@@ -427,6 +427,37 @@ class KnowledgeGraphService {
       throw error;
     }
   }
+  /**
+   * Get database statistics for logging and monitoring
+   */
+  async getStatistics(): Promise<{
+    nodeCount: number;
+    relationshipCount: number;
+    labels: string[];
+    relationshipTypes: string[];
+  }> {
+    await this.connect();
+    
+    const nodeCountQuery = 'MATCH (n) RETURN count(n) as count';
+    const relCountQuery = 'MATCH ()-[r]->() RETURN count(r) as count';
+    const labelsQuery = 'CALL db.labels()';
+    const relTypesQuery = 'CALL db.relationshipTypes()';
+    
+    const [nodeResult, relResult, labelsResult, relTypesResult] = await Promise.all([
+      this.session!.run(nodeCountQuery),
+      this.session!.run(relCountQuery),
+      this.session!.run(labelsQuery),
+      this.session!.run(relTypesQuery)
+    ]);
+    
+    return {
+      nodeCount: nodeResult.records[0]?.get('count')?.toNumber() || 0,
+      relationshipCount: relResult.records[0]?.get('count')?.toNumber() || 0,
+      labels: labelsResult.records.map(record => record.get('label')),
+      relationshipTypes: relTypesResult.records.map(record => record.get('relationshipType'))
+    };
+  }
+
   // Helper method to sanitize properties for Neo4j compatibility
   // Neo4j only supports: null, boolean, number, string, and arrays of these types
   private sanitizeProperties(properties: Record<string, any>): Record<string, any> {

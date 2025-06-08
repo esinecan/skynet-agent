@@ -64,9 +64,7 @@ export class KnowledgeGraphSyncService {
     }
     return { entities: allEntities, relationships: allRelationships };
   }
-
   private async processChatMessage(message: ChatMessage): Promise<{ entities: ExtractedEntity[]; relationships: ExtractedRelationship[] }> {
-    console.log(`[Sync Service] Processing chat message ID: ${message.id}, Session ID: ${message.sessionId}`);
     const llmExtraction = await this.llmService.extractKnowledge(message.content, `Context: Chat message from session ${message.sessionId}`);    let toolExtraction: RuleBasedExtractionResult = { entities: [], relationships: [] };
     if (message.toolInvocations) {
       // Convert tool invocations to JSON string for rule-based extraction
@@ -80,7 +78,6 @@ export class KnowledgeGraphSyncService {
   }
 
   private async processConsciousMemory(memory: ConsciousMemorySearchResult): Promise<{ entities: ExtractedEntity[]; relationships: ExtractedRelationship[] }> {
-    console.log(`[Sync Service] Processing conscious memory ID: ${memory.id}`);
     const llmExtraction = await this.llmService.extractKnowledge(memory.text, `Context: Conscious Memory, Source: ${memory.metadata.source}`);    // The 'extractUsingRules' function can take a ConsciousMemory object.
     // We need to reconstruct a partial one or adapt extractUsingRules.
     // For now, assuming SearchResult has enough data or we can fetch the full memory object.
@@ -98,11 +95,21 @@ export class KnowledgeGraphSyncService {
     const ruleExtraction = extractUsingRules(undefined, undefined, ruleInputMemory);
 
     return this.mergeExtractions([llmExtraction, ruleExtraction]);
-  }
-  public async syncKnowledgeGraph(options: { forceFullResync?: boolean } = {}): Promise<void> {
-    console.log(`[Sync Service] Starting knowledge graph synchronization. Force resync: ${options.forceFullResync}`);
+  }  public async syncKnowledgeGraph(options: { forceFullResync?: boolean } = {}): Promise<void> {
+    const startTime = Date.now();
+    console.log(`\n🔄 [KG Sync] Starting knowledge graph synchronization at ${new Date().toISOString()}`);
+    console.log(`📋 [KG Sync] Mode: ${options.forceFullResync ? 'FULL RESYNC' : 'INCREMENTAL SYNC'}`);
+    
+    // Get initial stats
+    const initialStats = await this.kgService.getStatistics();
+    console.log(`📊 [KG Sync] Initial counts: ${initialStats.nodeCount} nodes, ${initialStats.relationshipCount} relationships`);
+    
     const syncState = await this.syncStateManager.read();
     const lastSync = options.forceFullResync ? null : (syncState?.lastSyncTimestamp || null);
+    if (lastSync) {
+      console.log(`⏱️  [KG Sync] Last sync: ${new Date(lastSync).toLocaleString()}`);
+    }
+    
     let newLastSyncTimestamp = new Date().toISOString();
 
     let allExtractedEntities: ExtractedEntity[] = [];
@@ -120,8 +127,7 @@ export class KnowledgeGraphSyncService {
         // Get only messages since last sync
         messages = await this.chatHistoryDB.getMessagesSince(lastSync);
       }
-      
-      console.log(`[Sync Service] Processing ${messages.length} chat messages...`);
+        console.log(`💬 [KG Sync] Processing ${messages.length} chat messages...`);
       for (const message of messages) {
         const chatExtracts = await this.processChatMessage(message);
         allExtractedEntities.push(...chatExtracts.entities);
@@ -129,10 +135,10 @@ export class KnowledgeGraphSyncService {
       }
 
       // 2. Fetch Conscious Memories
-      console.log('[Sync Service] Fetching conscious memories...');
       // Assuming searchMemories with empty query and large limit fetches all.
       // Needs pagination or streaming for very large datasets.      // Also needs filtering by timestamp for incremental syncs.
       const consciousMemories = await this.consciousMemoryService.searchMemories('', { limit: 10000 }); // High limit
+      console.log(`🧠 [KG Sync] Processing ${consciousMemories.length} conscious memories...`);
       for (const memory of consciousMemories) {
          // Basic check: if memory.metadata.updatedAt > lastSync
          // if (options.forceFullResync || !lastSync || (memory.metadata.updatedAt && new Date(memory.metadata.updatedAt) > new Date(lastSync))) {
@@ -145,17 +151,15 @@ export class KnowledgeGraphSyncService {
       }      // 3. Fetch RAG-specific memories
       const ragExtracts = await this.syncRAGMemories(lastSync);
       allExtractedEntities.push(...ragExtracts.entities);
-      allExtractedRelationships.push(...ragExtracts.relationships);
-
-
-      // 4. Data Aggregation and Deduplication
-      console.log(`[Sync Service] Aggregating and deduplicating ${allExtractedEntities.length} entities and ${allExtractedRelationships.length} relationships.`);
+      allExtractedRelationships.push(...ragExtracts.relationships);      // 4. Data Aggregation and Deduplication
       const finalExtraction = this.mergeExtractions([{ entities: allExtractedEntities, relationships: allExtractedRelationships }]);
       allExtractedEntities = finalExtraction.entities;
       allExtractedRelationships = finalExtraction.relationships;
-      console.log(`[Sync Service] After deduplication: ${allExtractedEntities.length} entities, ${allExtractedRelationships.length} relationships.`);      // 5. Loading into Neo4j
-      console.log('[Sync Service] Loading data into Neo4j...');
+      console.log(`🔀 [KG Sync] After deduplication: ${allExtractedEntities.length} entities, ${allExtractedRelationships.length} relationships`);
+
+      // 5. Loading into Neo4j
       await this.kgService.connect(); // Ensure connection
+      console.log(`📥 [KG Sync] Loading ${allExtractedEntities.length} entities and ${allExtractedRelationships.length} relationships into Neo4j...`);
 
       for (const entity of allExtractedEntities) {
         try {
@@ -172,14 +176,23 @@ export class KnowledgeGraphSyncService {
           await this.kgService.addRelationship(convertExtractedRelationshipToKgRelationship(rel));
         } catch (error) {
           console.error(`[Sync Service] Error adding relationship type ${rel.type} (Source: ${rel.sourceEntityId}, Target: ${rel.targetEntityId}):`, error);
-        }
-      }
-      console.log('[Sync Service] Data loading into Neo4j complete.');      // 6. Update Sync State
+        }      }
+      
+      // 6. Final Statistics and Completion
+      const finalStats = await this.kgService.getStatistics();
+      const duration = Date.now() - startTime;
+      
+      console.log(`\n✅ [KG Sync] Synchronization complete!`);
+      console.log(`📊 [KG Sync] Final counts: ${finalStats.nodeCount} nodes (+${finalStats.nodeCount - initialStats.nodeCount}), ${finalStats.relationshipCount} relationships (+${finalStats.relationshipCount - initialStats.relationshipCount})`);
+      console.log(`⏱️  [KG Sync] Duration: ${duration}ms`);
+      console.log(`🏷️  [KG Sync] Node types: ${finalStats.labels.join(', ')}`);
+      console.log(`🔗 [KG Sync] Relationship types: ${finalStats.relationshipTypes.join(', ')}\n`);
+
+      // 7. Update Sync State
       await this.syncStateManager.write({ 
         lastSyncTimestamp: newLastSyncTimestamp,
         lastProcessedIds: { chatMessages: [], consciousMemories: [], ragMemories: [] }
       });
-      console.log('[Sync Service] Knowledge graph synchronization complete.');
 
     } catch (error) {
       console.error('[Sync Service] Critical error during knowledge graph synchronization:', error);
@@ -187,13 +200,10 @@ export class KnowledgeGraphSyncService {
     } finally {      await this.kgService.close(); // Close driver if opened by this service instance
     }
   }
-
   private async syncRAGMemories(lastSync: string | null): Promise<{
     entities: ExtractedEntity[];
     relationships: ExtractedRelationship[];
   }> {
-    console.log('[Sync Service] Processing RAG memories...');
-    
     const allEntities: ExtractedEntity[] = [];
     const allRelationships: ExtractedRelationship[] = [];
     
@@ -202,9 +212,13 @@ export class KnowledgeGraphSyncService {
     await memoryStore.initialize();
       try {
       const searchResults = await memoryStore.retrieveMemories('', { limit: 10000 });
+      const filteredResults = lastSync 
+        ? searchResults.filter(result => result.metadata.timestamp > lastSync)
+        : searchResults;
+        
+      console.log(`💾 [KG Sync] Processing ${filteredResults.length} RAG memories...`);
       
-      for (const result of searchResults) {
-        if (lastSync && result.metadata.timestamp < lastSync) continue;
+      for (const result of filteredResults) {
         
         const extraction = await this.llmService.extractKnowledge(
           result.text,
@@ -242,6 +256,21 @@ export class KnowledgeGraphSyncService {
     }
     
     return { entities: allEntities, relationships: allRelationships };
+  }
+  /**
+   * Log current Neo4j statistics for monitoring
+   */
+  public async logStartupStatistics(): Promise<void> {
+    try {
+      const stats = await this.kgService.getStatistics();
+      console.log(`\n📊 [KG Service] Neo4j Statistics:`);
+      console.log(`   • Nodes: ${stats.nodeCount}`);
+      console.log(`   • Relationships: ${stats.relationshipCount}`);
+      console.log(`   • Node Types: ${stats.labels.length > 0 ? stats.labels.join(', ') : 'None'}`);
+      console.log(`   • Relationship Types: ${stats.relationshipTypes.length > 0 ? stats.relationshipTypes.join(', ') : 'None'}\n`);
+    } catch (error) {
+      console.error(`❌ [KG Service] Failed to retrieve Neo4j statistics: ${error}`);
+    }
   }
 }
 
