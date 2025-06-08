@@ -8,12 +8,12 @@ export interface KgNode {
 
 // You can add other related types here as they become necessary,
 // for example, for relationships:
-// export interface KgRelationship {
-//   id?: string; // Optional, Neo4j can auto-generate
-//   type: string; // e.g., 'WORKS_FOR', 'RELATED_TO'
-//   sourceNodeId: string;
-//   targetNodeId: string;
-//   properties?: Record<string, any>;
-//   createdAt?: Date;
-//   updatedAt?: Date;
-// }
+export interface KgRelationship {
+  id?: string; // Optional, Neo4j can auto-generate
+  type: string; // e.g., 'WORKS_FOR', 'RELATED_TO'
+  sourceNodeId: string;
+  targetNodeId: string;
+  properties?: Record<string, any>;
+  createdAt?: Date;
+  updatedAt?: Date;
+}

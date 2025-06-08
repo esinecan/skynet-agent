@@ -453,8 +453,25 @@ export class ChatHistoryDatabase {
         GROUP BY session_id
       ) mc ON s.id = mc.session_id
     `);
+      return stmt.get();
+  }
+  async getMessagesSince(timestamp: string): Promise<ChatMessage[]> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM chat_messages 
+      WHERE datetime(created_at) > datetime(?)
+      ORDER BY created_at ASC
+    `);
     
-    return stmt.get();
+    const rows = stmt.all(timestamp) as any[];
+    return rows.map(row => ({
+      id: row.id,
+      sessionId: row.session_id,
+      content: row.content,
+      role: row.role as 'user' | 'assistant' | 'system',
+      createdAt: new Date(row.created_at),
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      attachments: [] // Could be loaded separately if needed
+    }));
   }
 
   close(): void {
