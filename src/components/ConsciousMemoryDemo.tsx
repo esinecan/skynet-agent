@@ -17,6 +17,20 @@ interface ConsciousMemory {
   score?: number;
 }
 
+interface RelatedMemory {
+  id: string;
+  text: string;
+  tags: string[];
+  importance: number;
+  relationshipType: string;
+  score: number;
+}
+
+interface MemoryWithRelations extends ConsciousMemory {
+  relatedMemories?: RelatedMemory[];
+  showingRelations?: boolean;
+}
+
 interface MemoryStats {
   totalConsciousMemories: number;
   tagCount: number;
@@ -25,11 +39,12 @@ interface MemoryStats {
 }
 
 export default function ConsciousMemoryDemo() {
-  const [memories, setMemories] = useState<ConsciousMemory[]>([]);
+  const [memories, setMemories] = useState<MemoryWithRelations[]>([]);
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingRelations, setLoadingRelations] = useState<string | null>(null);
 
   // Form state
   const [newMemory, setNewMemory] = useState({
@@ -320,7 +335,69 @@ export default function ConsciousMemoryDemo() {
   };
 
   const clearSelection = () => {
-    setSelectedMemories([]);  };
+    setSelectedMemories([]);
+  };
+
+  const fetchRelatedMemories = async (memoryId: string) => {
+    setLoadingRelations(memoryId);
+    setError(null);
+    console.log('🔗 Fetching related memories for:', memoryId);
+    
+    try {
+      const response = await fetch('/api/conscious-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'related',
+          id: memoryId,
+          limit: 5
+        })
+      });
+      
+      const data = await response.json();
+      console.log('🔗 Related memories response:', data);
+      
+      if (data.success) {
+        // Update the specific memory with its related memories
+        setMemories(prev => prev.map(memory => 
+          memory.id === memoryId 
+            ? { 
+                ...memory, 
+                relatedMemories: data.relatedMemories || [],
+                showingRelations: true
+              }
+            : memory
+        ));
+        console.log('🔗 Found', data.relatedMemories?.length || 0, 'related memories');
+      } else {
+        console.error('🔗 Failed to fetch related memories:', data.error);
+        setError(data.error || 'Failed to fetch related memories');
+      }
+    } catch (err) {
+      console.error('🔗 Error fetching related memories:', err);
+      setError('Network error while fetching related memories');
+    } finally {
+      setLoadingRelations(null);
+    }
+  };
+
+  const toggleRelatedMemories = (memoryId: string) => {
+    const memory = memories.find(m => m.id === memoryId);
+    
+    if (!memory) return;
+    
+    if (memory.showingRelations) {
+      // Hide relations
+      setMemories(prev => prev.map(m => 
+        m.id === memoryId 
+          ? { ...m, showingRelations: false, relatedMemories: undefined }
+          : m
+      ));
+    } else {
+      // Fetch and show relations
+      fetchRelatedMemories(memoryId);
+    }
+  };
 
   const deleteAllSearchResults = async () => {
     if (memories.length === 0) {
@@ -372,11 +449,11 @@ export default function ConsciousMemoryDemo() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-4">
-            🧠 Conscious Memory System
+            🕸️ Graph Memory System
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            An intelligent memory system that allows the AI to save, search, and manage 
-            important information with tags, importance levels, and context.
+            A structured memory system that allows explicit storage and management of 
+            important information with tags, importance levels, and contextual relationships.
           </p>
         </div>
 
@@ -540,9 +617,23 @@ export default function ConsciousMemoryDemo() {
           {Array.isArray(memories) && memories.length > 0 && (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-gray-700">
-                  Found {memories.length} memories:
-                </h3>
+                <div className="flex items-center gap-4">
+                  <h3 className="text-lg font-semibold text-gray-700">
+                    Found {memories.length} memories:
+                  </h3>
+                  {/* Relationship Summary */}
+                  <div className="text-sm text-gray-600">
+                    {(() => {
+                      const memoriesWithRelations = memories.filter(m => m.relatedMemories && m.relatedMemories.length > 0);
+                      const totalRelations = memoriesWithRelations.reduce((sum, m) => sum + (m.relatedMemories?.length || 0), 0);
+                      return memoriesWithRelations.length > 0 ? (
+                        <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-xs">
+                          🔗 {memoriesWithRelations.length} connected • {totalRelations} total relations
+                        </span>
+                      ) : null;
+                    })()} 
+                  </div>
+                </div>
                 <button
                   onClick={deleteAllSearchResults}
                   disabled={loading}
@@ -566,9 +657,17 @@ export default function ConsciousMemoryDemo() {
                         </>
                       )}
                     </div>
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                      {memory.source}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                        {memory.source}
+                      </span>
+                      {/* Indicate if memory has been checked for relations */}
+                      {memory.relatedMemories && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex items-center gap-1">
+                          🔗 {memory.relatedMemories.length}
+                        </span>
+                      )}
+                    </div>
                   </div>
                     <p className="text-gray-800 mb-2">{memory.text}</p>
                   
@@ -590,7 +689,70 @@ export default function ConsciousMemoryDemo() {
                     </p>
                   )}
                   
-                  <div className="mt-3 pt-3 border-t border-gray-200 flex justify-end">
+                  {/* Related Memories Section */}
+                  {memory.showingRelations && memory.relatedMemories && (
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                        🔗 Related Memories ({memory.relatedMemories.length})
+                      </h4>
+                      {memory.relatedMemories.length > 0 ? (
+                        <div className="space-y-2">
+                          {memory.relatedMemories.map((related, relIndex) => (
+                            <div key={related.id} className="bg-white p-2 rounded border border-gray-200">
+                              <div className="flex justify-between items-start mb-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-500">Strength:</span>
+                                  <span className="text-xs font-semibold text-blue-600">
+                                    {(related.score * 100).toFixed(1)}%
+                                  </span>
+                                  <span className="text-xs text-gray-500">Type:</span>
+                                  <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">
+                                    {related.relationshipType}
+                                  </span>
+                                </div>
+                                <span className="text-xs text-gray-500">Imp: {related.importance}</span>
+                              </div>
+                              <p className="text-sm text-gray-700 max-h-10 overflow-hidden">{related.text.length > 100 ? related.text.substring(0, 100) + '...' : related.text}</p>
+                              {related.tags && related.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {related.tags.map(tag => (
+                                    <span key={tag} className="bg-gray-100 text-gray-600 px-1 py-0.5 rounded text-xs">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 italic">No related memories found.</p>
+                      )}
+                    </div>
+                  )}
+                  
+                  <div className="mt-3 pt-3 border-t border-gray-200 flex justify-between items-center">
+                    <button
+                      onClick={() => toggleRelatedMemories(memory.id)}
+                      disabled={loadingRelations === memory.id}
+                      className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                        memory.showingRelations 
+                          ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      } disabled:opacity-50`}
+                    >
+                      {loadingRelations === memory.id ? (
+                        <span className="flex items-center gap-2">
+                          <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin"></div>
+                          Loading...
+                        </span>
+                      ) : memory.showingRelations ? (
+                        '🔗 Hide Relations'
+                      ) : (
+                        '🔗 Show Relations'
+                      )}
+                    </button>
+                    
                     <button
                       onClick={() => deleteMemory(memory.id)}
                       disabled={loading}

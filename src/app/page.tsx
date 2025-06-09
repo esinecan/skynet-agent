@@ -164,10 +164,19 @@ function ChatComponent({
             <a 
               href="/conscious-memory"
               className="bg-purple-600 text-white px-4 py-2.5 rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-2 font-medium"
-              title="Memory Dashboard"
+              title="Graph Memory Dashboard"
+            >
+              🕸️ 
+              <span className="hidden sm:inline">Graph</span>
+            </a>
+            
+            <a 
+              href="/semantic-memory"
+              className="bg-indigo-600 text-white px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors text-sm flex items-center gap-2 font-medium"
+              title="Semantic Memory Dashboard"
             >
               🧠 
-              <span className="hidden sm:inline">Memory</span>
+              <span className="hidden sm:inline">Semantic</span>
             </a>
             
             <a 
