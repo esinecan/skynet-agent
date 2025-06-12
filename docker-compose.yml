@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./data/chroma:/chroma/chroma
+      - ./data/memories:/chroma/chroma
     environment:
       - ANONYMIZED_TELEMETRY=FALSE
       - IS_PERSISTENT=TRUE

@@ -14,8 +14,8 @@ import {
 } from '../types/memory';
 import { getMemoryStore } from './memory-store';
 import { getEmbeddingService } from './embeddings';
-import knowledgeGraphServiceInstance, { KgRelationship } from './knowledge-graph-service'; // Import KG Service instance and KgRelationship
-import { KgNode } from '../types/knowledge-graph'; // Import KgNode from its new location
+import knowledgeGraphServiceInstance from './knowledge-graph-service';
+import { KgNode, KgRelationship } from '../types/knowledge-graph';
 import { generateEntityId } from './rule-based-extractor'; // Assuming this is exported and useful
 import { withRetry, SyncErrorQueue, SyncQueueItem } from './kg-resilience';
 
@@ -539,19 +539,41 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       await this.initialize();
     }
     try {
-      console.warn(' WARNING: Clearing all conscious memories from ChromaDB.');
+      console.warn(' WARNING: Clearing all conscious memories from ChromaDB and Knowledge Graph.');
+      
+      // First clear from ChromaDB
       const success = await this.memoryStore.clearAllMemories();
-      if (success) {
-        console.log(' Successfully cleared all memories from ChromaDB.');
-        // TODO: Decide if "clearAllMemories" should also wipe related data from KG.
-        // This would be a destructive operation on the graph.
-        // For now, KG data is orphaned but not deleted by this operation.
-        // Example: await this.kgService.deleteAllNodesWithLabel('ConsciousMemory'); (Needs implementation in KGService)
-        console.warn(' Knowledge Graph data related to cleared memories may still exist.');
-      } else {
+      if (!success) {
         console.error(' Failed to clear all memories from ChromaDB.');
+        return false;
       }
-      return success;
+      
+      console.log(' Successfully cleared all memories from ChromaDB.');
+      
+      // Now clean up Knowledge Graph nodes
+      try {
+        const kgService = knowledgeGraphServiceInstance;
+        await kgService.connect();
+        
+        // Delete ConsciousMemory nodes
+        const memoryDeleteResult = await kgService.deleteNodesByType('ConsciousMemory');
+        console.log(` Deleted ${memoryDeleteResult.deletedCount} ConsciousMemory nodes from Knowledge Graph.`);
+        
+        // Also delete orphaned Memory nodes that might have been created
+        const memoryNodesResult = await kgService.deleteNodesByType('Memory');
+        console.log(` Deleted ${memoryNodesResult.deletedCount} Memory nodes from Knowledge Graph.`);
+        
+        // Clean up any orphaned nodes
+        const orphanCleanup = await kgService.cleanupOrphanedNodes(['User', 'Session']);
+        console.log(` Cleaned up ${orphanCleanup.deletedCount} orphaned nodes.`);
+        
+        console.log(' Successfully cleaned up Knowledge Graph data.');
+        return true;
+      } catch (kgError) {
+        console.error(' Error cleaning up Knowledge Graph data:', kgError);
+        console.warn(' ChromaDB was cleared but Knowledge Graph cleanup failed.');
+        return true; // Return true since ChromaDB was cleared successfully
+      }
     } catch (error) {
       console.error(' Error clearing all memories:', error);
       return false;

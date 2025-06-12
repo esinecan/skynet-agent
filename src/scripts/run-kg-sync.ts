@@ -1,69 +1,154 @@
 /**
- * Script to manually trigger Knowledge Graph synchronization.
- * This script can be scheduled using OS-level cron jobs or other scheduling mechanisms.
- * For a Node.js application that runs continuously, a library like 'node-cron' could be used
- * to schedule this task internally.
- *
- * Example OS cron job (runs daily at 2 AM):
- * 0 2 * * * /usr/bin/node /path/to/your/project/node_modules/.bin/tsx /path/to/your/project/src/scripts/run-kg-sync.ts >> /var/log/kg-sync.log 2>&1
- *
- * To run manually for development/testing:
- * npm run kg:sync
- * or
- * npx tsx ./src/scripts/run-kg-sync.ts
- *
- * To force a full resync:
- * npx tsx ./src/scripts/run-kg-sync.ts --full-resync
+ * Knowledge Graph Synchronization Service
+ * This script can run as a one-off sync or as a continuous background process
+ * 
+ * Run modes:
+ * - One-time sync: npx tsx src/scripts/run-kg-sync.ts
+ * - Background service: npx tsx src/scripts/run-kg-sync.ts --watch
+ * - Full resync: npx tsx src/scripts/run-kg-sync.ts --full-resync
+ * - Process all queue items: npx tsx src/scripts/run-kg-sync.ts --process-all
  */
 
-import knowledgeGraphSyncServiceInstance from '../lib/knowledge-graph-sync-service';
-import knowledgeGraphServiceInstanceNeo4j from '../lib/knowledge-graph-service'; // Neo4j direct service
+// Load environment variables from .env files BEFORE importing any services
+import { config } from 'dotenv';
+import { join } from 'path';
+
+const envPath = join(process.cwd(), '.env');
+const envLocalPath = join(process.cwd(), '.env.local');
+
+config({ path: envPath });
+config({ path: envLocalPath });
+
+console.log('🔧 [KG Sync] Environment variables loaded');
+console.log('   GOOGLE_API_KEY:', !!process.env.GOOGLE_API_KEY);
+console.log('   DEEPSEEK_API_KEY:', !!process.env.DEEPSEEK_API_KEY);
+
+// Now import services after environment variables are loaded
+async function importServices() {
+  const { default: knowledgeGraphSyncServiceInstance } = await import('../lib/knowledge-graph-sync-service');
+  const { default: knowledgeGraphServiceInstanceNeo4j } = await import('../lib/knowledge-graph-service');
+  const { kgSyncQueue } = await import('../lib/kg-sync-queue');
+  
+  return {
+    knowledgeGraphSyncServiceInstance,
+    knowledgeGraphServiceInstanceNeo4j,
+    kgSyncQueue
+  };
+}
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const watchMode = args.includes('--watch');
+const forceFullResync = args.includes('--full-resync');
+const processAll = args.includes('--process-all');
+const syncIntervalMs = 30000; // 30 seconds between sync operations in watch mode
 
 async function runSync() {
-  console.log('Starting Knowledge Graph synchronization script...');
+  console.log(`🔄 [KG Sync] Starting knowledge graph synchronization at ${new Date().toISOString()}`);
+  console.log(`📋 [KG Sync] Mode: ${forceFullResync ? 'FULL RESYNC' : 'INCREMENTAL SYNC'}`);
 
-  // Determine if a full resync is requested from command line arguments
-  const forceFullResync = process.argv.includes('--full-resync');
-  if (forceFullResync) {
-    console.log('Full resync requested.');
-  }
-
-  const syncService = knowledgeGraphSyncServiceInstance;
-  const neo4jService = knowledgeGraphServiceInstanceNeo4j;
+  // Import services after environment variables are loaded
+  const {
+    knowledgeGraphSyncServiceInstance: syncService,
+    knowledgeGraphServiceInstanceNeo4j: neo4jService,
+    kgSyncQueue
+  } = await importServices();
 
   try {
-    // Ensure Neo4j driver is connected before starting the sync
-    // KnowledgeGraphSyncService constructor already calls connect, but explicit call here is fine for a script
+    // Ensure Neo4j driver is connected
     await neo4jService.connect();
-    console.log('Neo4j service connected.');
-
-    console.log(`Initiating knowledge graph synchronization (forceFullResync: ${forceFullResync})...`);
-    await syncService.syncKnowledgeGraph({ forceFullResync });
-    console.log('Knowledge Graph synchronization completed successfully.');
+    
+    // Initialize queue if not already
+    await kgSyncQueue.initialize();
+    const queueSize = await kgSyncQueue.getQueueSize();
+    
+    if (queueSize > 0) {
+      console.log(`📊 [KG Sync] Found ${queueSize} items in sync queue`);
+      
+      // Process queue items if there are any
+      if (processAll) {
+        const processedCount = await kgSyncQueue.processAll(async (request: any) => {
+          // Run appropriate sync based on request type
+          if (request.type === 'full') {
+            await syncService.syncKnowledgeGraph({ forceFullResync: true });
+          } else {
+            await syncService.syncKnowledgeGraph({ forceFullResync: false });
+          }
+        });
+        
+        console.log(`✅ [KG Sync] Processed ${processedCount} queue items`);
+      } else {
+        // Process just one item (oldest first)
+        const processed = await kgSyncQueue.processNext(async (request: any) => {
+          if (request.type === 'full') {
+            await syncService.syncKnowledgeGraph({ forceFullResync: true });
+          } else {
+            await syncService.syncKnowledgeGraph({ forceFullResync: false });
+          }
+        });
+        
+        console.log(`✅ [KG Sync] Processed ${processed ? 1 : 0} queue items`);
+      }
+    } else if (forceFullResync) {
+      // If no queue items but full resync requested, run it directly
+      await syncService.syncKnowledgeGraph({ forceFullResync: true });
+    } else {
+      // Regular incremental sync when no queue items exist
+      await syncService.syncKnowledgeGraph({ forceFullResync: false });
+    }
   } catch (error) {
-    console.error('Error during Knowledge Graph synchronization:', error);
+    console.error('❌ [KG Sync] Error during synchronization:', error);
     process.exitCode = 1; // Indicate failure
   } finally {
-    // Ensure Neo4j driver connection is closed
-    try {
-      await neo4jService.close();
-      console.log('Neo4j service connection closed.');
-    } catch (closeError) {
-      console.error('Error closing Neo4j service connection:', closeError);
-      if (!process.exitCode) { // If no prior error, set exit code for close error
-        process.exitCode = 1;
+    // Ensure Neo4j connection is closed (unless in watch mode)
+    if (!watchMode) {
+      try {
+        await neo4jService.close();
+      } catch (closeError) {
+        console.error('❌ [KG Sync] Error closing Neo4j connection:', closeError);
       }
     }
   }
 }
 
-runSync()
-  .then(() => {
-    console.log('Synchronization script finished.');
-    // process.exitCode will be 0 if successful, 1 if error occurred
-  })
-  .catch(error => {
-    // This catch is for unhandled promise rejections in runSync itself, though try/finally should handle most.
-    console.error('Unhandled error in runSync:', error);
-    process.exitCode = 1;
-  });
+// Main execution flow
+async function main() {
+  if (watchMode) {
+    console.log(`🔄 [KG Sync] Starting in continuous watch mode (interval: ${syncIntervalMs}ms)`);
+    
+    // Run initial sync
+    await runSync().catch(error => {
+      console.error('❌ [KG Sync] Error in initial sync:', error);
+    });
+    
+    // Set up interval for continuous operation
+    setInterval(async () => {
+      try {
+        await runSync();
+      } catch (error) {
+        console.error('❌ [KG Sync] Error in scheduled sync:', error);
+      }
+    }, syncIntervalMs);
+    
+    // Handle graceful shutdown
+    process.on('SIGINT', async () => {
+      console.log('🛑 [KG Sync] Shutting down gracefully...');
+      try {
+        const { knowledgeGraphServiceInstanceNeo4j } = await importServices();
+        await knowledgeGraphServiceInstanceNeo4j.close();
+      } catch (error) {
+        console.error('❌ [KG Sync] Error during shutdown:', error);
+      }
+      process.exit(0);
+    });
+  } else {
+    // One-time execution
+    await runSync();
+    console.log('✅ [KG Sync] One-time synchronization complete');
+  }
+}
+
+main().catch(error => {
+  console.error('❌ [KG Sync] Fatal error:', error);
+  process.exitCode = 1;
+});

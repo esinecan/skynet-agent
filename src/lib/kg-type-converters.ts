@@ -1,6 +1,6 @@
 import { ExtractedEntity, ExtractedRelationship } from './llm-service';
 import { KgNode } from '../types/knowledge-graph';
-import { KgRelationship } from './knowledge-graph-service'; // Use service's type
+import { KgRelationship } from '../types/knowledge-graph';
 
 export function convertExtractedEntityToKgNode(entity: ExtractedEntity): KgNode {
   return {

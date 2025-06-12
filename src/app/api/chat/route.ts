@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { LLMService } from '../../../lib/llm-service';
 import { ChatHistoryDatabase } from '../../../lib/chat-history';
 import knowledgeGraphSyncService from '../../../lib/knowledge-graph-sync-service';
+import { kgSyncQueue } from '../../../lib/kg-sync-queue';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -259,16 +260,71 @@ export async function POST(request: NextRequest) {
         console.log(' Chat API: onFinish callback started');
         console.log(' finishResult.text length:', finishResult.text?.length || 0);
         
-        // Store conversation in memory after successful completion
-        if (enableRAG && userMessage && finishResult.text) {
+        // Extract tool calls from finishResult - AI SDK provides them in a cleaner format
+        const completeToolCalls: any[] = [];
+        let memoryToolCallFound = false;
+        
+        // The AI SDK provides tool calls in finishResult.steps
+        finishResult.steps?.forEach((step: any, index: number) => {
+          console.log(` Step ${index}:`, {
+            type: step.type,
+            toolCallsCount: step.toolCalls?.length || 0,
+            toolResultsCount: step.toolResults?.length || 0
+          });
+          
+          // AI SDK provides tool calls and results in the step
+          if (step.toolCalls && step.toolResults) {
+            step.toolCalls.forEach((call: any, callIndex: number) => {
+              // Find matching result
+              const result = step.toolResults[callIndex];
+              
+              // Check if this is a memory-related tool
+              if (call.toolName && (
+                  call.toolName.includes('memory') || 
+                  call.toolName.includes('search') || 
+                  call.toolName === 'get_related_memories'
+              )) {
+                memoryToolCallFound = true;
+                console.log(` Memory tool call found: ${call.toolName}`);
+              }
+              
+              if (result) {
+                // Store in AI SDK's expected format
+                const toolInvocation = {
+                  toolCallId: call.toolCallId,
+                  toolName: call.toolName,
+                  args: call.args,
+                  result: result.result
+                };
+                completeToolCalls.push(toolInvocation);
+                console.log(` ✅ Step 1: Tool execution complete: ${call.toolCallId} (${call.toolName})`);
+              } else {
+                console.warn(` No result found for tool call: ${call.toolCallId} (${call.toolName}) - this may cause AI SDK streaming issues`);
+              }
+            });
+          }
+        });
+        
+        // Store memory regardless of text content if it's a memory tool call
+        if (enableRAG && userMessage && (finishResult.text || memoryToolCallFound)) {
           try {
-            console.log(' Chat API: Storing conversation in memory...');
-            await service.storeConversationInMemory(userMessage, finishResult.text, sessionId);
-            console.log(' Chat API: Conversation stored in memory');        } catch (memoryError) {
-          console.error(' Chat API: Memory storage FAILED:', memoryError);
-          console.error(' Memory Error stack:', (memoryError as Error).stack);
-          // Don't throw - log the error but don't break the stream
-        }
+            // Don't try to store empty content if using a memory tool
+            if (finishResult.text || !memoryToolCallFound) {
+              console.log(' Chat API: Storing conversation in memory...');
+              await service.storeConversationInMemory(
+                userMessage, 
+                finishResult.text || "Memory tool response (no text content)", 
+                sessionId
+              );
+              console.log(' ✅ Step 2: Memory storage complete');
+            } else {
+              console.log(' Chat API: Skipping memory storage for memory tool call');
+            }
+          } catch (memoryError) {
+            console.error(' Chat API: Memory storage FAILED:', memoryError);
+            console.error(' Memory Error stack:', (memoryError as Error).stack);
+            // Don't throw - log the error but don't break the stream
+          }
         }
         
         // Store in chat history database
@@ -305,55 +361,31 @@ export async function POST(request: NextRequest) {
               data: att.data,
               createdAt: new Date(),
             })) : undefined,
-          });          // Extract complete tool calls from steps - check all step types
-          const completeToolCalls: any[] = [];
-          
-          finishResult.steps?.forEach((step: any, index: number) => {
-            console.log(` Step ${index}:`, {
-              stepType: step.stepType,
-              toolCallsCount: step.toolCalls?.length || 0,
-              toolResultsCount: step.toolResults?.length || 0,
-              hasResult: !!step.result
-            });
+          });          // When storing assistant response, handle memory tool calls with no text
+          const assistantContent = finishResult.text || (memoryToolCallFound ? 
+            "[Memory tool call execution]" : "");
             
-            // Look for tool calls in various step structures
-            if (step.toolCalls?.length > 0) {
-              step.toolCalls.forEach((call: any) => {
-                const matchingResult = step.toolResults?.find((r: any) => r.toolCallId === call.toolCallId);                if (call.result || matchingResult) {
-                  // CRITICAL FIX: Merge tool call with its result + ensure AI SDK compatibility
-                  const completeCall = {
-                    type: 'tool-call',
-                    toolCallId: call.toolCallId || call.id,
-                    toolName: call.toolName,
-                    args: call.args,
-                    result: call.result || matchingResult,
-                    state: 'result' // Mark as completed for AI SDK
-                  };
-                  completeToolCalls.push(completeCall);
-                  console.log(' Found complete tool call:', call.toolCallId);
-                }
-              });
-            }
-            
-            // Also check if the step itself is a tool call
-            if (step.type === 'tool-call' && step.result) {
-              completeToolCalls.push(step);
-              console.log(' Found step-level tool call:', step.toolCallId);
-            }
-          });
-          
           // Store assistant response
           await chatHistory.addMessage({
             id: `msg_${Date.now()}_assistant`,
             sessionId: sessionId,
             role: 'assistant',
-            content: finishResult.text,
+            content: assistantContent,
             toolInvocations: completeToolCalls,
-          });
-            console.log(' Chat API: Conversation stored in chat history');          // Trigger knowledge graph sync (async, don't wait)
-          knowledgeGraphSyncService.syncKnowledgeGraph().catch(kgError => {
-            console.error(' Chat API: Knowledge graph sync failed:', kgError);
-            // Don't throw - this shouldn't block the chat response
+          });            console.log(' ✅ Step 3: Chat history saved successfully');
+            // Trigger knowledge graph sync via queue (async, don't wait)
+          // Run this completely asynchronously to avoid affecting the stream
+          Promise.resolve().then(async () => {
+            try {
+              await kgSyncQueue.addSyncRequest('chat');
+              console.log(' ✅ Step 4: Knowledge graph sync queued successfully');
+            } catch (queueError) {
+              console.error(' Chat API: Failed to queue knowledge graph sync:', queueError);
+              // Error is contained here and won't affect the stream
+            }
+          }).catch((promiseError) => {
+            console.error(' Chat API: Unexpected error in async KG sync queue:', promiseError);
+            // This catch ensures the Promise never becomes an unhandled rejection
           });
         } catch (historyError) {
           console.error(' Chat API: History storage FAILED:', historyError);
@@ -365,31 +397,35 @@ export async function POST(request: NextRequest) {
 
     const dataStreamResponse = result.toDataStreamResponse();
     console.log(' Chat API: stream response: ', dataStreamResponse.json);
-    return dataStreamResponse;
-  } catch (streamError) {
+    
+    console.log(' ✅ Step 5: AI SDK stream finalized successfully');
+    return dataStreamResponse;  } catch (streamError) {
     console.error(' Chat API: streamText failed:', streamError);
 
     // Return a proper JSON error response that AI SDK can handle
+    // Include more details about the error
     return new Response(
       JSON.stringify({
         error: 'STREAM_ERROR',
         message: streamError instanceof Error ? streamError.message : 'Stream processing failed',
-        details: 'There was an error processing your request. Please try again.'
+        details: streamError instanceof Error ? streamError.stack || streamError.message : 'Unknown stream error details',
+        toolErrorDetails: (streamError as any).toolErrorDetails || null // Propagate specific tool error details if available
       }),
-        { 
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-      } catch (error) {
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }  } catch (error) {
     console.error(' Chat API Error:', error);
     
+    // Return a proper JSON error response
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: 'CHAT_API_ERROR',
         message: error instanceof Error ? error.message : 'Failed to process request',
-        details: 'Sorry, I encountered an error while processing your request.'
+        details: error instanceof Error ? error.stack || error.message : 'Sorry, I encountered an unknown error while processing your request.',
+        toolErrorDetails: (error as any).toolErrorDetails || null // Propagate specific tool error details if available
       }),
       { 
         status: 500,

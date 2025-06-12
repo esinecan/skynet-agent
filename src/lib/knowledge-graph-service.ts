@@ -1,19 +1,5 @@
 import neo4j, { Driver, Session } from 'neo4j-driver';
-import { KgNode } from '../types/knowledge-graph';
-
-// TODO: Consider moving KgRelationship to ../types/knowledge-graph.ts as well
-export interface KgRelationship {
-  id: string;
-  sourceNodeId: string;
-  targetNodeId: string;
-  type: string; // Relationship type (e.g., "WORKS_FOR", "LIVES_IN", "HAS_MET")
-  properties: Record<string, any>; // Arbitrary properties (e.g., { "role": "Software Engineer" })
-  // Optional metadata
-  createdAt?: Date;
-  updatedAt?: Date;
-  // Optional source information
-  source?: string;
-}
+import { KgNode, KgRelationship } from '../types/knowledge-graph';
 
 class KnowledgeGraphService {
   private driver: Driver | null = null;
@@ -36,40 +22,76 @@ class KnowledgeGraphService {
     } catch (error) {
       this.initializationError = `Failed to initialize Neo4j driver: ${error}`;
     }
-  }
-  async connect(): Promise<void> {
+  }  async connect(): Promise<void> {
     if (this.initializationError) {
-      throw new Error(this.initializationError);
+      console.warn('[KG Service] Initialization previously failed:', this.initializationError);
+      // Don't throw here, allow operation with reduced functionality
+      return;
     }
 
     if (!this.driver) {
-      throw new Error('Neo4j driver not initialized');
+      try {
+        const uri = process.env.NEO4J_URI || 'bolt://localhost:7687';
+        const user = process.env.NEO4J_USER || 'neo4j';
+        const password = process.env.NEO4J_PASSWORD || 'password';
+        
+        this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password), {
+          maxConnectionLifetime: 3 * 60 * 60 * 1000, // 3 hours
+          maxConnectionPoolSize: 50,
+          connectionAcquisitionTimeout: 10 * 1000, // 10 seconds
+        });
+        
+        console.log('[KG Service] Neo4j driver created');
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[KG Service] Failed to create Neo4j driver:', errorMessage);
+        this.initializationError = errorMessage;
+        // Don't throw, allow operation with reduced functionality
+        return;
+      }
     }
 
     if (this.session) {
-      return;
+      try {
+        await this.session.close();
+      } catch (error) {
+        console.warn('[KG Service] Error closing existing session:', error);
+      }
+      this.session = null;
     }
+
     try {
       await this.driver.verifyConnectivity();
       this.session = this.driver.session();
       console.log('Successfully connected to Neo4j');
     } catch (error) {
-      console.error('Failed to connect to Neo4j:', error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[KG Service] Failed to connect to Neo4j:', errorMessage);
+      this.initializationError = errorMessage;
+      // Don't throw, allow operation with reduced functionality
+      return;
+    }
+  }  async close(): Promise<void> {
+    try {
+      if (this.session) {
+        await this.session.close();
+        this.session = null;
+        console.log('Neo4j session closed');
+      }
+    } catch (error) {
+      console.error('[KG Service] Error closing Neo4j session:', error);
+    }
+    
+    try {      if (this.driver) {
+        await this.driver.close();
+        this.driver = null;
+        console.log('Neo4j driver closed');
+      }
+    } catch (error) {
+      console.error('[KG Service] Error closing Neo4j driver:', error);
     }
   }
-  async close(): Promise<void> {
-    if (this.session) {
-      await this.session.close();
-      this.session = null;
-      console.log('Neo4j session closed');
-    }
-    if (this.driver) {
-      await this.driver.close();
-      this.driver = null;
-      console.log('Neo4j driver closed');
-    }
-  }
+
   // Placeholder for adding a node
   async addNode(node: KgNode): Promise<KgNode> {
     if (!this.session) await this.connect();
@@ -426,8 +448,7 @@ class KnowledgeGraphService {
       console.error(`Error running query "${query}":`, error);
       throw error;
     }
-  }
-  /**
+  }  /**
    * Get database statistics for logging and monitoring
    */
   async getStatistics(): Promise<{
@@ -443,12 +464,11 @@ class KnowledgeGraphService {
     const labelsQuery = 'CALL db.labels()';
     const relTypesQuery = 'CALL db.relationshipTypes()';
     
-    const [nodeResult, relResult, labelsResult, relTypesResult] = await Promise.all([
-      this.session!.run(nodeCountQuery),
-      this.session!.run(relCountQuery),
-      this.session!.run(labelsQuery),
-      this.session!.run(relTypesQuery)
-    ]);
+    // Run queries sequentially to avoid transaction conflicts
+    const nodeResult = await this.session!.run(nodeCountQuery);
+    const relResult = await this.session!.run(relCountQuery);
+    const labelsResult = await this.session!.run(labelsQuery);
+    const relTypesResult = await this.session!.run(relTypesQuery);
     
     return {
       nodeCount: nodeResult.records[0]?.get('count')?.toNumber() || 0,

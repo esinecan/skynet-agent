@@ -23,6 +23,7 @@ export interface MemoryRetrievalResult {
   text: string;
   score: number;
   metadata: MemoryMetadata;
+  embedding?: number[];
 }
 
 export interface MemorySearchOptions {

@@ -10,7 +10,7 @@
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6B6B?style=for-the-badge&logo=database&logoColor=white)](https://www.trychroma.com/)
 [![MCP](https://img.shields.io/badge/MCP-4A90E2?style=for-the-badge&logo=protocol&logoColor=white)](https://modelcontextprotocol.io/)
 
-**Skynet-Agent Client** is a revolutionary AI conversation platform that implements a **dual-layer memory architecture** inspired by human cognition. It combines automatic background memory (like human non-volitional memory) with conscious, deliberate memory operations that AI can control. It also has the tool access powers similar to those of Claude Desktop. [With Long Task Automation Coming Soon](motive-force.md)
+**Skynet-Agent Client** is a revolutionary AI conversation platform that implements a **dual-layer memory architecture** inspired by human cognition. It combines automatic background memory (like human non-volitional memory) with conscious, deliberate memory operations that AI can control. It also has the tool access powers similar to those of Claude Desktop.
 
 ##  Minimal But Powerful
 
@@ -30,6 +30,25 @@
 - **Smart Merging**: Combines results with intelligent ranking
 
 ---
+
+##  Supported LLM Providers
+
+| Provider | Type | Best For | Default Model |
+|----------|------|----------|---------------|
+| **Google** | Cloud | Multimodal & speed | `gemini-2.5-flash-preview-05-20` |
+| **DeepSeek** | Cloud | Cost-effective performance | `deepseek-chat` |
+| **OpenAI-Compatible** | Cloud/Self-Hosted | Broad ecosystem support | `gpt-4o-mini` |
+| **Anthropic** | Cloud | Advanced reasoning & safety | `claude-3-5-haiku-20241022` |
+| **Groq** | Cloud | Ultra-fast inference | `llama-3.3-70b-versatile` |
+| **Mistral** | Cloud | Natural language & code | `mistral-large-latest` |
+| **Ollama** | Local | Privacy-focused | `llama3.2:latest` |
+
+Quick setup:
+```env
+LLM_PROVIDER=google
+LLM_MODEL=gemini-2.5-flash-preview-05-20
+GOOGLE_API_KEY=your_key_here
+```
 
 ##  Architecture Overview
 
@@ -72,11 +91,11 @@
 
 ##  Multi-Provider LLM Support
 
-**Skynet-Agent** supports **7 different LLM providers**, giving you unmatched flexibility to choose the perfect model for any task:
+**Skynet-Agent** supports **7 different LLM providers** with proper default models and API integrations.
 
-| Provider                  | Type              | Best For                              | Models Available                                      |
-|---------------------------|-------------------|---------------------------------------|-------------------------------------------------------|
-| ** Anthropic**          | Cloud             | Advanced reasoning, analysis & safety | `claude-4-sonnet`, `claude-4-opus`                     |
+
+
+
 | ** Groq**              | Cloud             | Ultra‑fast inference                  | `grok-3-mini`, `grok-3-beta`                           |
 | ** Mistral**            | Cloud             | Natural language & code generation    | `mistral-7b-instruct`, `mistral-coder-7b`               |
 | ** OpenAI-Compatible**  | Cloud / Self‑Hosted | Broad ecosystem integration           | `gpt-4o-chat`, `gpt-4o-code`, and more                  |
@@ -89,14 +108,14 @@
 ###  Quick Provider Setup
 ```env
 # Choose your provider
-LLM_PROVIDER=anthropic
-LLM_MODEL=claude-3-5-sonnet-20241022
+LLM_PROVIDER=google
+LLM_MODEL=gemini-2.5-flash-preview-05-20
 
 # Add your API key
-ANTHROPIC_API_KEY=sk-ant-your-key
+GOOGLE_API_KEY=your_google_api_key
 ```
 
-** [Complete Provider Setup Guide](PROVIDERS.md)** - Installation, configuration, and usage examples for all providers.
+** Complete Provider Setup Guide** - Installation, configuration, and usage examples for all providers detailed above.
 
 ---
 
@@ -105,46 +124,42 @@ ANTHROPIC_API_KEY=sk-ant-your-key
 ### Prerequisites
 
 - **Node.js** 18+ 
-- **Docker** (for ChromaDB)
-- **Google AI API Key** (for embeddings)
+- **Docker** & **Docker Compose**
+- **API Key** (Google/Anthropic/OpenAI - see supported providers above)
 
 ### Installation
 
 ```bash
-# Clone the repository
+# Clone and install
 git clone https://github.com/esinecan/skynet-agent.git
 cd skynet-agent
-
-# Install dependencies
 npm install
 
-# Set up environment variables
+# Configure environment
 cp .env.example .env.local
 # Edit .env.local with your API keys
 
-# Start ChromaDB
-docker-compose up -d
-
-# Start the development server
-npm run dev
+# Start services and app
+docker-compose up -d     # Start ChromaDB + Neo4j
+npm run dev             # Start the app
 ```
+
+**That's it.** Visit `http://localhost:3000` and start chatting.
 
 ### Environment Configuration
 
 ```env
-# .env.local
-GOOGLE_AI_API_KEY=your_google_ai_api_key
-ANTHROPIC_API_KEY=your_anthropic_api_key
-CHROMA_URL=http://localhost:8000
+# .env.local - Pick your provider
+GOOGLE_API_KEY=your_google_api_key
+# OR
+ANTHROPIC_API_KEY=your_anthropic_api_key  
+# OR  
+OPENAI_API_KEY=your_openai_api_key
+
+# Optional overrides
+LLM_PROVIDER=google
+LLM_MODEL=gemini-2.5-flash-preview-05-20
 ```
-
-### First Run
-
-1. **Visit** `http://localhost:3000`
-2. **Start chatting** - memories are automatically saved
-3. **Try conscious memory**: "Remember that I prefer TypeScript for large projects"
-4. **Test recall**: "What did I tell you about my preferences?"
-5. **Explore memory UI**: Visit `/conscious-memory` for the memory dashboard
 
 ---
 
@@ -194,13 +209,12 @@ AI: [Searches both conscious and RAG memories]
 
 #### Automatic Memory (RAG)
 ```typescript
-interface AutomaticMemory {
+interface Memory {
   id: string;
   text: string;
   embedding: number[];
-  sessionId: string;
+  metadata: MemoryMetadata;
   timestamp: string;
-  messageType: 'user' | 'assistant';
 }
 ```
 
@@ -208,18 +222,14 @@ interface AutomaticMemory {
 ```typescript
 interface ConsciousMemory {
   id: string;
-  text: string;
-  embedding: number[];
+  content: string;
   tags: string[];
   importance: number; // 1-10 scale
-  source: 'explicit' | 'suggested' | 'auto';
+  source: 'explicit' | 'suggested' | 'derived';
   context?: string;
-  relatedMemoryIds: string[];
-  metadata: {
-    sessionId: string;
-    timestamp: string;
-    memoryType: 'conscious';
-  };
+  metadata: ConsciousMemoryMetadata;
+  createdAt: string;
+  updatedAt?: string;
 }
 ```
 
@@ -266,7 +276,8 @@ const tools = [
   'update_memory',
   'delete_memory',
   'get_related_memories',
-  'list_memory_tags'
+  'get_memory_tags',
+  'get_memory_stats'
 ];
 ```
 
@@ -425,7 +436,20 @@ skynet-agent/
 
 ---
 
-##  Research & Innovation
+# Neo4j Knowledge Graph Integration
+
+The system now includes improved error handling and retry mechanisms:
+
+## Fixed Issues
+- ✅ Retry queue for failed KG sync operations
+- ✅ Proper error handling instead of fire-and-forget
+- ✅ Automatic retry processing every minute
+- ✅ Sync metrics collection for monitoring
+
+## Architecture
+- **ChromaDB**: Primary vector storage for semantic search
+- **Neo4j**: Knowledge graph for structured relationships
+- **Eventual Consistency**: Asynchronous sync with retry mechanism
 
 ### Memory Architecture Inspiration
 
@@ -451,55 +475,88 @@ Combines relevance scores with user-defined importance ratings for smarter memor
 
 ##  Development & Testing
 
-### Running Tests
+### Available Test Scripts
 
 ```bash
-# Unit tests
-npm test
-
-# Memory system integration test
-npm run test:memory
-
 # RAG system test  
 npm run test:rag
 
-# End-to-end tests
-npm run test:e2e
+# Integration tests
+npm run test:integration
+
+# Neo4j tests
+npm run test:neo4j
+npm run test:neo4j-advanced
+
+# Run all tests
+npm run test:all
+
+# Type checking
+npm run type-check
 ```
 
 ### Development Scripts
 
 ```bash
-# Start development server
-npm run dev
+# Start everything
+npm run dev              # App + KG sync  
+npm run dev:debug        # With debugging enabled
 
-# Build for production
-npm run build
+# Production  
+npm run build            # Build for production
+npm run start            # Start production server
 
-# Start production server
-npm start
+# Services
+docker-compose up -d     # Start ChromaDB + Neo4j
+docker-compose down      # Stop services
+docker-compose logs -f   # View logs
 
-# Start ChromaDB
-npm run chroma:start
+# Testing
+npm run test:rag         # Test RAG system
+npm run test:all         # All available tests
+```
 
-# Stop ChromaDB
-npm run chroma:stop
+### Docker Services
 
-# Reset memory databases
-npm run memory:reset
+```bash
+# Start ChromaDB and Neo4j
+docker-compose up -d
+
+# Stop services  
+docker-compose down
+
+# View logs
+docker-compose logs -f
 ```
 
 ### Debugging
 
-Enable debug logging:
-```bash
-DEBUG=mcp:*,memory:*,rag:* npm run dev
-```
-
-View memory store status:
+Check memory store status:
 ```bash
 curl http://localhost:3000/api/conscious-memory?action=stats
 ```
+
+##  Debugging & Troubleshooting
+
+### Development Mode
+```bash
+npm run dev:debug  # Enables Node.js debugging on port 9229
+```
+Connect via Chrome DevTools at `chrome://inspect`
+
+### Common Issues
+- **Embeddings fail**: Service auto-falls back to hash-based embeddings
+- **RAG duplicates**: Check `ChromaMemoryStore.storeMemory()` similarity threshold  
+- **Tool calls error**: Verify MCP server registration in `default-mcp-servers.ts`
+- **Neo4j connection**: Ensure `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` are set
+
+### Environment Variables
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RAG_ENABLED` | `true` | Enable/disable RAG system |
+| `RAG_MAX_MEMORIES` | `3` | Max memories to retrieve |
+| `CHROMA_URL` | `http://localhost:8000` | ChromaDB server URL |
+| `NEO4J_URI` | `bolt://localhost:7687` | Neo4j connection string |
 
 ---
 

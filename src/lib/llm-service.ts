@@ -1,4 +1,4 @@
-import { generateText, tool } from 'ai';
+import { generateText, generateObject, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -65,6 +65,16 @@ export class LLMService {
     
     // Initialize the model based on provider
     this.model = this.initializeModel(config);
+  }
+  
+  /**
+   * Call an MCP tool directly
+   * @param serverName The name of the MCP server hosting the tool
+   * @param toolName The name of the tool to call
+   * @param args Arguments to pass to the tool
+   */
+  async callTool(serverName: string, toolName: string, args: any): Promise<any> {
+    return this.mcpManager.callTool(serverName, toolName, args);
   }
   private getProviderFromEnvironment(): LLMProvider {
     // Check environment variable for provider preference
@@ -518,7 +528,6 @@ export class LLMService {
       // Don't throw - RAG failure shouldn't prevent chat functionality
     }
   }
-
   /**
    * Extract entities and relationships from text using structured LLM output
    * This is a critical method for knowledge graph population
@@ -526,25 +535,28 @@ export class LLMService {
   async extractKnowledge(text: string, context?: string): Promise<KnowledgeExtractionResult> {
     try {
       console.log(' Extracting knowledge from text:', text.substring(0, 100) + '...');
-      
-      // Define the schema for structured output
+        // Define the schema for structured output (simplified for compatibility)
       const extractionSchema = z.object({
         entities: z.array(z.object({
           id: z.string().describe('Unique identifier for the entity (e.g., "Person_JohnDoe", "Concept_AI")'),
           label: z.string().describe('Type/category of the entity (e.g., "Person", "Organization", "Concept", "Event", "Tool", "File")'),
-          properties: z.record(z.any()).describe('Properties of the entity like name, description, attributes')
+          name: z.string().describe('Name of the entity'),
+          description: z.string().optional().describe('Description of the entity')
         })),
         relationships: z.array(z.object({
-          id: z.string().optional().describe('Optional unique identifier for the relationship'),
           sourceEntityId: z.string().describe('ID of the source entity'),
           targetEntityId: z.string().describe('ID of the target entity'),
           type: z.string().describe('Type of relationship (e.g., "WORKS_FOR", "RELATED_TO", "USES_TOOL", "MENTIONED_IN")'),
-          properties: z.record(z.any()).describe('Properties of the relationship like strength, context, metadata')
+          description: z.string().optional().describe('Description of the relationship')
         }))
       });
 
-      // Create the extraction prompt
-      let extractionPrompt = `You are a knowledge extraction expert. Extract entities and relationships from the following text.
+      // Try structured output first (if supported by the model)
+      try {
+        const result = await generateObject({
+          model: this.model,
+          schema: extractionSchema,
+          prompt: `Extract entities and relationships from this text:
 
 GUIDELINES:
 - Extract meaningful entities like people, organizations, concepts, tools, files, events, locations
@@ -555,82 +567,173 @@ GUIDELINES:
 - Avoid overly generic or vague entities
 
 TEXT TO ANALYZE:
+${text}
+
+${context ? `CONTEXT:\n${context}` : ''}`,
+          maxTokens: 2000,
+          temperature: 0.1,
+        });        // Transform structured output to match our types
+        const transformedResult: KnowledgeExtractionResult = {
+          entities: result.object.entities.map(e => ({
+            id: e.id,
+            label: e.label,
+            properties: {
+              name: e.name,
+              description: e.description || ''
+            }
+          })),
+          relationships: result.object.relationships.map(r => ({
+            sourceEntityId: r.sourceEntityId,
+            targetEntityId: r.targetEntityId,
+            type: r.type,
+            properties: {
+              description: r.description || ''
+            }
+          }))
+        };
+
+        console.log(` Extracted ${transformedResult.entities.length} entities and ${transformedResult.relationships.length} relationships`);
+        return transformedResult;} catch (structuredError: any) {
+        console.warn(' Structured output failed, falling back to text generation:', structuredError.message);
+        
+        // Fallback to text generation with enhanced prompt
+        return await this.extractKnowledgeWithText(text, context);
+      }
+    } catch (error) {
+      console.error(' Knowledge extraction failed:', error);
+      return { entities: [], relationships: [] };
+    }
+  }
+
+  /**
+   * Fallback method for knowledge extraction using text generation
+   */
+  private async extractKnowledgeWithText(text: string, context?: string): Promise<KnowledgeExtractionResult> {
+    const { jsonrepair } = await import('jsonrepair');
+      // Create the extraction prompt with stricter JSON formatting instructions
+    let extractionPrompt = `You are a knowledge extraction expert. Extract entities and relationships from the following text.
+
+CRITICAL INSTRUCTIONS:
+- You MUST return ONLY valid JSON with NO explanation or additional text
+- Your response will be directly parsed as JSON
+- Do NOT include markdown code blocks, comments, or any non-JSON content
+- If you cannot extract meaningful knowledge, return: {"entities":[],"relationships":[]}
+- Keep entity IDs simple and descriptive
+
+GUIDELINES:
+- Extract meaningful entities like people, organizations, concepts, tools, files, events, locations
+- Create unique IDs using format "EntityType_Name" (e.g., "Person_JohnDoe", "Tool_VSCode", "Concept_AI")
+- Identify relationships between entities with descriptive types
+- Focus on factual, concrete information
+- Avoid overly generic or vague entities
+
+TEXT TO ANALYZE:
 ${text}`;
 
-      if (context) {
-        extractionPrompt += `\n\nCONTEXT:
+    if (context) {
+      extractionPrompt += `\n\nCONTEXT:
 ${context}`;
-      }
+    }
 
-      extractionPrompt += `\n\nExtract entities and relationships in the following JSON format:
+    extractionPrompt += `\n\nReturn ONLY this JSON format (no markdown, no explanation, no additional text):
 {
   "entities": [
     {
-      "id": "EntityType_Name",
+      "id": "Entity_Name",
       "label": "EntityType",
       "properties": {
-        "name": "...",
-        "description": "...",
-        "other_attributes": "..."
+        "name": "Entity Name",
+        "description": "Brief description"
       }
     }
   ],
   "relationships": [
     {
-      "sourceEntityId": "Entity1_ID",
-      "targetEntityId": "Entity2_ID", 
+      "sourceEntityId": "Entity1_Name",
+      "targetEntityId": "Entity2_Name", 
       "type": "RELATIONSHIP_TYPE",
       "properties": {
-        "context": "...",
-        "strength": "..."
+        "description": "Brief description"
       }
     }
   ]
-}
+}`;
 
-Return ONLY the JSON object, no additional text.`;      const result = await generateText({
+      const result = await generateText({
         model: this.model,
         prompt: extractionPrompt,
         maxTokens: 2000,
         temperature: 0.1, // Low temperature for consistent extraction
       });
 
-      // Parse the structured response - the LLM should return JSON
+      // Enhanced JSON parsing with multiple fallback strategies
       let extractedData: KnowledgeExtractionResult;
       try {
-        // Attempt to parse JSON from the response
         const responseText = result.text.trim();
-        // Remove any markdown code block markers if present
-        const cleanJson = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-        extractedData = JSON.parse(cleanJson);
-      } catch (parseError) {
-        console.error(' Failed to parse extraction result as JSON:', parseError);
-        // Try to extract JSON from the response using regex
-        const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            extractedData = JSON.parse(jsonMatch[0]);
-          } catch {
-            console.error(' Could not extract valid JSON from response');
-            return { entities: [], relationships: [] };
-          }
-        } else {
-          return { entities: [], relationships: [] };
+          // Step 1: Try direct JSON parse after cleaning
+        let cleanJson = responseText
+          .replace(/^```json\s*/, '')     // Remove opening markdown
+          .replace(/\s*```$/, '')         // Remove closing markdown
+          .replace(/^```\s*/, '')         // Remove generic opening markdown
+          .replace(/^\s*json\s*/, '')     // Remove standalone 'json' text
+          .replace(/^[^{]*/, '')          // Remove any leading non-JSON text
+          .replace(/[^}]*$/, '')          // Remove any trailing non-JSON text
+          .trim();
+        
+        // Quick validation - must start with { and end with }
+        if (!cleanJson.startsWith('{') || !cleanJson.endsWith('}')) {
+          throw new Error('Response does not contain valid JSON structure');
         }
+        
+        try {
+          extractedData = JSON.parse(cleanJson);
+        } catch (parseError) {
+          console.warn(' Initial JSON parse failed, attempting repair');
+          
+          // Step 2: Try JSON repair
+          try {
+            const repairedJson = jsonrepair(cleanJson);
+            extractedData = JSON.parse(repairedJson);
+            console.log(' JSON successfully repaired and parsed');
+          } catch (repairError) {
+            console.warn(' JSON repair failed, trying regex extraction');
+            
+            // Step 3: Try regex extraction
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              try {
+                const matchedJson = jsonMatch[0];
+                extractedData = JSON.parse(matchedJson);
+                console.log(' JSON extracted via regex and parsed');
+              } catch (regexError) {
+                // Step 4: Try repairing the regex match
+                try {
+                  const repairedRegexJson = jsonrepair(jsonMatch[0]);
+                  extractedData = JSON.parse(repairedRegexJson);
+                  console.log(' Regex-extracted JSON repaired and parsed');
+                } catch {
+                  console.error(' All JSON parsing methods failed');
+                  console.error(' Response text:', responseText.substring(0, 200) + '...');
+                  return { entities: [], relationships: [] };
+                }
+              }
+            } else {
+              console.error(' No JSON-like content found in response');
+              console.error(' Response text:', responseText.substring(0, 200) + '...');
+              return { entities: [], relationships: [] };
+            }
+          }
+        }
+          // Validate the extracted data
+        const validatedResult = this.validateExtractionResult(extractedData);
+        console.log(` Extracted ${validatedResult.entities.length} entities and ${validatedResult.relationships.length} relationships`);
+        return validatedResult;
+        
+      } catch (error: any) {
+        console.error(' Knowledge extraction parsing failed:', error);
+        console.error(' Response text:', result.text.substring(0, 200) + '...');
+        return { entities: [], relationships: [] };
       }
-      
-      console.log(` Extracted ${extractedData.entities.length} entities and ${extractedData.relationships.length} relationships`);
-      
-      // Validate and clean the extracted data
-      const validatedResult = this.validateExtractionResult(extractedData);
-      
-      return validatedResult;
-      
-    } catch (error) {
-      console.error(' Knowledge extraction failed:', error);
-      // Return empty result rather than throwing to prevent sync failures
-      return { entities: [], relationships: [] };
-    }
   }
 
   /**
@@ -638,23 +741,28 @@ Return ONLY the JSON object, no additional text.`;      const result = await gen
    */
   private validateExtractionResult(result: KnowledgeExtractionResult): KnowledgeExtractionResult {
     // Filter out invalid entities
-    const validEntities = result.entities.filter(entity => {
+    const validEntities = result.entities.filter((entity: any) => {
       return entity.id && entity.label && typeof entity.properties === 'object';
     });
 
     // Filter out invalid relationships and ensure referenced entities exist
-    const entityIds = new Set(validEntities.map(e => e.id));
-    const validRelationships = result.relationships.filter(rel => {
+    const entityIds = new Set(validEntities.map((e: any) => e.id));
+    const validRelationships = result.relationships.filter((rel: any) => {
       return rel.sourceEntityId && 
              rel.targetEntityId && 
              rel.type &&
              entityIds.has(rel.sourceEntityId) &&
              entityIds.has(rel.targetEntityId);
-    });
-
-    return {
+    });    return {
       entities: validEntities,
       relationships: validRelationships
     };
   }
+
+  /**
+   * Generate chat completion with streaming
+   */
 }
+
+// Export default instance
+export default new LLMService();

@@ -6,9 +6,54 @@ interface ToolCallDisplayProps {
 }
 
 export default function ToolCallDisplay({ toolInvocation }: ToolCallDisplayProps) {
+  // Check if the result explicitly indicates an error
+  const isErrorResult = toolInvocation.state === 'result' && 
+                         toolInvocation.result && 
+                         typeof toolInvocation.result === 'object' && 
+                         ((toolInvocation.result as any).isError === true || (toolInvocation.result as any).error === true);
+
+  // Determine which content to display for the result
+  let resultDisplayContent: React.ReactNode;
+  if (isErrorResult) {
+    const errorMessage = (toolInvocation.result as any).message || 'Unknown tool error.';
+    const errorDetails = (toolInvocation.result as any).details || (toolInvocation.result as any).errorDetails || (toolInvocation.result as any).error; // Catch various detail fields
+    resultDisplayContent = (
+      <div className="text-red-700">
+        <strong>Error:</strong> {errorMessage}
+        {errorDetails && (
+          <pre className="mt-1 text-xs bg-red-100 p-2 rounded overflow-x-auto">
+            {typeof errorDetails === 'string' ? errorDetails : JSON.stringify(errorDetails, null, 2)}
+          </pre>
+        )}
+      </div>
+    );
+  } else if ('result' in toolInvocation && toolInvocation.result) {
+    resultDisplayContent = (
+      <div className="text-green-700">
+        <strong>Result:</strong>
+        <pre className="mt-1 text-xs bg-green-100 p-2 rounded overflow-x-auto">
+          {typeof toolInvocation.result === 'string' 
+            ? toolInvocation.result 
+            : JSON.stringify(toolInvocation.result, null, 2)
+          }
+        </pre>
+      </div>
+    );
+  } else if (toolInvocation.state === 'call') {
+    resultDisplayContent = (
+      <div className="text-blue-600 flex items-center gap-2">
+        <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+        Executing...
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded p-3 mt-2">
-      <div className="text-sm font-medium text-blue-800 mb-1">
+    <div className={`
+      border rounded p-3 mt-2
+      ${isErrorResult ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'}
+    `}>
+      <div className={`text-sm font-medium mb-1 ${isErrorResult ? 'text-red-800' : 'text-blue-800'}`}>
         🔧 Tool: {toolInvocation.toolName}
       </div>
       
@@ -21,23 +66,8 @@ export default function ToolCallDisplay({ toolInvocation }: ToolCallDisplayProps
         </div>
       )}
       
-      {'result' in toolInvocation && toolInvocation.result && (
-        <div className="text-xs text-gray-600">
-          <strong>Result:</strong>
-          <pre className="mt-1 bg-gray-100 p-2 rounded text-xs overflow-x-auto">
-            {typeof toolInvocation.result === 'string' 
-              ? toolInvocation.result 
-              : JSON.stringify(toolInvocation.result, null, 2)
-            }
-          </pre>
-        </div>
-      )}
+      {resultDisplayContent}
       
-      {toolInvocation.state === 'call' && (
-        <div className="text-xs text-blue-600 italic">
-          Tool called, waiting for result...
-        </div>
-      )}
     </div>
   )
 }

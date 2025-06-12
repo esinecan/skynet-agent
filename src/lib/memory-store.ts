@@ -19,6 +19,8 @@ export class ChromaMemoryStore implements MemoryStore {
   private collection: any;
   private initialized = false;
   private embeddingService: GoogleEmbeddingService;
+  private initializationInProgress = false;
+  private initPromise: Promise<void> | null = null;
   
   // Configuration
   private readonly collectionName: string;
@@ -44,41 +46,91 @@ export class ChromaMemoryStore implements MemoryStore {
    * Initialize the ChromaDB connection and collection
    */
   async initialize(): Promise<void> {
-    try {
-      console.log('Initializing ChromaDB memory store...');
-      
-      // Initialize ChromaDB client
-      this.client = new ChromaClient({
-        path: this.chromaUrl,
-        fetchOptions: {
-          headers: {
-            'Content-Type': 'application/json'
+    // If already initialized, just return
+    if (this.initialized) {
+      return;
+    }
+
+    // If initialization is in progress, wait for it to complete
+    if (this.initializationInProgress) {
+      if (this.initPromise) {
+        try {
+          await this.initPromise;
+          return;
+        } catch (error) {
+          console.log('Previous initialization attempt failed, trying again');
+        }
+      }
+    }
+
+    // Set initialization flag and create a promise
+    this.initializationInProgress = true;
+    this.initPromise = (async () => {
+      try {
+        console.log('Initializing ChromaDB memory store...');
+        
+        // Initialize ChromaDB client
+        this.client = new ChromaClient({
+          path: this.chromaUrl,
+          fetchOptions: {
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }
+        });
+        
+        // Try to get the existing collection first
+        try {
+          this.collection = await this.client.getCollection({
+            name: this.collectionName
+          });
+          console.log(`Using existing collection: ${this.collectionName}`);
+        } catch (getError) {
+          // Collection doesn't exist or couldn't be accessed, try to create it
+          try {
+            this.collection = await this.client.createCollection({
+              name: this.collectionName
+            });
+            console.log(`Created new collection: ${this.collectionName}`);
+          } catch (createError: any) {
+            // If creation fails because collection already exists, try getting it again
+            if (createError.toString().includes('already exists')) {
+              console.log(`Collection creation failed - already exists. Retrieving existing collection.`);
+              
+              // Wait a moment to ensure collection availability
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              // Try one more time to get the collection
+              try {
+                this.collection = await this.client.getCollection({
+                  name: this.collectionName
+                });
+                console.log(`Successfully retrieved existing collection: ${this.collectionName}`);
+              } catch (finalError) {
+                throw new Error(`Failed to retrieve existing collection: ${finalError}`);
+              }
+            } else {
+              throw createError;
+            }
           }
         }
-      });
-      
-      // Get or create collection
-      try {
-        this.collection = await this.client.getCollection({
-          name: this.collectionName
-        });
-        console.log(`Using existing collection: ${this.collectionName}`);
-      } catch (getError) {
-        this.collection = await this.client.createCollection({
-          name: this.collectionName
-        });
-        console.log(`Created new collection: ${this.collectionName}`);
+        
+        // Test the collection with a count operation
+        const initialCount = await this.collection.count();
+        console.log(`ChromaDB connected successfully. Memory count: ${initialCount}`);
+        
+        this.initialized = true;
+      } catch (error) {
+        console.error('Failed to initialize ChromaDB memory store:', error);
+        this.initialized = false;
+        throw error;
+      } finally {
+        this.initializationInProgress = false;
       }
-      
-      // Test the collection
-      const initialCount = await this.collection.count();
-      console.log(`ChromaDB connected successfully. Memory count: ${initialCount}`);
-      
-      this.initialized = true;
-    } catch (error) {
-      console.error('Failed to initialize ChromaDB memory store:', error);
-      throw error;
-    }
+    })();
+    
+    // Wait for our initialization to complete
+    await this.initPromise;
   }
 
   /**
@@ -377,6 +429,18 @@ export class ChromaMemoryStore implements MemoryStore {
       console.error('Failed to clear all memories:', error);
       return false;
     }
+  }
+
+  /**
+   * Cleanup connections and reset state
+   */
+  async cleanup(): Promise<void> {
+    // Reset initialization state
+    this.initialized = false;
+    this.initializationInProgress = false;
+    this.initPromise = null;
+    
+    console.log('ChromaMemoryStore connections cleaned up');
   }
 }
 

@@ -1,5 +1,5 @@
-import knowledgeGraphService, { KgRelationship } from './knowledge-graph-service';
-import { KgNode } from '../types/knowledge-graph';
+import knowledgeGraphService from './knowledge-graph-service';
+import { KgNode, KgRelationship } from '../types/knowledge-graph';
 import { LLMService, ExtractedEntity, ExtractedRelationship, KnowledgeExtractionResult } from './llm-service';
 import { extractUsingRules, RuleBasedExtractionResult } from './rule-based-extractor';
 import { ChatHistoryDatabase, ChatMessage, ChatSession } from './chat-history';
@@ -192,26 +192,42 @@ export class KnowledgeGraphSyncService {
       await this.syncStateManager.write({ 
         lastSyncTimestamp: newLastSyncTimestamp,
         lastProcessedIds: { chatMessages: [], consciousMemories: [], ragMemories: [] }
-      });
-
-    } catch (error) {
+      });    } catch (error) {
       console.error('[Sync Service] Critical error during knowledge graph synchronization:', error);
-      // Decide if to rollback or how to handle partial syncs
-    } finally {      await this.kgService.close(); // Close driver if opened by this service instance
+      // Log detailed error but don't propagate it upward
+      console.error('[Sync Service] Error details:', error instanceof Error ? error.stack : 'Unknown error');
+      console.error('[Sync Service] Sync operation failed but will not affect other system operations');
+    } finally {
+      try {
+        // Handle close errors separately to avoid affecting parent context
+        await this.kgService.close().catch(closeError => {
+          console.error('[Sync Service] Error closing Neo4j connection:', closeError);
+        });
+      } catch (finalError) {
+        console.error('[Sync Service] Unexpected error in finally block:', finalError);
+      }
     }
   }
   private async syncRAGMemories(lastSync: string | null): Promise<{
     entities: ExtractedEntity[];
     relationships: ExtractedRelationship[];
   }> {
+    console.log('[Sync Service] Processing RAG memories...');
+    
     const allEntities: ExtractedEntity[] = [];
     const allRelationships: ExtractedRelationship[] = [];
     
-    const { ChromaMemoryStore } = await import('./memory-store');
+    // Get memory store instance
     const memoryStore = new ChromaMemoryStore();
     await memoryStore.initialize();
-      try {
-      const searchResults = await memoryStore.retrieveMemories('', { limit: 10000 });
+    
+    try {
+      // Retrieve all memories (ChromaDB doesn't support timestamp filtering directly)
+      const searchResults = await memoryStore.retrieveMemories('', {
+        limit: 10000
+      });
+      
+      // Filter by timestamp if lastSync is provided
       const filteredResults = lastSync 
         ? searchResults.filter(result => result.metadata.timestamp > lastSync)
         : searchResults;
@@ -219,7 +235,12 @@ export class KnowledgeGraphSyncService {
       console.log(`💾 [KG Sync] Processing ${filteredResults.length} RAG memories...`);
       
       for (const result of filteredResults) {
+        // Skip if already processed (basic timestamp check)
+        if (lastSync && result.metadata.timestamp < lastSync) {
+          continue;
+        }
         
+        // Extract knowledge from memory text
         const extraction = await this.llmService.extractKnowledge(
           result.text,
           `RAG Memory from session ${result.metadata.sessionId}`
@@ -235,7 +256,10 @@ export class KnowledgeGraphSyncService {
           properties: {
             content: result.text,
             timestamp: result.metadata.timestamp,
-            sessionId: result.metadata.sessionId
+            messageType: result.metadata.messageType,
+            sessionId: result.metadata.sessionId,
+            textLength: result.metadata.textLength,
+            embedding: result.embedding // Store reference to embedding
           }
         };
         
@@ -253,6 +277,8 @@ export class KnowledgeGraphSyncService {
       }
     } catch (error) {
       console.error('[Sync Service] Error processing RAG memories:', error);
+    } finally {
+      await memoryStore.cleanup();
     }
     
     return { entities: allEntities, relationships: allRelationships };
