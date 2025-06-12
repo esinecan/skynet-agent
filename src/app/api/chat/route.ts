@@ -10,15 +10,6 @@ import { join } from 'path';
 // Global LLM service instance
 let llmService: LLMService | null = null;
 
-// Add diagnostic logging for debugging
-function logDiagnostics() {
-  console.log(' Chat API Diagnostics:');
-  console.log('  - RAG_ENABLED:', process.env.RAG_ENABLED);
-  console.log('  - RAG_ENABLE_SUMMARIZATION:', process.env.RAG_ENABLE_SUMMARIZATION);
-  console.log('  - GOOGLE_API_KEY exists:', !!process.env.GOOGLE_API_KEY);
-  console.log('  - CHROMA_URL:', process.env.CHROMA_URL);
-}
-
 // Helper function to load system prompt
 function loadSystemPrompt(): string {
   try {
@@ -113,9 +104,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Add diagnostic logging at the start
-    logDiagnostics();
-    
+   
     const body = await request.json();
     console.log(' Chat API: Received request body keys:', Object.keys(body));
     console.log(' Chat API: Request body.sessionId:', body.sessionId);
