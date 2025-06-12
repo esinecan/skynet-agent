@@ -408,7 +408,9 @@ export async function POST(request: NextRequest) {
       JSON.stringify({
         error: 'STREAM_ERROR',
         message: streamError instanceof Error ? streamError.message : 'Stream processing failed',
-        details: streamError instanceof Error ? streamError.stack || streamError.message : 'Unknown stream error details',
+        details: process.env.NODE_ENV === 'development' 
+          ? (streamError instanceof Error ? streamError.stack || streamError.message : 'Unknown stream error details') 
+          : 'An error occurred while processing the stream.',
         toolErrorDetails: (streamError as any).toolErrorDetails || null // Propagate specific tool error details if available
       }),
       { 
