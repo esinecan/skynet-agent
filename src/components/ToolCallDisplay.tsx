@@ -13,7 +13,7 @@ export default function ToolCallDisplay({ toolInvocation }: ToolCallDisplayProps
                          ((toolInvocation.result as any).isError === true || (toolInvocation.result as any).error === true);
 
   // Determine which content to display for the result
-  let resultDisplayContent: React.ReactNode;
+  let resultDisplayContent: React.ReactNode = <div className="text-gray-500">No data available.</div>;
   if (isErrorResult) {
     const errorMessage = (toolInvocation.result as any).message || 'Unknown tool error.';
     const errorDetails = (toolInvocation.result as any).details || (toolInvocation.result as any).errorDetails || (toolInvocation.result as any).error; // Catch various detail fields
