@@ -43,7 +43,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       console.log(' ConsciousMemoryService initialized');
       
       // Start periodic retry processing
-      setInterval(async () => {
+      this.retryIntervalId = setInterval(async () => {
         if (this.syncErrorQueue.getQueueSize() > 0) {
           console.log(`[ConsciousMemory] Processing ${this.syncErrorQueue.getQueueSize()} items in retry queue`);
           try {
