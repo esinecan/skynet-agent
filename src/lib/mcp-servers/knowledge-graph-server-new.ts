@@ -260,6 +260,90 @@ async function main() {
     }
   );
 
+
+  // === FIND PURPOSEFUL CONNECTIONS TOOL ===
+  server.tool("find_purposeful_connections",
+    {
+      relationshipType: z.string().describe("Type of relationship to find (e.g., 'WORKS_ON', 'USES', 'PREFERS', 'LEARNED_ABOUT')"),
+      sourceType: z.string().optional().describe("Entity type/label of the source (e.g., 'Person', 'User', 'Project')"),
+      sourceName: z.string().optional().describe("Name property to match on source entities"),
+      targetType: z.string().optional().describe("Entity type/label of the target (e.g., 'Project', 'Tool')"),
+      targetName: z.string().optional().describe("Name property to match on target entities"),
+      includeProperties: z.boolean().optional().default(true).describe("Include relationship properties in results")
+    },
+    async ({ relationshipType, sourceType, sourceName, targetType, targetName, includeProperties }) => {
+      try {
+        // Build query based on provided parameters
+        const params: Record<string, any> = {};
+        
+        // Build Cypher match patterns based on provided filters
+        let sourcePattern = "(source";
+        if (sourceType) {
+          sourcePattern += `:${sourceType}`;
+        }
+        if (sourceName) {
+          sourcePattern += " {name: $sourceName}";
+          params.sourceName = sourceName;
+        }
+        sourcePattern += ")";
+        
+        let targetPattern = "(target";
+        if (targetType) {
+          targetPattern += `:${targetType}`;
+        }
+        if (targetName) {
+          targetPattern += " {name: $targetName}";
+          params.targetName = targetName;
+        }
+        targetPattern += ")";
+        
+        // Build relationship pattern
+        let relPattern = `[rel:${relationshipType}]`;
+        
+        // Combine into complete query
+        const query = `
+          MATCH ${sourcePattern}-${relPattern}->${targetPattern}
+          RETURN 
+            source.id AS sourceId,
+            source.name AS sourceName,
+            labels(source)[0] AS sourceType,
+            target.id AS targetId,
+            target.name AS targetName,
+            labels(target)[0] AS targetType,
+            type(rel) AS relationship
+            ${includeProperties ? ', properties(rel) AS properties' : ''}
+          LIMIT 20
+        `;
+        
+        const results = await kgService.runQuery(query, params);
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ 
+                success: true, 
+                connections: results,
+                count: results.length
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error: any) {
+        console.error('Error finding purposeful connections:', error);
+        const errorResult = {
+          success: false,
+          error: error.message || 'Failed to find connections',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        };
+        return {
+          content: [{ type: "text", text: JSON.stringify(errorResult, null, 2) }],
+          isError: true
+        };
+      }
+    }
+  );
+
   // Start the server
   const transport = new StdioServerTransport();
   
@@ -271,6 +355,7 @@ async function main() {
     console.log('  - get_related_entities: Find related entities');
     console.log('  - find_entities_by_property: Search entities by property');
     console.log('  - get_entity_details: Get entity details');
+    console.log('  - find_purposeful_connections: Find purposeful connections by relationship type');
   } catch (error) {
     console.error('Failed to start MCP server transport:', error);
     // Don't terminate the process

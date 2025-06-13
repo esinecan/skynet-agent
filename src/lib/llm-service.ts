@@ -561,10 +561,21 @@ export class LLMService {
 GUIDELINES:
 - Extract meaningful entities like people, organizations, concepts, tools, files, events, locations
 - Create unique IDs using format "EntityType_Name" (e.g., "Person_JohnDoe", "Tool_VSCode", "Concept_AI")
-- Identify relationships between entities with descriptive types
-- Include relevant properties for entities and relationships
-- Focus on factual, concrete information
-- Avoid overly generic or vague entities
+- Identify complete and specific entities (people, organizations, projects, tools, concepts)
+
+RELATIONSHIP TYPES TO PRIORITIZE:
+- WORKS_ON: When a person is involved in or assigned to a project
+- USES: When a person or project utilizes a specific tool or technology
+- PREFERS: For capturing preferences about tools, methods, or styles
+- LEARNED_ABOUT: To track knowledge acquisition or understanding
+- HAS_PROPERTY: For dynamic attributes or states
+
+RELATIONSHIP EXAMPLES:
+- (Person:JohnDoe)-[:WORKS_ON]->(Project:SkynetAgent)
+- (Person:User)-[:USES]->(Tool:VSCode)
+- (User)-[:PREFERS]->(Approach:FunctionalComponents)
+- (User)-[:LEARNED_ABOUT]->(Concept:GraphDatabases)
+- (Task:Deployment)-[:HAS_PROPERTY]->(Status:InProgress)
 
 TEXT TO ANALYZE:
 ${text}
@@ -623,9 +634,21 @@ CRITICAL INSTRUCTIONS:
 GUIDELINES:
 - Extract meaningful entities like people, organizations, concepts, tools, files, events, locations
 - Create unique IDs using format "EntityType_Name" (e.g., "Person_JohnDoe", "Tool_VSCode", "Concept_AI")
-- Identify relationships between entities with descriptive types
-- Focus on factual, concrete information
-- Avoid overly generic or vague entities
+- Identify complete and specific entities (people, organizations, projects, tools, concepts)
+
+RELATIONSHIP TYPES TO PRIORITIZE:
+- WORKS_ON: When a person is involved in or assigned to a project
+- USES: When a person or project utilizes a specific tool or technology
+- PREFERS: For capturing preferences about tools, methods, or styles
+- LEARNED_ABOUT: To track knowledge acquisition or understanding
+- HAS_PROPERTY: For dynamic attributes or states 
+
+RELATIONSHIP EXAMPLES:
+- (Person:JohnDoe)-[:WORKS_ON]->(Project:SkynetAgent)
+- (Person:User)-[:USES]->(Tool:VSCode)
+- (User)-[:PREFERS]->(Approach:FunctionalComponents)
+- (User)-[:LEARNED_ABOUT]->(Concept:GraphDatabases)
+- (Task:Deployment)-[:HAS_PROPERTY]->(Status:InProgress)
 
 TEXT TO ANALYZE:
 ${text}`;

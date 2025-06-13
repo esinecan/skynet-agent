@@ -242,6 +242,99 @@ export function extractFromConsciousMemory(memory: ConsciousMemory): RuleBasedEx
       });
     }
 
+    // 5. Extract purposeful relationships from memory content
+    const userId = 'User_Default'; // Default user entity - can be enhanced with actual user identification
+    
+    // Extract LEARNED_ABOUT relationships from content containing learning signals
+    if (memory.content.match(/(?:I learned|I understand|I now know|I've learned|I figured out)/i)) {
+      // Extract potential concepts being learned
+      const concepts = extractConceptsFromText(memory.content);
+      
+      for (const concept of concepts) {
+        const conceptId = generateEntityId('Concept', concept);
+        entities.push({
+          id: conceptId,
+          label: 'Concept',
+          properties: { name: concept }
+        });
+        
+        relationships.push({
+          id: `rel-${userId}-learned-${conceptId}`,
+          sourceEntityId: userId,
+          targetEntityId: conceptId,
+          type: 'LEARNED_ABOUT',
+          properties: {}
+        });
+      }
+    }
+
+    // Extract PREFERS relationships from content containing preference signals
+    if (memory.content.match(/(?:I prefer|I like|I favor|I'd rather|my preference)/i)) {
+      // Extract potential preferences
+      const preferences = extractPreferencesFromText(memory.content);
+      
+      for (const preference of preferences) {
+        const preferenceId = generateEntityId('Preference', preference);
+        entities.push({
+          id: preferenceId,
+          label: 'Preference',
+          properties: { name: preference }
+        });
+        
+        relationships.push({
+          id: `rel-${userId}-prefers-${preferenceId}`,
+          sourceEntityId: userId,
+          targetEntityId: preferenceId,
+          type: 'PREFERS',
+          properties: {}
+        });
+      }
+    }
+
+    // Extract WORKS_ON relationships from content containing project indicators
+    if (memory.content.match(/(?:working on|developing|building|creating|implementing)/i)) {
+      const projects = extractProjectsFromText(memory.content);
+      
+      for (const project of projects) {
+        const projectId = generateEntityId('Project', project);
+        entities.push({
+          id: projectId,
+          label: 'Project',
+          properties: { name: project }
+        });
+        
+        relationships.push({
+          id: `rel-${userId}-works_on-${projectId}`,
+          sourceEntityId: userId,
+          targetEntityId: projectId,
+          type: 'WORKS_ON',
+          properties: {}
+        });
+      }
+    }
+
+    // Extract USES relationships from content containing tool/technology mentions
+    if (memory.content.match(/(?:using|utilize|work with|implement with)/i)) {
+      const tools = extractToolsFromText(memory.content);
+      
+      for (const tool of tools) {
+        const toolId = generateEntityId('Tool', tool);
+        entities.push({
+          id: toolId,
+          label: 'Tool',
+          properties: { name: tool }
+        });
+        
+        relationships.push({
+          id: `rel-${userId}-uses-${toolId}`,
+          sourceEntityId: userId,
+          targetEntityId: toolId,
+          type: 'USES',
+          properties: {}
+        });
+      }
+    }
+
   } catch (error) {
     console.error(`Error extracting from conscious memory ${memory.id}:`, error);
   }
@@ -303,4 +396,87 @@ export function extractUsingRules(
 
 
   return { entities: allEntities, relationships: allRelationships };
+}
+
+// Helper functions to extract concepts, preferences, projects, and tools
+function extractConceptsFromText(text: string): string[] {
+  const concepts: string[] = [];
+  // Simple regex to find noun phrases following learning signals
+  const matches = text.match(/(?:learned|understand|know about|figured out)\s+(?:about\s+)?([a-zA-Z0-9\s]+?)(?:\.|,|;|$)/gi);
+  if (matches) {
+    matches.forEach(match => {
+      const concept = match.replace(/(?:learned|understand|know about|figured out)\s+(?:about\s+)?/i, '').trim();
+      if (concept && concept.length > 2 && concept.length < 50) {
+        concepts.push(concept);
+      }
+    });
+  }
+  return [...new Set(concepts)]; // Remove duplicates
+}
+
+function extractPreferencesFromText(text: string): string[] {
+  const preferences: string[] = [];
+  // Extract preferences
+  const matches = text.match(/(?:prefer|like|favor)\s+(?:using\s+)?([a-zA-Z0-9\s]+?)(?:\s+over|\s+instead|\.|,|;|$)/gi);
+  if (matches) {
+    matches.forEach(match => {
+      const preference = match.replace(/(?:prefer|like|favor)\s+(?:using\s+)?/i, '')
+        .replace(/\s+over.*$|\s+instead.*$/i, '')
+        .trim();
+      if (preference && preference.length > 2 && preference.length < 50) {
+        preferences.push(preference);
+      }
+    });
+  }
+  return [...new Set(preferences)];
+}
+
+function extractProjectsFromText(text: string): string[] {
+  const projects: string[] = [];
+  // Extract project names
+  const matches = text.match(/(?:working on|developing|building|creating|implementing)\s+(?:the\s+)?([a-zA-Z0-9\-_\s]+?)(?:\s+project|\s+app|\s+application|\s+system|\.|,|;|$)/gi);
+  if (matches) {
+    matches.forEach(match => {
+      const project = match.replace(/(?:working on|developing|building|creating|implementing)\s+(?:the\s+)?/i, '')
+        .replace(/\s+project|\s+app|\s+application|\s+system/i, '')
+        .trim();
+      if (project && project.length > 2 && project.length < 50) {
+        projects.push(project);
+      }
+    });
+  }
+  return [...new Set(projects)];
+}
+
+function extractToolsFromText(text: string): string[] {
+  const tools: string[] = [];
+  // Common development tools and technologies
+  const knownTools = [
+    'React', 'Vue', 'Angular', 'TypeScript', 'JavaScript', 'Python', 'Java', 'C#', 'C++',
+    'Node.js', 'Express', 'Django', 'Flask', 'Spring', 'ASP.NET', 'Ruby on Rails',
+    'MongoDB', 'PostgreSQL', 'MySQL', 'Redis', 'Neo4j', 'ChromaDB',
+    'Docker', 'Kubernetes', 'AWS', 'Azure', 'GCP', 'Git', 'GitHub', 'VSCode', 'IntelliJ',
+    'Next.js', 'Gatsby', 'Webpack', 'Vite', 'Jest', 'Cypress', 'Playwright'
+  ];
+  
+  // Check for known tools in the text
+  knownTools.forEach(tool => {
+    const regex = new RegExp(`\\b${tool}\\b`, 'i');
+    if (regex.test(text)) {
+      tools.push(tool);
+    }
+  });
+  
+  // Also try to extract tools from "using X" patterns
+  const matches = text.match(/(?:using|utilize|work with|implement with)\s+([a-zA-Z0-9\.\-]+)/gi);
+  if (matches) {
+    matches.forEach(match => {
+      const tool = match.replace(/(?:using|utilize|work with|implement with)\s+/i, '').trim();
+      if (tool && tool.length > 1 && tool.length < 30 && !tools.includes(tool)) {
+        tools.push(tool);
+      }
+    });
+  }
+  
+  return [...new Set(tools)];
 }
