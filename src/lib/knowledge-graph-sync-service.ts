@@ -5,7 +5,7 @@ import { extractUsingRules, RuleBasedExtractionResult } from './rule-based-extra
 import { ChatHistoryDatabase, ChatMessage, ChatSession } from './chat-history';
 import { getConsciousMemoryService } from './conscious-memory'; // Import the service getter function
 import type { ConsciousMemoryService, ConsciousMemorySearchResult, ConsciousMemory, ConsciousMemoryMetadata } from '../types/memory'; // Import types
-import { ChromaMemoryStore } from './memory-store'; // For RAG memories, if separate processing is needed
+import { getMemoryStore } from './memory-store'; // For RAG memories, if separate processing is needed
 import { convertExtractedEntityToKgNode, convertExtractedRelationshipToKgRelationship } from './kg-type-converters';
 import { SyncStateManager } from './kg-sync-state';
 import { withRetry, SyncErrorQueue } from './kg-resilience';
@@ -389,7 +389,7 @@ export class KnowledgeGraphSyncService {
     const allRelationships: ExtractedRelationship[] = [];
     
     // Get memory store instance
-    const memoryStore = new ChromaMemoryStore();
+    const memoryStore = getMemoryStore();
     await memoryStore.initialize();
     
     try {
@@ -406,11 +406,6 @@ export class KnowledgeGraphSyncService {
       console.log(`💾 [KG Sync] Processing ${filteredResults.length} RAG memories...`);
       
       for (const result of filteredResults) {
-        // Skip if already processed (basic timestamp check)
-        if (lastSync && result.metadata.timestamp < lastSync) {
-          continue;
-        }
-        
         // Extract knowledge from memory text
         const extraction = await this.llmService.extractKnowledge(
           result.text,
@@ -429,8 +424,7 @@ export class KnowledgeGraphSyncService {
             timestamp: result.metadata.timestamp,
             messageType: result.metadata.messageType,
             sessionId: result.metadata.sessionId,
-            textLength: result.metadata.textLength,
-            embedding: result.embedding // Store reference to embedding
+            textLength: result.metadata.textLength
           }
         };
         
