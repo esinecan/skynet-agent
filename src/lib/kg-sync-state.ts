@@ -40,4 +40,35 @@ export class SyncStateManager {
     current.lastSyncTimestamp = new Date().toISOString();
     await this.write(current);
   }
+
+  // New method to be added:
+  async updateLastProcessedIds(processedIds: {
+    chatMessages?: string[],
+    consciousMemories?: string[],
+    ragMemories?: string[]
+  }): Promise<void> {
+    const current = await this.read() || {
+      lastSyncTimestamp: new Date().toISOString(), // Or consider if timestamp should only be updated by updateTimestamp
+      lastProcessedIds: { chatMessages: [], consciousMemories: [], ragMemories: [] }
+    };
+
+    if (processedIds.chatMessages) {
+      current.lastProcessedIds.chatMessages = processedIds.chatMessages;
+    }
+    if (processedIds.consciousMemories) {
+      current.lastProcessedIds.consciousMemories = processedIds.consciousMemories;
+    }
+    if (processedIds.ragMemories) {
+      current.lastProcessedIds.ragMemories = processedIds.ragMemories;
+    }
+
+    // Optional: Update timestamp when IDs are updated?
+    // current.lastSyncTimestamp = new Date().toISOString();
+    // The user feedback for syncKnowledgeGraph shows lastSyncTimestamp is updated there explicitly.
+    // So, this method should probably only focus on updating IDs.
+    // If current state was null, lastSyncTimestamp will be new. If not, it will retain old one.
+    // This seems fine. If the state was null, it's like the first time we're recording anything.
+
+    await this.write(current);
+  }
 }

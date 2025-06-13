@@ -5,7 +5,7 @@ import { extractUsingRules, RuleBasedExtractionResult } from './rule-based-extra
 import { ChatHistoryDatabase, ChatMessage, ChatSession } from './chat-history';
 import { getConsciousMemoryService } from './conscious-memory'; // Import the service getter function
 import type { ConsciousMemoryService, ConsciousMemorySearchResult, ConsciousMemory, ConsciousMemoryMetadata } from '../types/memory'; // Import types
-import { ChromaMemoryStore } from './memory-store'; // For RAG memories, if separate processing is needed
+import { getMemoryStore } from './memory-store'; // For RAG memories, if separate processing is needed
 import { convertExtractedEntityToKgNode, convertExtractedRelationshipToKgRelationship } from './kg-type-converters';
 import { SyncStateManager } from './kg-sync-state';
 import { withRetry, SyncErrorQueue } from './kg-resilience';
@@ -200,6 +200,7 @@ export class KnowledgeGraphSyncService {
         allExtractedRelationships.push(...memoryExtracts.relationships);
       }      // 3. Fetch RAG-specific memories
       const ragExtracts = await this.syncRAGMemories(lastSync);
+      console.log(`[KG Sync] Extracted ${ragExtracts.entities.length} entities and ${ragExtracts.relationships.length} relationships from RAG memories`); // New log line
       allExtractedEntities.push(...ragExtracts.entities);
       allExtractedRelationships.push(...ragExtracts.relationships);      // 4. Data Aggregation and Deduplication
       const finalExtraction = this.mergeExtractions([{ entities: allExtractedEntities, relationships: allExtractedRelationships }]);
@@ -379,80 +380,139 @@ export class KnowledgeGraphSyncService {
       }
     }
   }
+  /**
+   * Synchronizes RAG memories with the knowledge graph
+   * @param lastSync Timestamp of the last synchronization
+   * @returns Extracted entities and relationships from RAG memories
+   */
   private async syncRAGMemories(lastSync: string | null): Promise<{
     entities: ExtractedEntity[];
     relationships: ExtractedRelationship[];
   }> {
     console.log('[Sync Service] Processing RAG memories...');
-    
+
+    const memoryStore = getMemoryStore();
+    await memoryStore.initialize(); // Ensure ChromaDB connection is ready
     const allEntities: ExtractedEntity[] = [];
     const allRelationships: ExtractedRelationship[] = [];
-    
-    // Get memory store instance
-    const memoryStore = new ChromaMemoryStore();
-    await memoryStore.initialize();
-    
+
     try {
-      // Retrieve all memories (ChromaDB doesn't support timestamp filtering directly)
-      const searchResults = await memoryStore.retrieveMemories('', {
-        limit: 10000
+      // Build query to get memories since lastSync
+      const query = lastSync
+        ? `timestamp:>${lastSync}`
+        : '*';
+
+      // Retrieve memories from ChromaDB with pagination to avoid memory issues
+      const memories = await memoryStore.retrieveMemories(query, {
+        limit: 500 // Process in manageable batches
       });
-      
-      // Filter by timestamp if lastSync is provided
-      const filteredResults = lastSync 
-        ? searchResults.filter(result => result.metadata.timestamp > lastSync)
-        : searchResults;
-        
-      console.log(`💾 [KG Sync] Processing ${filteredResults.length} RAG memories...`);
-      
-      for (const result of filteredResults) {
-        // Skip if already processed (basic timestamp check)
-        if (lastSync && result.metadata.timestamp < lastSync) {
-          continue;
-        }
-        
-        // Extract knowledge from memory text
-        const extraction = await this.llmService.extractKnowledge(
-          result.text,
-          `RAG Memory from session ${result.metadata.sessionId}`
-        );
-        
-        allEntities.push(...extraction.entities);
-        allRelationships.push(...extraction.relationships);
-        
-        // Create memory node
+
+      console.log(`[Sync Service] Found ${memories.length} RAG memories to process`);
+
+      // Process each memory
+      for (const memory of memories) {
+        // Create memory entity with a consistent ID format
+        const memoryId = `memory-${memory.id}`;
         const memoryEntity: ExtractedEntity = {
-          id: `rag_memory_${result.id}`,
-          label: 'RAGMemory',
+          id: memoryId,
+          label: 'Memory',
           properties: {
-            content: result.text,
-            timestamp: result.metadata.timestamp,
-            messageType: result.metadata.messageType,
-            sessionId: result.metadata.sessionId,
-            textLength: result.metadata.textLength,
-            embedding: result.embedding // Store reference to embedding
+            content: memory.text,
+            // Extract metadata values with fallbacks
+            sessionId: memory.metadata?.sessionId || 'unknown',
+            timestamp: memory.metadata?.timestamp || new Date().toISOString(),
+            messageType: memory.metadata?.messageType || 'unknown',
+            textLength: memory.metadata?.textLength || memory.text.length,
+            vectorId: memory.id // Store original vector ID for reference
           }
         };
-        
         allEntities.push(memoryEntity);
-        
-        // Link to session
-        if (result.metadata.sessionId) {
-          allRelationships.push({
-            sourceEntityId: memoryEntity.id,
-            targetEntityId: `session_${result.metadata.sessionId}`,
-            type: 'PART_OF_SESSION',
-            properties: { timestamp: result.metadata.timestamp }
-          });
+
+        // Extract the session ID
+        if (memory.metadata?.sessionId) {
+          // Create session entity if it doesn't exist
+          const sessionId = `session-${memory.metadata.sessionId}`;
+          const sessionEntity: ExtractedEntity = {
+            id: sessionId,
+            label: 'Session',
+            properties: {
+              sessionId: memory.metadata.sessionId
+            }
+          };
+          
+          // Add session entity if not already present (avoid duplicates)
+          if (!allEntities.some(entity => entity.id === sessionId)) {
+            allEntities.push(sessionEntity);
+          }
+
+          // Create relationship from memory to session
+          const sessionRelationship: ExtractedRelationship = {
+            sourceEntityId: memoryId,
+            targetEntityId: sessionId,
+            type: 'BELONGS_TO',
+            properties: {}
+          };
+          allRelationships.push(sessionRelationship);
+          
+          // If we have LLM service available, try to extract additional knowledge
+          try {
+            if (this.llmService) {
+              // Extract knowledge from memory content
+              const llmExtraction = await this.llmService.extractKnowledge(
+                memory.text,
+                `Context: RAG Memory, SessionId: ${memory.metadata.sessionId}`
+              );
+              
+              if (llmExtraction) {
+                // Add extracted entities and relationships
+                if (llmExtraction.entities) {
+                  allEntities.push(...llmExtraction.entities);
+                  
+                  // Connect extracted entities to this memory
+                  for (const entity of llmExtraction.entities) {
+                    const mentionRelationship: ExtractedRelationship = {
+                      sourceEntityId: memoryId,
+                      targetEntityId: entity.id,
+                      type: 'MENTIONS',
+                      properties: {}
+                    };
+                    allRelationships.push(mentionRelationship);
+                  }
+                }
+                
+                // Add extracted relationships
+                if (llmExtraction.relationships) {
+                  allRelationships.push(...llmExtraction.relationships);
+                }
+              }
+            }
+          } catch (llmError) {
+            // Log but continue - knowledge extraction is a non-critical enhancement
+            console.warn('[Sync Service] Error extracting knowledge from memory:', llmError);
+          }
         }
       }
+      
+      // Track processed memory IDs
+      if (memories.length > 0 && this.syncStateManager) {
+        const processedMemoryIds = memories.map(memory => memory.id);
+        await this.syncStateManager.updateLastProcessedIds({
+          ragMemories: processedMemoryIds
+        });
+      }
+
+      return { entities: allEntities, relationships: allRelationships };
     } catch (error) {
       console.error('[Sync Service] Error processing RAG memories:', error);
+      
+      // Gracefully handle errors by returning empty arrays rather than failing the entire sync
+      return { entities: [], relationships: [] };
     } finally {
-      await memoryStore.cleanup();
+      // Clean up memory store connection if needed
+      if (memoryStore && typeof memoryStore.cleanup === 'function') {
+        await memoryStore.cleanup();
+      }
     }
-    
-    return { entities: allEntities, relationships: allRelationships };
   }
   /**
    * Log current Neo4j statistics for monitoring
