@@ -19,6 +19,12 @@ export interface ChatRequest {
   attachments?: FileAttachment[]
 }
 
+export interface ToolCall {
+  toolName: string
+  args: Record<string, any>
+  result?: any
+}
+
 export interface ChatResponse {
   message: string
   timestamp: string

@@ -6,8 +6,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConsciousMemoryService } from '../../../lib/conscious-memory';
 
+// Check if we're in build mode or missing environment variables
+function checkEnvironment() {
+  if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE === 'phase-production-build') {
+    return false;
+  }
+  
+  const hasNeo4jConfig = process.env.NEO4J_URI && process.env.NEO4J_USER && process.env.NEO4J_PASSWORD;
+  return !!hasNeo4jConfig;
+}
+
 export async function POST(request: NextRequest) {
   try {
+    if (!checkEnvironment()) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Neo4j environment variables not configured or service unavailable during build'
+        }, 
+        { status: 503 }
+      );
+    }
+
     const { action, ...params } = await request.json();
     const memoryService = getConsciousMemoryService();
     

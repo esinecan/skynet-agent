@@ -27,7 +27,7 @@ function runTest(name: string, testFn: () => boolean, expectedResult = true) {
 }
 
 function runIntegrationTests() {
-  console.log('🧪 Running Integration Tests...\n')
+  console.log(' Running Integration Tests...\n')
 
   // Test 1: Project structure
   runTest('Project structure is valid', () => {
@@ -93,23 +93,23 @@ function runIntegrationTests() {
   })
 
   // Print results
-  console.log('📊 Test Results:')
+  console.log(' Test Results:')
   console.log('================')
   
   let passedCount = 0
   testResults.forEach(result => {
-    const icon = result.passed ? '✅' : '❌'
+    const icon = result.passed ? '' : ''
     console.log(`${icon} ${result.name}: ${result.message}`)
     if (result.passed) passedCount++
   })
 
-  console.log(`\n📈 Summary: ${passedCount}/${testResults.length} tests passed`)
+  console.log(`\n Summary: ${passedCount}/${testResults.length} tests passed`)
   
   if (passedCount === testResults.length) {
-    console.log('🎉 All integration tests passed!')
+    console.log(' All integration tests passed!')
     process.exit(0)
   } else {
-    console.log('❌ Some tests failed. Please check the issues above.')
+    console.log(' Some tests failed. Please check the issues above.')
     process.exit(1)
   }
 }

@@ -23,6 +23,7 @@ export interface MemoryRetrievalResult {
   text: string;
   score: number;
   metadata: MemoryMetadata;
+  embedding?: number[];
 }
 
 export interface MemorySearchOptions {
@@ -47,8 +48,9 @@ export interface EmbeddingService {
 
 export interface MemoryStore {
   initialize(): Promise<void>;
-  storeMemory(text: string, metadata: MemoryMetadata): Promise<string>;
+  storeMemory(text: string, metadata: MemoryMetadata, id?: string): Promise<string>;
   retrieveMemories(query: string, options?: MemorySearchOptions): Promise<MemoryRetrievalResult[]>;
+  getMemoryById(id: string): Promise<MemoryRetrievalResult | null>;
   getMemoryCount(): Promise<number>;
   healthCheck(): Promise<boolean>;
 }
@@ -100,6 +102,7 @@ export interface MemorySaveRequest {
   source?: 'explicit' | 'suggested' | 'derived';
   context?: string;
   sessionId?: string;
+  relatedMemoryIds?: string[];
 }
 
 export interface MemoryUpdateRequest {
@@ -108,6 +111,7 @@ export interface MemoryUpdateRequest {
   tags?: string[];
   importance?: number;
   context?: string;
+  relatedMemoryIds?: string[];
 }
 
 export interface ConsciousMemoryStats {

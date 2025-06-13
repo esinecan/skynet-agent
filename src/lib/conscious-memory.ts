@@ -14,59 +14,218 @@ import {
 } from '../types/memory';
 import { getMemoryStore } from './memory-store';
 import { getEmbeddingService } from './embeddings';
+import knowledgeGraphServiceInstance from './knowledge-graph-service';
+import { KgNode, KgRelationship } from '../types/knowledge-graph';
+import { generateEntityId } from './rule-based-extractor'; // Assuming this is exported and useful
+import { withRetry, SyncErrorQueue, SyncQueueItem } from './kg-resilience';
 
 export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
   private memoryStore = getMemoryStore();
   private embeddingService = getEmbeddingService();
+  private kgService: typeof knowledgeGraphServiceInstance; // Use type of the instance
   private initialized = false;
+  private syncErrorQueue = new SyncErrorQueue();
+
+  constructor() {
+    this.kgService = knowledgeGraphServiceInstance; // Use the singleton instance
+  }
 
   async initialize(): Promise<void> {
     if (!this.initialized) {
       await this.memoryStore.initialize();
+      // Ensure KG service is connected (optional, could be handled by KGService methods)
+      try {
+        await this.kgService.connect();
+      } catch (error) {
+        console.error(' ConsciousMemoryService: Error connecting to KnowledgeGraphService during init:', error);
+      }
       this.initialized = true;
-      console.log('🧠 ConsciousMemoryService initialized');
+      console.log(' ConsciousMemoryService initialized');
+      
+      // Start periodic retry processing
+      this.retryIntervalId = setInterval(async () => {
+        if (this.syncErrorQueue.getQueueSize() > 0) {
+          console.log(`[ConsciousMemory] Processing ${this.syncErrorQueue.getQueueSize()} items in retry queue`);
+          if (this.isProcessingRetryQueue) {
+            console.log('[ConsciousMemory] Skipping retry queue processing as a previous run is still in progress');
+            return;
+          }
+          this.isProcessingRetryQueue = true;
+          try {
+            await this.processRetryQueue();
+          } catch (error) {
+            console.error('[ConsciousMemory] Error processing retry queue:', error);
+          } finally {
+            this.isProcessingRetryQueue = false;
+          }
+        }
+      }, 60000); // Process retry queue every minute
+    }
+  }
+
+  private async processRetryQueue(): Promise<void> {
+    await this.syncErrorQueue.processQueue(async (item) => {
+      if (item.operation === 'save' && item.content && item.metadata) {
+        await this.syncMemoryToGraph(item.id, item.content, item.metadata);
+      }
+    });
+  }
+
+  private async syncMemoryToGraph(memoryId: string, content: string, metadata: ConsciousMemoryMetadata): Promise<void> {
+    try {
+      const cmNodeId = generateEntityId('ConsciousMemory', memoryId);
+      const memoryNode: KgNode = {
+        id: cmNodeId,
+        type: 'ConsciousMemory', // Changed 'label' to 'type'
+        properties: {
+          memoryId: memoryId,
+          content: content,
+          importance: metadata.importance,
+          source: metadata.source,
+          context: metadata.context,
+          createdAt: metadata.createdAt || metadata.timestamp, // Use createdAt if available, else timestamp
+          updatedAt: metadata.timestamp, // timestamp is effectively updatedAt
+          lastAccessedAt: metadata.lastAccessedAt,
+          textLength: metadata.textLength,
+          sessionId: metadata.sessionId, // Include sessionId for direct filtering if needed
+        },
+      };
+      await this.kgService.addNode(memoryNode);
+
+      // Tags
+      if (metadata.tags) {
+        for (const tagName of metadata.tags) {
+          if (!tagName.trim()) continue;
+          const tagId = generateEntityId('Tag', tagName);
+          const tagNode: KgNode = {
+            id: tagId,
+            type: 'Tag', // Changed 'label' to 'type'
+            properties: { name: tagName.trim() },
+          };
+          await this.kgService.addNode(tagNode); // addNode should be idempotent (MERGE)
+          const relTag: KgRelationship = {
+            id: `rel-${cmNodeId}-has_tag-${tagId}`,
+            sourceNodeId: cmNodeId,
+            targetNodeId: tagId,
+            type: 'HAS_TAG',
+            properties: {},
+          };
+          await this.kgService.addRelationship(relTag);
+        }
+      }
+
+      // Session
+      if (metadata.sessionId) {
+        const sessionIdValue = metadata.sessionId;
+        const sessionNodeId = generateEntityId('Session', sessionIdValue);
+        const sessionNode: KgNode = {
+          id: sessionNodeId,
+          type: 'Session', // Changed 'label' to 'type'
+          properties: { sessionId: sessionIdValue },
+        };
+        await this.kgService.addNode(sessionNode); // addNode should be idempotent
+        const relSession: KgRelationship = {
+          id: `rel-${cmNodeId}-part_of_session-${sessionNodeId}`,
+          sourceNodeId: cmNodeId,
+          targetNodeId: sessionNodeId,
+          type: 'PART_OF_SESSION',
+          properties: {},
+        };
+        await this.kgService.addRelationship(relSession);
+      }
+
+      // Related Memories
+      if (metadata.relatedMemoryIds && metadata.relatedMemoryIds.length > 0) {
+        for (const relatedId of metadata.relatedMemoryIds) {
+          if (!relatedId.trim() || relatedId === memoryId) continue; // Avoid self-loops or empty IDs
+          const targetCmNodeId = generateEntityId('ConsciousMemory', relatedId);
+          // We don't create the target node here, just the relationship.
+          // Assumes target node will be created/updated when its own memory is processed.
+          const relRelated: KgRelationship = {
+            id: `rel-${cmNodeId}-related_to-${targetCmNodeId}`,
+            sourceNodeId: cmNodeId,
+            targetNodeId: targetCmNodeId,
+            type: 'RELATED_TO',
+            properties: {},
+          };
+          await this.kgService.addRelationship(relRelated);
+        }
+      }
+      console.log(` Synced memory ${memoryId} and its relationships to Knowledge Graph.`);
+    } catch (error) {
+      console.error(` Error syncing memory ${memoryId} to Knowledge Graph:`, error);
+      // Do not re-throw, as KG sync is secondary to memory storage
     }
   }
 
   async saveMemory(request: MemorySaveRequest): Promise<string> {
     if (!this.initialized) {
       await this.initialize();
-    }    // Create conscious memory metadata
+    }
+    const timestamp = new Date().toISOString();
     const metadata: ConsciousMemoryMetadata = {
       sessionId: request.sessionId || 'default',
-      timestamp: new Date().toISOString(),
+      timestamp: timestamp, // Used as updatedAt
+      createdAt: timestamp, // Explicitly set createdAt
       messageType: 'assistant', // Conscious memories are typically assistant-generated
       textLength: request.content.length,
-      memoryType: 'conscious',
+      memoryType: 'conscious', // Ensure this is set
       tags: request.tags || [],
       importance: request.importance || 5,
       source: request.source || 'explicit',
       context: request.context,
-      relatedMemoryIds: []
+      relatedMemoryIds: request.relatedMemoryIds || [] // Ensure this is captured
     };
 
     // Create ChromaDB-compatible metadata (flatten arrays to strings)
     const chromaMetadata = {
       ...metadata,
+      // Store arrays as JSON strings for ChromaDB compatibility if needed by memoryStore
       tags: JSON.stringify(metadata.tags),
       relatedMemoryIds: JSON.stringify(metadata.relatedMemoryIds),
-      context: metadata.context || ''
-    };    // Store using the existing memory store infrastructure
+      context: metadata.context || '',
+      // Ensure all fields needed by memoryStore are present
+      memoryType: metadata.memoryType,
+      timestamp: metadata.timestamp,
+      createdAt: metadata.createdAt,
+      lastAccessedAt: metadata.lastAccessedAt, // Will be undefined initially
+      textLength: metadata.textLength,
+      importance: metadata.importance,
+      source: metadata.source,
+      sessionId: metadata.sessionId,
+    };
+
     const id = await this.memoryStore.storeMemory(request.content, chromaMetadata as any);
+    console.log(` Conscious memory saved to ChromaDB: ${id} (importance: ${metadata.importance}, tags: ${metadata.tags?.join(', ')})`);
+
+    // Sync to Knowledge Graph (fire and forget, with error handling inside)
+    this.syncMemoryToGraph(id, request.content, metadata).catch(e => {
+      console.error("Error in KG sync from saveMemory:", e);
+      this.syncErrorQueue.push({
+        id,
+        operation: 'save',
+        content: request.content,
+        metadata,
+        retryCount: 0,
+        lastError: e.message,
+        timestamp: Date.now()
+      });
+    });
     
-    console.log(`🧠 Conscious memory saved: ${id} (importance: ${metadata.importance}, tags: ${metadata.tags.join(', ')})`);
     return id;
-  }  async searchMemories(
+  }
+
+  async searchMemories(
     query: string, 
     options: ConsciousMemorySearchOptions = {}
   ): Promise<ConsciousMemorySearchResult[]> {
     if (!this.initialized) {
       await this.initialize();
-    }    console.log(`🧠 Conscious memory search: "${query}" with options:`, options);
+    }    console.log(` Conscious memory search: "${query}" with options:`, options);
 
     // Special case: empty query returns all memories (for management purposes)
     if (!query.trim()) {
-      console.log('🧠 Empty query - returning all memories');
+      console.log(' Empty query - returning all memories');
       try {
         // Use a generic search to get all memories
         const allMemories = await this.memoryStore.retrieveMemories('the', {
@@ -74,7 +233,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
           sessionId: options.sessionId,
           minScore: -2.0  // Get everything
         });
-        console.log(`🧠 Retrieved ${allMemories.length} total memories`);        // Process and return all memories using existing logic
+        console.log(` Retrieved ${allMemories.length} total memories`);        // Process and return all memories using existing logic
         const combinedResults = this.mergeSearchResults(allMemories, []);
         
         // Apply the same filtering and mapping logic
@@ -132,7 +291,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
           
         return filtered;
       } catch (error) {
-        console.error('🧠 Failed to retrieve all memories:', error);
+        console.error(' Failed to retrieve all memories:', error);
         return [];
       }
     }    // Stage 1: Semantic search with embeddings
@@ -142,26 +301,26 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       minScore: -2.0  // Very low threshold to catch all potential results
     });
 
-    console.log(`🧠 Semantic search results: ${semanticResults.length} memories found`);
+    console.log(` Semantic search results: ${semanticResults.length} memories found`);
     
     // Check quality of semantic results
     const goodSemanticResults = semanticResults.filter(r => r.score >= 0.15); // Reasonable similarity threshold
     const hasGoodSemanticMatch = goodSemanticResults.length > 0;
     const bestSemanticScore = semanticResults.length > 0 ? Math.max(...semanticResults.map(r => r.score)) : 0;
     
-    console.log(`🧠 Semantic quality check: ${goodSemanticResults.length} good results (score >= 0.15), best score: ${bestSemanticScore.toFixed(3)}`);
+    console.log(` Semantic quality check: ${goodSemanticResults.length} good results (score >= 0.15), best score: ${bestSemanticScore.toFixed(3)}`);
 
     // Stage 2: Keyword fallback search - more aggressive fallback
     let keywordResults: any[] = [];
     const shouldTryKeywords = !hasGoodSemanticMatch || semanticResults.length < 3;
     
     if (shouldTryKeywords) {
-      console.log(`🧠 Semantic results poor quality or insufficient (best: ${bestSemanticScore.toFixed(3)}), trying keyword search...`);
+      console.log(` Semantic results poor quality or insufficient (best: ${bestSemanticScore.toFixed(3)}), trying keyword search...`);
       keywordResults = await this.performKeywordSearch(query, options);
-      console.log(`🧠 Keyword search results: ${keywordResults.length} memories found`);
+      console.log(` Keyword search results: ${keywordResults.length} memories found`);
     }    // Stage 3: Merge and deduplicate results
     const combinedResults = this.mergeSearchResults(semanticResults, keywordResults);
-    console.log(`🧠 Combined search results: ${combinedResults.length} memories found`);
+    console.log(` Combined search results: ${combinedResults.length} memories found`);
 
     // Apply quality threshold - don't return very poor matches unless there's keyword relevance
     const qualityFiltered = combinedResults.filter(result => {
@@ -178,14 +337,14 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       return combinedResults.filter(r => r.score >= 0.15).length === 0;
     });
     
-    console.log(`🧠 Quality filtered results: ${qualityFiltered.length} memories (removed ${combinedResults.length - qualityFiltered.length} low-quality matches)`);
+    console.log(` Quality filtered results: ${qualityFiltered.length} memories (removed ${combinedResults.length - qualityFiltered.length} low-quality matches)`);
 
     // Filter and enhance results - include both conscious memories AND regular memories
     const filtered = qualityFiltered
       .filter(result => {
         const metadata = result.metadata as ConsciousMemoryMetadata;
         
-        console.log(`🧠 Processing memory ${result.id}: type=${metadata.memoryType}, score=${result.score}`);
+        console.log(` Processing memory ${result.id}: type=${metadata.memoryType}, score=${result.score}`);
         
         // If it's a conscious memory, apply conscious memory specific filters
         if (metadata.memoryType === 'conscious') {
@@ -247,7 +406,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       })
       .sort((a, b) => b.score - a.score); // Sort by relevance score first, then importance
 
-    console.log(`🧠 Conscious memory search returning ${filtered.length} results`);
+    console.log(` Conscious memory search returning ${filtered.length} results`);
     return filtered;
   }
 
@@ -256,62 +415,107 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       await this.initialize();
     }
 
-    // For now, we'll implement update by deleting and re-creating
-    // This could be optimized in the future with ChromaDB's update capabilities
-    
+    // This implementation of update might be suboptimal if ChromaDB offers partial updates.
+    // Currently, it fetches, modifies, and re-stores.
+    // If ChromaDB `storeMemory` with the same ID overwrites, this is an update.
+    // If not, `deleteMemory` then `saveMemory` would be needed.
+    // For KG, `addNode` with MERGE handles updates. Relationships might need more care.
+
     try {
-      // First, search for the memory to get its current data
-      const currentMemories = await this.memoryStore.retrieveMemories(request.id, { limit: 1 });
-      const currentMemory = currentMemories.find(m => m.id === request.id);
-      
-      if (!currentMemory) {
-        console.warn(`🧠 Memory ${request.id} not found for update`);
+      // Fetch current memory data to preserve fields not being updated
+      const existingMemoryData = await this.memoryStore.getMemoryById(request.id); // Assuming getMemoryById exists
+      if (!existingMemoryData) {
+        console.warn(` Memory ${request.id} not found for update.`);
         return false;
       }
 
-      const currentMetadata = currentMemory.metadata as ConsciousMemoryMetadata;
+      const currentContent = existingMemoryData.text;      // Chroma stores metadata potentially as strings, parse them back
+      const currentChromaMeta = existingMemoryData.metadata as any;
+      const currentMetadata: ConsciousMemoryMetadata = {
+        sessionId: currentChromaMeta.sessionId,
+        timestamp: currentChromaMeta.timestamp, // This will be overwritten by new update timestamp
+        messageType: currentChromaMeta.messageType || 'assistant', // Default for conscious memories
+        createdAt: currentChromaMeta.createdAt,
+        lastAccessedAt: currentChromaMeta.lastAccessedAt,
+        textLength: currentChromaMeta.textLength,
+        memoryType: currentChromaMeta.memoryType || 'conscious',
+        tags: typeof currentChromaMeta.tags === 'string' ? JSON.parse(currentChromaMeta.tags) : (currentChromaMeta.tags || []),
+        importance: currentChromaMeta.importance,
+        source: currentChromaMeta.source,
+        context: currentChromaMeta.context,
+        relatedMemoryIds: typeof currentChromaMeta.relatedMemoryIds === 'string' ? JSON.parse(currentChromaMeta.relatedMemoryIds) : (currentChromaMeta.relatedMemoryIds || []),
+      };
       
-      // Create updated memory with merged data
+      const newContent = request.content !== undefined ? request.content : currentContent;
+      const newTimestamp = new Date().toISOString();
+
       const updatedMetadata: ConsciousMemoryMetadata = {
         ...currentMetadata,
-        timestamp: new Date().toISOString(),
-        textLength: (request.content || currentMemory.text).length,
-        tags: request.tags || currentMetadata.tags,
-        importance: request.importance || currentMetadata.importance,
-        context: request.context || currentMetadata.context
+        timestamp: newTimestamp, // Update timestamp to now
+        textLength: newContent.length,
+        tags: request.tags !== undefined ? request.tags : currentMetadata.tags,
+        importance: request.importance !== undefined ? request.importance : currentMetadata.importance,
+        context: request.context !== undefined ? request.context : currentMetadata.context,
+        relatedMemoryIds: request.relatedMemoryIds !== undefined ? request.relatedMemoryIds : currentMetadata.relatedMemoryIds,
+        // sessionId, source, memoryType, createdAt are generally not changed on update
       };
 
-      // Store new version (the underlying ChromaDB will handle ID conflicts)
-      await this.memoryStore.storeMemory(
-        request.content || currentMemory.text,
-        updatedMetadata
-      );
+      // ChromaDB-compatible metadata
+       const chromaMetadata = {
+        ...updatedMetadata,
+        tags: JSON.stringify(updatedMetadata.tags),
+        relatedMemoryIds: JSON.stringify(updatedMetadata.relatedMemoryIds),
+        context: updatedMetadata.context || ''
+      };
 
-      console.log(`🧠 Memory ${request.id} updated successfully`);
+      // Assuming storeMemory with the same ID updates the memory in ChromaDB
+      await this.memoryStore.storeMemory(newContent, chromaMetadata, request.id);
+      console.log(` Memory ${request.id} updated in ChromaDB.`);
+
+      // Sync updated memory to Knowledge Graph
+      // This will use MERGE for the node and handle relationships.
+      // Relationship changes (e.g. different tags) will require the syncMemoryToGraph or underlying KGService.addRelationship to be smart.
+      // A simple approach is to remove all old tag relationships and add new ones if they changed.
+      // However, if addNode/addRelationship use MERGE correctly, re-adding should be fine.
+      this.syncMemoryToGraph(request.id, newContent, updatedMetadata).catch(e => {
+        console.error("Error in KG sync from updateMemory:", e);
+        this.syncErrorQueue.push({
+          id: request.id,
+          operation: 'update',
+          content: newContent,
+          metadata: updatedMetadata,
+          retryCount: 0,
+          lastError: e.message,
+          timestamp: Date.now()
+        });
+      });
+
       return true;
     } catch (error) {
-      console.error(`🧠 Failed to update memory ${request.id}:`, error);
+      console.error(` Failed to update memory ${request.id}:`, error);
       return false;
     }
   }
+
   async deleteMemory(id: string): Promise<boolean> {
     if (!this.initialized) {
       await this.initialize();
     }
-
     try {
-      console.log(`🧠 Deleting conscious memory: ${id}`);
+      console.log(` Deleting conscious memory from ChromaDB: ${id}`);
       const success = await this.memoryStore.deleteMemory(id);
-      
       if (success) {
-        console.log(`🧠 Successfully deleted memory: ${id}`);
+        console.log(` Successfully deleted memory from ChromaDB: ${id}`);
+        // Delete from Knowledge Graph (fire and forget)
+        this.kgService.deleteNode(generateEntityId('ConsciousMemory', id))
+          .then(() => console.log(` Deleted memory node ${id} from Knowledge Graph.`))
+          .catch(e => console.error(` Error deleting memory node ${id} from KG:`, e));
       } else {
-        console.error(`🧠 Failed to delete memory: ${id}`);
+        console.warn(` Failed to delete memory from ChromaDB: ${id}`);
       }
-      
       return success;
     } catch (error) {
-      console.error(`🧠 Error deleting memory ${id}:`, error);
+      console.error(` Error deleting memory ${id}:`, error);
       return false;
     }
   }
@@ -320,47 +524,76 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
     if (!this.initialized) {
       await this.initialize();
     }
-
     try {
-      console.log(`🧠 Deleting ${ids.length} conscious memories:`, ids);
-      const success = await this.memoryStore.deleteMemories(ids);
-      
+      console.log(` Deleting ${ids.length} conscious memories from ChromaDB:`, ids);
+      const success = await this.memoryStore.deleteMemories(ids); // Assumes this method exists and works
       if (success) {
-        console.log(`🧠 Successfully deleted ${ids.length} memories`);
+        console.log(` Successfully deleted ${ids.length} memories from ChromaDB`);
+        // Delete from Knowledge Graph (fire and forget for each)
+        for (const id of ids) {
+          this.kgService.deleteNode(generateEntityId('ConsciousMemory', id))
+            .then(() => console.log(` Deleted memory node ${id} from Knowledge Graph.`))
+            .catch(e => console.error(` Error deleting memory node ${id} from KG:`, e));
+        }
       } else {
-        console.error(`🧠 Failed to delete ${ids.length} memories`);
+        console.warn(` Failed to delete ${ids.length} memories from ChromaDB`);
       }
-      
       return success;
     } catch (error) {
-      console.error(`🧠 Error deleting multiple memories:`, error);
+      console.error(` Error deleting multiple memories:`, error);
       return false;
     }
   }
 
-  async clearAllMemories(): Promise<boolean> {
+  async clearAllMemories(): Promise<boolean> { // DANGEROUS - Clears KG as well if we implement that
     if (!this.initialized) {
       await this.initialize();
     }
-
     try {
-      console.log('🧠 Clearing all conscious memories');
-      const success = await this.memoryStore.clearAllMemories();
+      console.warn(' WARNING: Clearing all conscious memories from ChromaDB and Knowledge Graph.');
       
-      if (success) {
-        console.log('🧠 Successfully cleared all memories');
-      } else {
-        console.error('🧠 Failed to clear all memories');
+      // First clear from ChromaDB
+      const success = await this.memoryStore.clearAllMemories();
+      if (!success) {
+        console.error(' Failed to clear all memories from ChromaDB.');
+        return false;
       }
       
-      return success;
+      console.log(' Successfully cleared all memories from ChromaDB.');
+      
+      // Now clean up Knowledge Graph nodes
+      try {
+        const kgService = knowledgeGraphServiceInstance;
+        await kgService.connect();
+        
+        // Delete ConsciousMemory nodes
+        const memoryDeleteResult = await kgService.deleteNodesByType('ConsciousMemory');
+        console.log(` Deleted ${memoryDeleteResult.deletedCount} ConsciousMemory nodes from Knowledge Graph.`);
+        
+        // Also delete orphaned Memory nodes that might have been created
+        const memoryNodesResult = await kgService.deleteNodesByType('Memory');
+        console.log(` Deleted ${memoryNodesResult.deletedCount} Memory nodes from Knowledge Graph.`);
+        
+        // Clean up any orphaned nodes
+        const orphanCleanup = await kgService.cleanupOrphanedNodes(['User', 'Session']);
+        console.log(` Cleaned up ${orphanCleanup.deletedCount} orphaned nodes.`);
+        
+        console.log(' Successfully cleaned up Knowledge Graph data.');
+        return true;
+      } catch (kgError) {
+        console.error(' Error cleaning up Knowledge Graph data:', kgError);
+        console.warn(' ChromaDB was cleared but Knowledge Graph cleanup failed.');
+        return true; // Return true since ChromaDB was cleared successfully
+      }
     } catch (error) {
-      console.error('🧠 Error clearing all memories:', error);
+      console.error(' Error clearing all memories:', error);
       return false;
     }
   }
 
   async getAllTags(): Promise<string[]> {
+    // This method could also be served by querying the KG if tags are reliably synced.
+    // For now, it uses the memory store.
     if (!this.initialized) {
       await this.initialize();
     }
@@ -381,7 +614,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       
       return Array.from(tagSet).sort();
     } catch (error) {
-      console.error('🧠 Failed to get all tags:', error);
+      console.error(' Failed to get all tags:', error);
       return [];
     }
   }
@@ -397,7 +630,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       const sourceMemory = sourceMemories.find(m => m.id === id);
       
       if (!sourceMemory) {
-        console.warn(`🧠 Source memory ${id} not found for related search`);
+        console.warn(` Source memory ${id} not found for related search`);
         return [];
       }
 
@@ -409,7 +642,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       // Filter out the source memory itself
       return relatedResults.filter(result => result.id !== id).slice(0, limit);
     } catch (error) {
-      console.error(`🧠 Failed to get related memories for ${id}:`, error);
+      console.error(` Failed to get related memories for ${id}:`, error);
       return [];
     }
   }
@@ -450,7 +683,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
         sourceBreakdown
       };
     } catch (error) {
-      console.error('🧠 Failed to get stats:', error);
+      console.error(' Failed to get stats:', error);
       return {
         totalConsciousMemories: 0,
         tagCount: 0,
@@ -467,7 +700,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       }
       return await this.memoryStore.healthCheck();
     } catch (error) {
-      console.error('🧠 Conscious memory health check failed:', error);
+      console.error(' Conscious memory health check failed:', error);
       return false;
     }
   }
@@ -494,14 +727,14 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       const success = results.length > 0 && results[0].id === id;
       
       if (success) {
-        console.log('🧠 Conscious memory system test passed');
+        console.log(' Conscious memory system test passed');
       } else {
-        console.error('🧠 Conscious memory system test failed');
+        console.error(' Conscious memory system test failed');
       }
       
       return success;
     } catch (error) {
-      console.error('🧠 Conscious memory system test error:', error);
+      console.error(' Conscious memory system test error:', error);
       return false;
     }
   }
@@ -524,7 +757,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       const keywords = originalQuery.split(/\s+/).filter(word => word.length > 1); // Keep original case for proper noun detection
       const keywordsLower = keywords.map(word => word.toLowerCase()); // Lowercase versions for matching
       
-      console.log(`🔍 Keyword search for: "${originalQuery}" (split into: ${keywords.join(', ')})`);
+      console.log(` Keyword search for: "${originalQuery}" (split into: ${keywords.join(', ')})`);
       
       // Score memories based on keyword matches
       const scoredMemories = allMemories
@@ -538,7 +771,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
           if (text.includes(originalQueryLower)) {
             phraseBonus = 1.0;
             keywordScore += 1.0;
-            console.log(`🎯 Exact phrase match found in memory ${memory.id}`);
+            console.log(` Exact phrase match found in memory ${memory.id}`);
           }
           
           // Check individual keywords
@@ -559,7 +792,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
               // Extra bonus for proper nouns (capitalized words in original query)
               if (keyword[0] === keyword[0].toUpperCase() && keyword.length > 2) {
                 keywordScore += 0.2;
-                console.log(`🏷️ Proper noun bonus for "${keyword}" in memory ${memory.id}`);
+                console.log(` Proper noun bonus for "${keyword}" in memory ${memory.id}`);
               }
             }
           }
@@ -580,7 +813,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
 
       return scoredMemories;
     } catch (error) {
-      console.error('🧠 Keyword search error:', error);
+      console.error(' Keyword search error:', error);
       return [];
     }
   }

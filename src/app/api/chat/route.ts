@@ -2,20 +2,13 @@ import { streamText } from 'ai';
 import { NextRequest } from 'next/server';
 import { LLMService } from '../../../lib/llm-service';
 import { ChatHistoryDatabase } from '../../../lib/chat-history';
+import knowledgeGraphSyncService from '../../../lib/knowledge-graph-sync-service';
+import { kgSyncQueue } from '../../../lib/kg-sync-queue';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
 // Global LLM service instance
 let llmService: LLMService | null = null;
-
-// Add diagnostic logging for debugging
-function logDiagnostics() {
-  console.log('🔍 Chat API Diagnostics:');
-  console.log('  - RAG_ENABLED:', process.env.RAG_ENABLED);
-  console.log('  - RAG_ENABLE_SUMMARIZATION:', process.env.RAG_ENABLE_SUMMARIZATION);
-  console.log('  - GOOGLE_API_KEY exists:', !!process.env.GOOGLE_API_KEY);
-  console.log('  - CHROMA_URL:', process.env.CHROMA_URL);
-}
 
 // Helper function to load system prompt
 function loadSystemPrompt(): string {
@@ -24,17 +17,17 @@ function loadSystemPrompt(): string {
     const content = readFileSync(systemPromptPath, 'utf-8').trim();
     
     if (content) {
-      console.log('📝 Chat API: Loaded system prompt from system-prompt.md');
+      console.log(' Chat API: Loaded system prompt from system-prompt.md');
       return content;
     } else {
-      console.log('📝 Chat API: system-prompt.md is empty, using no system prompt');
+      console.log(' Chat API: system-prompt.md is empty, using no system prompt');
       return '';
     }
   } catch (error) {
     if ((error as any).code === 'ENOENT') {
-      console.log('📝 Chat API: system-prompt.md not found, using no system prompt');
+      console.log(' Chat API: system-prompt.md not found, using no system prompt');
     } else {
-      console.warn('📝 Chat API: Error reading system-prompt.md:', error);
+      console.warn(' Chat API: Error reading system-prompt.md:', error);
     }
     return '';
   }
@@ -44,6 +37,13 @@ async function getLLMService(): Promise<LLMService> {
   if (!llmService) {
     llmService = new LLMService();
     await llmService.initialize();
+    
+    // Log knowledge graph statistics on first initialization
+    try {
+      await knowledgeGraphSyncService.logStartupStatistics();
+    } catch (kgError) {
+      console.warn(' Chat API: Could not load knowledge graph statistics:', kgError);
+    }
   }
   return llmService;
 }
@@ -76,17 +76,17 @@ export async function GET(request: NextRequest) {
     if (!sessionId) {
       return Response.json({ error: 'sessionId parameter is required' }, { status: 400 });
     }
-      console.log('📥 Loading chat session:', sessionId);
+      console.log(' Loading chat session:', sessionId);
     
     const chatHistory = ChatHistoryDatabase.getInstance();
     const session = chatHistory.getSession(sessionId);
     
     if (!session) {
-      console.log('❌ Session not found:', sessionId);
+      console.log(' Session not found:', sessionId);
       return Response.json({ error: 'Session not found' }, { status: 404 });
     }
     
-    console.log('✅ Loaded session with', session.messages.length, 'messages');
+    console.log(' Loaded session with', session.messages.length, 'messages');
     
     // Return messages in the format expected by useChat hook
     return Response.json({
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     });
     
   } catch (error) {
-    console.error('❌ Error loading chat session:', error);
+    console.error(' Error loading chat session:', error);
     return Response.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -104,14 +104,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Add diagnostic logging at the start
-    logDiagnostics();
-    
+   
     const body = await request.json();
-    console.log('🔍 Chat API: Received request body keys:', Object.keys(body));
-    console.log('🔍 Chat API: Request body.sessionId:', body.sessionId);
-    console.log('🔍 Chat API: Request body.id:', body.id);
-    console.log('🔍 Chat API: Any other ID fields:', Object.keys(body).filter(k => k.toLowerCase().includes('id')));
+    console.log(' Chat API: Received request body keys:', Object.keys(body));
+    console.log(' Chat API: Request body.sessionId:', body.sessionId);
+    console.log(' Chat API: Request body.id:', body.id);
+    console.log(' Chat API: Any other ID fields:', Object.keys(body).filter(k => k.toLowerCase().includes('id')));
     
     const { messages, sessionId: providedSessionId, id: providedId, attachments } = body;
     
@@ -122,16 +120,16 @@ export async function POST(request: NextRequest) {
     // AI SDK might send session ID as 'id' instead of 'sessionId'
     const sessionId = providedSessionId || providedId || extractOrGenerateSessionId(messages);    const userMessage = extractUserMessage(messages);
     
-    console.log('🔍 Chat API: Processing messages:', messages.length);
-    console.log('🏷️  Chat API: Provided Session ID:', providedSessionId);
-    console.log('🏷️  Chat API: Provided ID:', providedId);
-    console.log('🏷️  Chat API: Final Session ID:', sessionId);
-    console.log('💬 Chat API: User message:', userMessage.slice(0, 100) + '...');
+    console.log(' Chat API: Processing messages:', messages.length);
+    console.log('  Chat API: Provided Session ID:', providedSessionId);
+    console.log('  Chat API: Provided ID:', providedId);
+    console.log('  Chat API: Final Session ID:', sessionId);
+    console.log(' Chat API: User message:', userMessage.slice(0, 100) + '...');
     
     // Log attachment info if present
     if (attachments && attachments.length > 0) {
-      console.log('📎 Chat API: Attachments:', attachments.length);
-      console.log('📎 Chat API: Attachment types:', attachments.map((a: any) => a.type).join(', '));
+      console.log(' Chat API: Attachments:', attachments.length);
+      console.log(' Chat API: Attachment types:', attachments.map((a: any) => a.type).join(', '));
     }
     
     // Get LLM service (will initialize on first call)
@@ -142,7 +140,7 @@ export async function POST(request: NextRequest) {
     const model = service.getModel();
     const providerInfo = service.getProviderInfo();
     
-    console.log('🤖 Chat API: Using provider:', providerInfo.provider, 'with model:', providerInfo.model);
+    console.log(' Chat API: Using provider:', providerInfo.provider, 'with model:', providerInfo.model);
     
     // Create enhanced system message with RAG context if enabled
     let enhancedMessages = [...messages];
@@ -173,7 +171,7 @@ export async function POST(request: NextRequest) {
             ];
           }
         }      } catch (ragError) {
-        console.error('❌ Chat API: RAG enhancement FAILED:', ragError);
+        console.error(' Chat API: RAG enhancement FAILED:', ragError);
       }}    // Process attachments and add them to the last user message
     if (attachments && attachments.length > 0) {
       console.log(`Attachments: Processing ${attachments.length} files`);
@@ -193,14 +191,14 @@ export async function POST(request: NextRequest) {
               type: 'image',
               image: `data:${attachment.type};base64,${attachment.data}`
             });
-            console.log(`📎 Chat API: Added image attachment: ${attachment.name}`);
+            console.log(` Chat API: Added image attachment: ${attachment.name}`);
           } else {
             // Text-based attachment (documents, code, etc.)
             let fileContent;
             try {
               fileContent = Buffer.from(attachment.data, 'base64').toString('utf-8');
             } catch (error) {
-              console.warn(`📎 Chat API: Could not decode attachment ${attachment.name} as text, treating as binary`);
+              console.warn(` Chat API: Could not decode attachment ${attachment.name} as text, treating as binary`);
               fileContent = `[Binary file: ${attachment.name} (${attachment.type}, ${attachment.size} bytes)]`;
             }
             
@@ -208,7 +206,7 @@ export async function POST(request: NextRequest) {
               type: 'text',
               text: `File: ${attachment.name} (${attachment.type})\n\n${fileContent}`
             });
-            console.log(`📎 Chat API: Added text attachment: ${attachment.name}`);
+            console.log(` Chat API: Added text attachment: ${attachment.name}`);
           }
         }
         
@@ -230,12 +228,12 @@ export async function POST(request: NextRequest) {
           };
         }
         
-        console.log(`📎 Chat API: Enhanced message with ${attachments.length} attachments`);
+        console.log(` Chat API: Enhanced message with ${attachments.length} attachments`);
       }
     }
       
-    console.log('🚀 Chat API: About to call streamText with', enhancedMessages.length, 'messages');
-    console.log('🚀 Chat API: Last message:', JSON.stringify(enhancedMessages[enhancedMessages.length - 1], null, 2));
+    console.log(' Chat API: About to call streamText with', enhancedMessages.length, 'messages');
+    console.log(' Chat API: Last message:', JSON.stringify(enhancedMessages[enhancedMessages.length - 1], null, 2));
     
     // Load system prompt
     const systemPrompt = loadSystemPrompt();      // Stream the response with tool support
@@ -248,18 +246,73 @@ export async function POST(request: NextRequest) {
         maxTokens: parseInt(process.env.MAX_TOKENS || '4096'),
         temperature: parseFloat(process.env.TEMPERATURE || '0.7'),        maxSteps: 5, // Allow multiple tool calls
         onFinish: async (finishResult) => {
-        console.log('🏁 Chat API: onFinish callback started');
-        console.log('🏁 finishResult.text length:', finishResult.text?.length || 0);
+        console.log(' Chat API: onFinish callback started');
+        console.log(' finishResult.text length:', finishResult.text?.length || 0);
         
-        // Store conversation in memory after successful completion
-        if (enableRAG && userMessage && finishResult.text) {
+        // Extract tool calls from finishResult - AI SDK provides them in a cleaner format
+        const completeToolCalls: any[] = [];
+        let memoryToolCallFound = false;
+        
+        // The AI SDK provides tool calls in finishResult.steps
+        finishResult.steps?.forEach((step: any, index: number) => {
+          console.log(` Step ${index}:`, {
+            type: step.type,
+            toolCallsCount: step.toolCalls?.length || 0,
+            toolResultsCount: step.toolResults?.length || 0
+          });
+          
+          // AI SDK provides tool calls and results in the step
+          if (step.toolCalls && step.toolResults) {
+            step.toolCalls.forEach((call: any, callIndex: number) => {
+              // Find matching result
+              const result = step.toolResults[callIndex];
+              
+              // Check if this is a memory-related tool
+              if (call.toolName && (
+                  call.toolName.includes('memory') || 
+                  call.toolName.includes('search') || 
+                  call.toolName === 'get_related_memories'
+              )) {
+                memoryToolCallFound = true;
+                console.log(` Memory tool call found: ${call.toolName}`);
+              }
+              
+              if (result) {
+                // Store in AI SDK's expected format
+                const toolInvocation = {
+                  toolCallId: call.toolCallId,
+                  toolName: call.toolName,
+                  args: call.args,
+                  result: result.result
+                };
+                completeToolCalls.push(toolInvocation);
+                console.log(` ✅ Step 1: Tool execution complete: ${call.toolCallId} (${call.toolName})`);
+              } else {
+                console.warn(` No result found for tool call: ${call.toolCallId} (${call.toolName}) - this may cause AI SDK streaming issues`);
+              }
+            });
+          }
+        });
+        
+        // Store memory regardless of text content if it's a memory tool call
+        if (enableRAG && userMessage && (finishResult.text || memoryToolCallFound)) {
           try {
-            console.log('💾 Chat API: Storing conversation in memory...');
-            await service.storeConversationInMemory(userMessage, finishResult.text, sessionId);
-            console.log('💾 Chat API: Conversation stored in memory');          } catch (memoryError) {
-            console.error('❌ Chat API: Memory storage FAILED:', memoryError);
-            console.error('❌ Memory Error stack:', (memoryError as Error).stack);
-            throw memoryError; // Don't suppress this error
+            // Don't try to store empty content if using a memory tool
+            if (finishResult.text || !memoryToolCallFound) {
+              console.log(' Chat API: Storing conversation in memory...');
+              await service.storeConversationInMemory(
+                userMessage, 
+                finishResult.text || "Memory tool response (no text content)", 
+                sessionId
+              );
+              console.log(' ✅ Step 2: Memory storage complete');
+            } else {
+              console.log(' Chat API: Skipping memory storage for memory tool call');
+            }
+          } catch (memoryError) {
+            console.error(' Chat API: Memory storage FAILED:', memoryError);
+            console.error(' Memory Error stack:', (memoryError as Error).stack);
+            // Don't throw - log the error but don't break the stream
           }
         }
         
@@ -280,7 +333,7 @@ export async function POST(request: NextRequest) {
               messages: []
             });
             
-            console.log('📁 Chat API: Created new session:', sessionId);
+            console.log(' Chat API: Created new session:', sessionId);
           }
           // Store user message
           await chatHistory.addMessage({
@@ -297,86 +350,73 @@ export async function POST(request: NextRequest) {
               data: att.data,
               createdAt: new Date(),
             })) : undefined,
-          });          // Extract complete tool calls from steps - check all step types
-          const completeToolCalls: any[] = [];
-          
-          finishResult.steps?.forEach((step: any, index: number) => {
-            console.log(`🔍 Step ${index}:`, {
-              stepType: step.stepType,
-              toolCallsCount: step.toolCalls?.length || 0,
-              toolResultsCount: step.toolResults?.length || 0,
-              hasResult: !!step.result
-            });
+          });          // When storing assistant response, handle memory tool calls with no text
+          const assistantContent = finishResult.text || (memoryToolCallFound ? 
+            "[Memory tool call execution]" : "");
             
-            // Look for tool calls in various step structures
-            if (step.toolCalls?.length > 0) {
-              step.toolCalls.forEach((call: any) => {
-                const matchingResult = step.toolResults?.find((r: any) => r.toolCallId === call.toolCallId);                if (call.result || matchingResult) {
-                  // CRITICAL FIX: Merge tool call with its result + ensure AI SDK compatibility
-                  const completeCall = {
-                    type: 'tool-call',
-                    toolCallId: call.toolCallId || call.id,
-                    toolName: call.toolName,
-                    args: call.args,
-                    result: call.result || matchingResult,
-                    state: 'result' // Mark as completed for AI SDK
-                  };
-                  completeToolCalls.push(completeCall);
-                  console.log('✅ Found complete tool call:', call.toolCallId);
-                }
-              });
-            }
-            
-            // Also check if the step itself is a tool call
-            if (step.type === 'tool-call' && step.result) {
-              completeToolCalls.push(step);
-              console.log('✅ Found step-level tool call:', step.toolCallId);
-            }
-          });
-          
           // Store assistant response
           await chatHistory.addMessage({
             id: `msg_${Date.now()}_assistant`,
             sessionId: sessionId,
             role: 'assistant',
-            content: finishResult.text,
+            content: assistantContent,
             toolInvocations: completeToolCalls,
+          });            console.log(' ✅ Step 3: Chat history saved successfully');
+            // Trigger knowledge graph sync via queue (async, don't wait)
+          // Run this completely asynchronously to avoid affecting the stream
+          Promise.resolve().then(async () => {
+            try {
+              await kgSyncQueue.addSyncRequest('chat');
+              console.log(' ✅ Step 4: Knowledge graph sync queued successfully');
+            } catch (queueError) {
+              console.error(' Chat API: Failed to queue knowledge graph sync:', queueError);
+              // Error is contained here and won't affect the stream
+            }
+          }).catch((promiseError) => {
+            console.error(' Chat API: Unexpected error in async KG sync queue:', promiseError);
+            // This catch ensures the Promise never becomes an unhandled rejection
           });
-          
-          console.log('📝 Chat API: Conversation stored in chat history');        } catch (historyError) {
-          console.error('❌ Chat API: History storage FAILED:', historyError);
-          console.error('❌ History Error stack:', (historyError as Error).stack);
-          throw historyError; // Don't suppress this error
+        } catch (historyError) {
+          console.error(' Chat API: History storage FAILED:', historyError);
+          console.error(' History Error stack:', (historyError as Error).stack);
+          // Don't throw - log the error but don't break the stream
         }
-      },    }); 
+      },
+    });
 
     const dataStreamResponse = result.toDataStreamResponse();
-    console.log('✅ Chat API: stream response: ', dataStreamResponse.json);
-    return dataStreamResponse;
-  } catch (streamError) {
-    console.error('❌ Chat API: streamText failed:', streamError);
+    console.log(' Chat API: stream response: ', dataStreamResponse.json);
+    
+    console.log(' ✅ Step 5: AI SDK stream finalized successfully');
+    return dataStreamResponse;  } catch (streamError) {
+    console.error(' Chat API: streamText failed:', streamError);
 
     // Return a proper JSON error response that AI SDK can handle
+    // Include more details about the error
     return new Response(
       JSON.stringify({
         error: 'STREAM_ERROR',
         message: streamError instanceof Error ? streamError.message : 'Stream processing failed',
-        details: 'There was an error processing your request. Please try again.'
+        details: process.env.NODE_ENV === 'development' 
+          ? (streamError instanceof Error ? streamError.stack || streamError.message : 'Unknown stream error details') 
+          : 'An error occurred while processing the stream.',
+        toolErrorDetails: (streamError as any).toolErrorDetails || null // Propagate specific tool error details if available
       }),
-        { 
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-      } catch (error) {
-    console.error('❌ Chat API Error:', error);
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }  } catch (error) {
+    console.error(' Chat API Error:', error);
     
+    // Return a proper JSON error response
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: 'CHAT_API_ERROR',
         message: error instanceof Error ? error.message : 'Failed to process request',
-        details: 'Sorry, I encountered an error while processing your request.'
+        details: error instanceof Error ? error.stack || error.message : 'Sorry, I encountered an unknown error while processing your request.',
+        toolErrorDetails: (error as any).toolErrorDetails || null // Propagate specific tool error details if available
       }),
       { 
         status: 500,

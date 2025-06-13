@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         }, { status: 400 });
     }
   } catch (error) {
-    console.error('❌ Memory API Error:', error);
+    console.error(' Memory API Error:', error);
     return NextResponse.json({
       success: false,
       error: 'Failed to process memory request',
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
     }
   } catch (error) {
-    console.error('❌ Memory API Error:', error);
+    console.error(' Memory API Error:', error);
     return NextResponse.json({
       success: false,
       error: 'Failed to process memory request',

@@ -1,18 +1,26 @@
 {
   "name": "mcp-chat-client",
   "version": "0.1.0",
-  "private": true,  "scripts": {
-    "dev": "next dev",
+  "private": true,
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:next dev:kg-sync",
+    "dev:next": "next dev",
+    "dev:kg-sync": "tsx watch src/scripts/run-kg-sync.ts --process-all",
     "dev:debug": "cross-env NODE_OPTIONS='--inspect' next dev",
     "dev:gui": "npm run dev",
     "build": "next build",
-    "start": "next start",
+    "start": "npm-run-all --parallel start:next start:kg-sync",
+    "start:next": "next start",
+    "start:kg-sync": "node dist/scripts/run-kg-sync.js --process-all",
     "lint": "next lint",
     "test:rag": "npx ts-node --esm src/tests/rag-test.ts",
     "test:integration": "node src/tests/integration-test.js",
-    "test:all": "npm run test:integration && npm run test:rag",
+    "test:neo4j": "npx tsx src/tests/neo4j-integration.test.js",
+    "test:neo4j-advanced": "npx tsx src/tests/neo4j-advanced-deletion.test.js",
+    "test:all": "npm run test:integration && npm run test:rag && npm run test:neo4j",
     "type-check": "tsc --noEmit --skipLibCheck",
-    "start:rag": "powershell -ExecutionPolicy Bypass -File start-rag.ps1"
+    "start:rag": "powershell -ExecutionPolicy Bypass -File start-rag.ps1",
+    "kg:sync": "npx tsx ./src/scripts/run-kg-sync.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
@@ -21,11 +29,14 @@
     "@ai-sdk/groq": "^1.2.9",
     "@ai-sdk/mistral": "^1.2.8",
     "@ai-sdk/openai": "^1.3.22",
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
     "@types/better-sqlite3": "^7.6.13",
     "ai": "^4.0.0",
     "better-sqlite3": "^11.10.0",
     "chromadb": "^2.4.6",
+    "dotenv": "^16.5.0",
+    "jsonrepair": "^3.12.0",
+    "neo4j-driver": "^5.28.1",
     "next": "15.0.0",
     "ollama-ai-provider": "^1.2.0",
     "react": "^18.0.0",
@@ -41,8 +52,10 @@
     "cross-env": "^7.0.3",
     "eslint": "^8.0.0",
     "eslint-config-next": "15.0.0",
+    "npm-run-all": "^4.1.5",
     "postcss": "^8.5.4",
     "tailwindcss": "^4.1.8",
-    "typescript": "^5.0.0"
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
   }
 }

@@ -60,6 +60,17 @@ export class RAGService {
       return false;
     }
 
+    // Skip retrieval for very short queries (but make exceptions for important terms)
+    if (query.trim().length < 3) {
+      return false;
+    }
+
+    // List of important short terms that should always retrieve memories
+    const importantTerms = ['rag', 'api', 'llm', 'mcp', 'kg', 'ui', 'db', 'cli', 'app', 'client', 'neo4j'];
+    if (importantTerms.includes(query.trim().toLowerCase())) {
+      return true;
+    }
+
     // Skip retrieval for simple patterns
     const skipPatterns = [
       /^(hi|hello|hey|goodbye|thanks|thank you)$/i,
@@ -144,7 +155,7 @@ export class RAGService {
       // Process user message (with potential summarization)
       let processedUserMessage = userMessage;
       if (shouldSummarize(userMessage, config.summarization)) {
-        console.log(`📝 User message (${userMessage.length} chars) exceeds threshold, summarizing...`);
+        console.log(` User message (${userMessage.length} chars) exceeds threshold, summarizing...`);
         try {
           const result = await summarizeText(userMessage, {
             maxLength: Math.floor(config.summarization.threshold * 0.8),
@@ -152,16 +163,16 @@ export class RAGService {
             provider: config.summarization.provider
           });
           processedUserMessage = result.summary;
-          console.log(`✅ User message summarized: ${result.originalLength} → ${result.summaryLength} chars`);
+          console.log(` User message summarized: ${result.originalLength} → ${result.summaryLength} chars`);
         } catch (error) {
-          console.warn('⚠️ User message summarization failed, storing original:', error);
+          console.warn(' User message summarization failed, storing original:', error);
         }
       }
       
       // Process assistant message (with potential summarization)
       let processedAssistantMessage = assistantMessage;
       if (shouldSummarize(assistantMessage, config.summarization)) {
-        console.log(`📝 Assistant message (${assistantMessage.length} chars) exceeds threshold, summarizing...`);
+        console.log(` Assistant message (${assistantMessage.length} chars) exceeds threshold, summarizing...`);
         try {
           const result = await summarizeText(assistantMessage, {
             maxLength: Math.floor(config.summarization.threshold * 0.8),
@@ -169,9 +180,9 @@ export class RAGService {
             provider: config.summarization.provider
           });
           processedAssistantMessage = result.summary;
-          console.log(`✅ Assistant message summarized: ${result.originalLength} → ${result.summaryLength} chars`);
+          console.log(` Assistant message summarized: ${result.originalLength} → ${result.summaryLength} chars`);
         } catch (error) {
-          console.warn('⚠️ Assistant message summarization failed, storing original:', error);
+          console.warn(' Assistant message summarization failed, storing original:', error);
         }
       }
       
