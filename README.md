@@ -441,10 +441,10 @@ skynet-agent/
 The system now includes improved error handling and retry mechanisms:
 
 ## Fixed Issues
-- ✅ Retry queue for failed KG sync operations
-- ✅ Proper error handling instead of fire-and-forget
-- ✅ Automatic retry processing every minute
-- ✅ Sync metrics collection for monitoring
+-  Retry queue for failed KG sync operations
+-  Proper error handling instead of fire-and-forget
+-  Automatic retry processing every minute
+-  Sync metrics collection for monitoring
 
 ## Architecture
 - **ChromaDB**: Primary vector storage for semantic search
