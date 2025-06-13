@@ -7,21 +7,8 @@ class KnowledgeGraphService {
   private initializationError: string | null = null;
 
   constructor() {
-    // Don't throw during construction - defer to connect() method
-    try {
-      const uri = process.env.NEO4J_URI;
-      const user = process.env.NEO4J_USER;
-      const password = process.env.NEO4J_PASSWORD;
-
-      if (!uri || !user || !password) {
-        this.initializationError = 'Missing Neo4j connection details in environment variables (NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)';
-        return;
-      }
-
-      this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
-    } catch (error) {
-      this.initializationError = `Failed to initialize Neo4j driver: ${error}`;
-    }
+    // Don't initialize driver in constructor - defer to connect() method
+    // This prevents "Unknown scheme: null" errors when env vars aren't set
   }  async connect(): Promise<void> {
     if (this.initializationError) {
       console.warn('[KG Service] Initialization previously failed:', this.initializationError);

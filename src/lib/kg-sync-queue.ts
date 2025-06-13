@@ -37,7 +37,9 @@ export class KnowledgeGraphSyncQueue {
     
     try {
       // Read current queue
-      const queueData = await fs.readFile(this.queuePath, 'utf-8');
+      let queueData = await fs.readFile(this.queuePath, 'utf-8');
+      // Strip BOM if present
+      queueData = queueData.replace(/^\uFEFF/, '');
       const queue = JSON.parse(queueData);
       
       // Add new request
@@ -63,7 +65,9 @@ export class KnowledgeGraphSyncQueue {
     await this.initialize();
     
     try {
-      const queueData = await fs.readFile(this.queuePath, 'utf-8');
+      let queueData = await fs.readFile(this.queuePath, 'utf-8');
+      // Strip BOM if present
+      queueData = queueData.replace(/^\uFEFF/, '');
       const queue = JSON.parse(queueData);
       return queue.requests?.length || 0;
     } catch (error) {
@@ -82,7 +86,9 @@ export class KnowledgeGraphSyncQueue {
     
     try {
       // Read queue
-      const queueData = await fs.readFile(this.queuePath, 'utf-8');
+      let queueData = await fs.readFile(this.queuePath, 'utf-8');
+      // Strip BOM if present
+      queueData = queueData.replace(/^\uFEFF/, '');
       const queue = JSON.parse(queueData);
       
       if (!queue.requests || queue.requests.length === 0) {
@@ -136,7 +142,9 @@ export class KnowledgeGraphSyncQueue {
     
     try {
       // Read queue
-      const queueData = await fs.readFile(this.queuePath, 'utf-8');
+      let queueData = await fs.readFile(this.queuePath, 'utf-8');
+      // Strip BOM if present
+      queueData = queueData.replace(/^\uFEFF/, '');
       const queue = JSON.parse(queueData);
       
       if (!queue.requests || queue.requests.length === 0) {

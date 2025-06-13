@@ -1,0 +1,58 @@
+{
+  "mcp": {
+    "servers": {
+      "filesystem": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "C:/Users/agent"
+        ]
+      },
+      "windows-cli": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@simonb97/server-win-cli"
+        ]
+      },
+      "playwright": {
+        "command": "npx",
+        "args": ["@playwright/mcp@latest"]
+      },
+      "sequential-thinking": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-sequential-thinking"
+        ]
+      },
+      "conscious-memory": {
+        "command": "npx",
+        "args": ["tsx", "./src/lib/mcp-servers/conscious-memory-server.ts"]
+      },
+      "knowledge-graph": {
+        "command": "npx",
+        "args": ["tsx", "./src/lib/mcp-servers/knowledge-graph-server.ts"],
+        "env": {
+          "NEO4J_URI": "bolt://localhost:7687",
+          "NEO4J_USER": "neo4j",
+          "NEO4J_PASSWORD": "password123"
+        }
+      }
+    }
+  },
+  "agent": {
+    "model": "gemini-2.5-flash-preview-05-20",
+    "maxTokens": 8192,
+    "temperature": 0.7
+  },
+  "memory": {
+    "storePath": "./data/memory",
+    "consolidationInterval": 10
+  },
+  "server": {
+    "port": 8080,
+    "host": "localhost"
+  }
+}
