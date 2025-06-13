@@ -8,6 +8,8 @@ import type { ConsciousMemoryService, ConsciousMemorySearchResult, ConsciousMemo
 import { ChromaMemoryStore } from './memory-store'; // For RAG memories, if separate processing is needed
 import { convertExtractedEntityToKgNode, convertExtractedRelationshipToKgRelationship } from './kg-type-converters';
 import { SyncStateManager } from './kg-sync-state';
+import { withRetry, SyncErrorQueue } from './kg-resilience';
+import { SyncMetricsCollector } from './kg-sync-metrics';
 
 // Define a simple structure for tracking sync progress
 
@@ -17,6 +19,8 @@ export class KnowledgeGraphSyncService {
   private chatHistoryDB: ChatHistoryDatabase;
   private consciousMemoryService: ConsciousMemoryService;
   private syncStateManager: SyncStateManager;
+  private errorQueue: SyncErrorQueue;
+  private metricsCollector?: SyncMetricsCollector;
   // private ragMemoryStore: ChromaMemoryStore; // If direct access is needed
 
   constructor() {
@@ -24,13 +28,47 @@ export class KnowledgeGraphSyncService {
     this.llmService = new LLMService(); // Assuming default constructor is fine
     this.chatHistoryDB = ChatHistoryDatabase.getInstance(); // Use singleton pattern
     this.syncStateManager = new SyncStateManager();
+    this.errorQueue = new SyncErrorQueue();
 
     // Initialize ConsciousMemoryService using singleton pattern
     this.consciousMemoryService = getConsciousMemoryService();
 
     // Ensure Neo4j driver is ready (connect method in KnowledgeGraphService)
     // This might be better handled explicitly before sync, or internally by KnowledgeGraphService methods
-    this.kgService.connect().catch(console.error);  }
+    this.kgService.connect().catch(console.error);
+    
+    // Set up error queue processing interval
+    setInterval(() => {
+      this.processErrorQueue();
+    }, 60000); // Process error queue every minute
+  }
+
+  private async processErrorQueue(): Promise<void> {
+    console.log('[Sync Service] Processing error queue...');
+    await this.errorQueue.processQueue(async (item) => {
+      try {
+        // Parse the stored metadata to get entity/relationship data
+        const data = item.metadata;
+        if (!data || !data.type) {
+          console.error(`[Sync Service] Invalid error queue item: missing type`);
+          return;
+        }
+        
+        if (data.type === 'entity' && data.entity) {
+          const kgNode = convertExtractedEntityToKgNode(data.entity);
+          await this.kgService.addNode(kgNode);
+          console.log(`[Sync Service] Successfully reprocessed entity ${data.entity.id}`);
+        } else if (data.type === 'relationship' && data.relationship) {
+          const kgRelationship = convertExtractedRelationshipToKgRelationship(data.relationship);
+          await this.kgService.addRelationship(kgRelationship);
+          console.log(`[Sync Service] Successfully reprocessed relationship ${data.relationship.type}`);
+        }
+      } catch (error) {
+        console.error(`[Sync Service] Failed to reprocess item from error queue:`, error);
+        throw error; // Re-throw to keep in error queue
+      }
+    });
+  }
 
   private mergeExtractions(
     results: (KnowledgeExtractionResult | RuleBasedExtractionResult | null)[]
@@ -100,6 +138,9 @@ export class KnowledgeGraphSyncService {
     console.log(`\n🔄 [KG Sync] Starting knowledge graph synchronization at ${new Date().toISOString()}`);
     console.log(`📋 [KG Sync] Mode: ${options.forceFullResync ? 'FULL RESYNC' : 'INCREMENTAL SYNC'}`);
     
+    // Initialize metrics collector
+    this.metricsCollector = new SyncMetricsCollector();
+    
     // Get initial stats
     const initialStats = await this.kgService.getStatistics();
     console.log(`📊 [KG Sync] Initial counts: ${initialStats.nodeCount} nodes, ${initialStats.relationshipCount} relationships`);
@@ -136,18 +177,27 @@ export class KnowledgeGraphSyncService {
 
       // 2. Fetch Conscious Memories
       // Assuming searchMemories with empty query and large limit fetches all.
-      // Needs pagination or streaming for very large datasets.      // Also needs filtering by timestamp for incremental syncs.
+      // Needs pagination or streaming for very large datasets.
+      // Also needs filtering by timestamp for incremental syncs.
       const consciousMemories = await this.consciousMemoryService.searchMemories('', { limit: 10000 }); // High limit
       console.log(`🧠 [KG Sync] Processing ${consciousMemories.length} conscious memories...`);
-      for (const memory of consciousMemories) {
-         // Basic check: if memory.metadata.updatedAt > lastSync
-         // if (options.forceFullResync || !lastSync || (memory.metadata.updatedAt && new Date(memory.metadata.updatedAt) > new Date(lastSync))) {
-         // For now, processing all memories if not doing proper timestamp check
-          if (options.forceFullResync || !lastSync ) { // Simplified condition
-            const memoryExtracts = await this.processConsciousMemory(memory);
-            allExtractedEntities.push(...memoryExtracts.entities);
-            allExtractedRelationships.push(...memoryExtracts.relationships);
-          }
+      
+      const filteredMemories = consciousMemories.filter(memory => {
+        // Enhanced timestamp filtering
+        if (!options.forceFullResync && lastSync && memory.metadata.createdAt) {
+          const memoryDate = new Date(memory.metadata.createdAt);
+          const lastSyncDate = new Date(lastSync);
+          return memoryDate > lastSyncDate;
+        }
+        return true; // Include all memories for full sync
+      });
+      
+      console.log(`🧠 [KG Sync] After filtering: ${filteredMemories.length} memories to process`);
+      
+      for (const memory of filteredMemories) {
+        const memoryExtracts = await this.processConsciousMemory(memory);
+        allExtractedEntities.push(...memoryExtracts.entities);
+        allExtractedRelationships.push(...memoryExtracts.relationships);
       }      // 3. Fetch RAG-specific memories
       const ragExtracts = await this.syncRAGMemories(lastSync);
       allExtractedEntities.push(...ragExtracts.entities);
@@ -161,22 +211,134 @@ export class KnowledgeGraphSyncService {
       await this.kgService.connect(); // Ensure connection
       console.log(`📥 [KG Sync] Loading ${allExtractedEntities.length} entities and ${allExtractedRelationships.length} relationships into Neo4j...`);
 
+      // 5.1 Memory deduplication - check existing nodes
+      const existingNodeIds = new Set<string>();
       for (const entity of allExtractedEntities) {
+        const existing = await this.kgService.findNodeById(entity.id);
+        if (existing) {
+          existingNodeIds.add(entity.id);
+        }
+      }
+      
+      const newEntities = allExtractedEntities.filter(e => !existingNodeIds.has(e.id));
+      console.log(`🔍 [KG Sync] Found ${existingNodeIds.size} existing entities, ${newEntities.length} new entities to add`);
+
+      // 5.2 Batch processing for entities
+      const BATCH_SIZE = 100;
+      const entityBatches = [];
+      for (let i = 0; i < newEntities.length; i += BATCH_SIZE) {
+        entityBatches.push(newEntities.slice(i, i + BATCH_SIZE));
+      }
+
+      console.log(`📦 [KG Sync] Processing entities in ${entityBatches.length} batches of ${BATCH_SIZE}`);
+      
+      for (const [index, batch] of entityBatches.entries()) {
         try {
-          // Convert ExtractedEntity to KgNode using proper type converter
-          await this.kgService.addNode(convertExtractedEntityToKgNode(entity));
+          const kgNodes = batch.map(entity => convertExtractedEntityToKgNode(entity));
+          const result = await withRetry(
+            () => this.kgService.addNodesBatch(kgNodes),
+            {
+              maxRetries: 3,
+              backoffMs: 500,
+              onRetry: (error, attempt) => {
+                console.warn(`[Sync Service] Retry ${attempt} for entity batch ${index + 1}:`, error.message);
+              }
+            }
+          );
+          
+          console.log(`✅ [KG Sync] Batch ${index + 1}/${entityBatches.length}: ${result.succeeded} succeeded, ${result.failed} failed`);
+          for (let i = 0; i < result.succeeded; i++) {
+            this.metricsCollector?.recordEntity();
+          }
+          
+          // Add failed entities to error queue
+          if (result.failed > 0) {
+            const failedStart = index * BATCH_SIZE + result.succeeded;
+            const failedEntities = batch.slice(result.succeeded);
+            for (const entity of failedEntities) {
+              this.errorQueue.push({
+                id: `entity-${entity.id}`,
+                operation: 'save',
+                metadata: { type: 'entity', entity },
+                retryCount: 0,
+                timestamp: Date.now()
+              });
+              this.metricsCollector?.recordError(new Error(`Failed to add entity ${entity.id}`));
+            }
+          }
         } catch (error) {
-          console.error(`[Sync Service] Error adding entity ID ${entity.id} (${entity.label}):`, error);
+          console.error(`[Sync Service] Error processing entity batch ${index + 1}:`, error);
+          // Add entire batch to error queue
+          for (const entity of batch) {
+            this.errorQueue.push({
+              id: `entity-${entity.id}`,
+              operation: 'save',
+              metadata: { type: 'entity', entity },
+              retryCount: 0,
+              timestamp: Date.now()
+            });
+          }
+          this.metricsCollector?.recordError(error as Error);
         }
       }
 
-      for (const rel of allExtractedRelationships) {
+      // 5.3 Batch processing for relationships
+      const relationshipBatches = [];
+      for (let i = 0; i < allExtractedRelationships.length; i += BATCH_SIZE) {
+        relationshipBatches.push(allExtractedRelationships.slice(i, i + BATCH_SIZE));
+      }
+
+      console.log(`📦 [KG Sync] Processing relationships in ${relationshipBatches.length} batches of ${BATCH_SIZE}`);
+      
+      for (const [index, batch] of relationshipBatches.entries()) {
         try {
-          // Convert ExtractedRelationship to KgRelationship using proper type converter
-          await this.kgService.addRelationship(convertExtractedRelationshipToKgRelationship(rel));
+          const kgRelationships = batch.map(rel => convertExtractedRelationshipToKgRelationship(rel));
+          const result = await withRetry(
+            () => this.kgService.addRelationshipsBatch(kgRelationships),
+            {
+              maxRetries: 3,
+              backoffMs: 500,
+              onRetry: (error, attempt) => {
+                console.warn(`[Sync Service] Retry ${attempt} for relationship batch ${index + 1}:`, error.message);
+              }
+            }
+          );
+          
+          console.log(`✅ [KG Sync] Batch ${index + 1}/${relationshipBatches.length}: ${result.succeeded} succeeded, ${result.failed} failed`);
+          for (let i = 0; i < result.succeeded; i++) {
+            this.metricsCollector?.recordRelationship();
+          }
+          
+          // Add failed relationships to error queue
+          if (result.failed > 0) {
+            const failedStart = index * BATCH_SIZE + result.succeeded;
+            const failedRelationships = batch.slice(result.succeeded);
+            for (const rel of failedRelationships) {
+              this.errorQueue.push({
+                id: `rel-${rel.sourceEntityId}-${rel.type}-${rel.targetEntityId}`,
+                operation: 'save',
+                metadata: { type: 'relationship', relationship: rel },
+                retryCount: 0,
+                timestamp: Date.now()
+              });
+              this.metricsCollector?.recordError(new Error(`Failed to add relationship ${rel.type}`));
+            }
+          }
         } catch (error) {
-          console.error(`[Sync Service] Error adding relationship type ${rel.type} (Source: ${rel.sourceEntityId}, Target: ${rel.targetEntityId}):`, error);
-        }      }
+          console.error(`[Sync Service] Error processing relationship batch ${index + 1}:`, error);
+          // Add entire batch to error queue
+          for (const rel of batch) {
+            this.errorQueue.push({
+              id: `rel-${rel.sourceEntityId}-${rel.type}-${rel.targetEntityId}`,
+              operation: 'save',
+              metadata: { type: 'relationship', relationship: rel },
+              retryCount: 0,
+              timestamp: Date.now()
+            });
+          }
+          this.metricsCollector?.recordError(error as Error);
+        }
+      }
       
       // 6. Final Statistics and Completion
       const finalStats = await this.kgService.getStatistics();
@@ -188,6 +350,12 @@ export class KnowledgeGraphSyncService {
       console.log(`🏷️  [KG Sync] Node types: ${finalStats.labels.join(', ')}`);
       console.log(`🔗 [KG Sync] Relationship types: ${finalStats.relationshipTypes.join(', ')}\n`);
 
+      // Complete metrics collection
+      const metrics = this.metricsCollector?.complete('completed');
+      if (metrics) {
+        console.log(`📊 [KG Sync] Metrics: ${metrics.entitiesProcessed} entities, ${metrics.relationshipsProcessed} relationships, ${metrics.errors.length} errors`);
+      }
+
       // 7. Update Sync State
       await this.syncStateManager.write({ 
         lastSyncTimestamp: newLastSyncTimestamp,
@@ -197,6 +365,9 @@ export class KnowledgeGraphSyncService {
       // Log detailed error but don't propagate it upward
       console.error('[Sync Service] Error details:', error instanceof Error ? error.stack : 'Unknown error');
       console.error('[Sync Service] Sync operation failed but will not affect other system operations');
+      
+      // Complete metrics collection with failed status
+      this.metricsCollector?.complete('failed');
     } finally {
       try {
         // Handle close errors separately to avoid affecting parent context

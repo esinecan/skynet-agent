@@ -60,6 +60,17 @@ export class RAGService {
       return false;
     }
 
+    // Skip retrieval for very short queries (but make exceptions for important terms)
+    if (query.trim().length < 3) {
+      return false;
+    }
+
+    // List of important short terms that should always retrieve memories
+    const importantTerms = ['rag', 'api', 'llm', 'mcp', 'kg', 'ui', 'db', 'cli', 'app', 'client', 'neo4j'];
+    if (importantTerms.includes(query.trim().toLowerCase())) {
+      return true;
+    }
+
     // Skip retrieval for simple patterns
     const skipPatterns = [
       /^(hi|hello|hey|goodbye|thanks|thank you)$/i,

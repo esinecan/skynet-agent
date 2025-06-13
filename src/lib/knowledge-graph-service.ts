@@ -120,6 +120,36 @@ class KnowledgeGraphService {
     return node;
   }
 
+  // Batch add nodes for improved performance
+  async addNodesBatch(nodes: KgNode[]): Promise<{ succeeded: number; failed: number }> {
+    if (!this.session) await this.connect();
+    
+    const query = `
+      UNWIND $nodes AS node
+      MERGE (n {id: node.id})
+      SET n = node.properties, n:${nodes[0]?.type || 'Node'}, n.updatedAt = datetime()
+      RETURN n.id as nodeId
+    `;
+    
+    // Prepare nodes with sanitized properties
+    const sanitizedNodes = nodes.map(node => ({
+      id: node.id,
+      properties: this.sanitizeProperties({
+        ...node.properties,
+        id: node.id,
+        createdAt: node.createdAt ? node.createdAt.toISOString() : new Date().toISOString()
+      })
+    }));
+    
+    try {
+      const result = await this.session!.run(query, { nodes: sanitizedNodes });
+      return { succeeded: result.records.length, failed: nodes.length - result.records.length };
+    } catch (error) {
+      console.error('[KG Service] Batch node insertion failed:', error);
+      return { succeeded: 0, failed: nodes.length };
+    }
+  }
+
   // Placeholder for adding a relationship
   // Assuming KgRelationship is defined in ../types/knowledge-graph
   // For now, let's define a minimal one here if not present globally yet.
@@ -151,6 +181,72 @@ class KnowledgeGraphService {
       properties: sanitizedProperties
     });
   }
+
+  // Batch add relationships for improved performance
+  async addRelationshipsBatch(relationships: KgRelationship[]): Promise<{ succeeded: number; failed: number }> {
+    if (!this.session) await this.connect();
+    
+    const query = `
+      UNWIND $relationships AS rel
+      MATCH (a {id: rel.sourceNodeId})
+      MATCH (b {id: rel.targetNodeId})
+      MERGE (a)-[r:RELATIONSHIP]->(b)
+      SET r += rel.properties, r.type = rel.type, r.createdAt = datetime(), r.updatedAt = datetime()
+      RETURN a.id as sourceId, b.id as targetId
+    `;
+    
+    // Prepare relationships with sanitized properties
+    const sanitizedRelationships = relationships.map(rel => ({
+      sourceNodeId: rel.sourceNodeId,
+      targetNodeId: rel.targetNodeId,
+      type: rel.type,
+      properties: this.sanitizeProperties({
+        ...rel.properties,
+        type: rel.type
+      })
+    }));
+    
+    try {
+      const result = await this.session!.run(query, { relationships: sanitizedRelationships });
+      return { succeeded: result.records.length, failed: relationships.length - result.records.length };
+    } catch (error) {
+      console.error('[KG Service] Batch relationship insertion failed:', error);
+      return { succeeded: 0, failed: relationships.length };
+    }
+  }
+
+  // Find node by ID
+  async findNodeById(nodeId: string): Promise<KgNode | null> {
+    if (!this.session) await this.connect();
+    
+    const query = `
+      MATCH (n {id: $nodeId})
+      RETURN n, labels(n) as labels
+    `;
+    
+    try {
+      const result = await this.session!.run(query, { nodeId });
+      if (result.records.length === 0) {
+        return null;
+      }
+      
+      const record = result.records[0];
+      const nodeData = record.get('n').properties;
+      const labels = record.get('labels') as string[];
+      
+      return {
+        id: nodeData.id,
+        type: labels[0] || 'Node',
+        properties: nodeData,
+        createdAt: nodeData.createdAt ? new Date(nodeData.createdAt) : undefined,
+        updatedAt: nodeData.updatedAt ? new Date(nodeData.updatedAt) : undefined
+      };
+    } catch (error) {
+      console.error(`[KG Service] Error finding node ${nodeId}:`, error);
+      return null;
+    }
+  }
+  
   // Enhanced node deletion with safety and cascade options
   async deleteNode(nodeId: string, options?: {
     nodeType?: string;

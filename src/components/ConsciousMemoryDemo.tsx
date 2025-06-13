@@ -412,31 +412,32 @@ export default function ConsciousMemoryDemo() {
     console.log('🗑️ Bulk deleting memories:', memories.length);
     
     try {
-      let deletedCount = 0;
-      for (const memory of memories) {
-        const response = await fetch('/api/conscious-memory', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'delete',
-            id: memory.id
-          })
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-          deletedCount++;
-        }
-      }
+      // More efficient implementation using single API call
+      const memoryIds = memories.map(memory => memory.id);
+      const response = await fetch('/api/conscious-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deleteMultiple',
+          ids: memoryIds
+        })
+      });
       
-      console.log(`🗑️ Deleted ${deletedCount} memories`);
-      setMemories([]);
-      await fetchStats();
+      const data = await response.json();
+      console.log('🗑️ Bulk delete response:', data);
+      
+      if (data.success) {
+        console.log(`🗑️ Successfully deleted ${memoryIds.length} memories`);
+        setMemories([]);
+        await Promise.all([fetchStats(), fetchTags()]); // Also refresh tags
+      } else {
+        setError('Failed to delete memories: ' + (data.error || 'Unknown error'));
+      }
     } catch (err) {
-      console.error('🗑️ Bulk delete error:', err);
-      setError('Error during bulk delete');
+      console.error('Failed to delete memories:', err);
+      setError('Network error while deleting memories');
     } finally {
-      setLoading(false);
+      setLoading(false); // Always reset loading state
     }
   };  useEffect(() => {
     fetchStats();
