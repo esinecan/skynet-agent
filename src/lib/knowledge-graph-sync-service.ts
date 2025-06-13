@@ -200,6 +200,7 @@ export class KnowledgeGraphSyncService {
         allExtractedRelationships.push(...memoryExtracts.relationships);
       }      // 3. Fetch RAG-specific memories
       const ragExtracts = await this.syncRAGMemories(lastSync);
+      console.log(`[KG Sync] Extracted ${ragExtracts.entities.length} entities and ${ragExtracts.relationships.length} relationships from RAG memories`); // New log line
       allExtractedEntities.push(...ragExtracts.entities);
       allExtractedRelationships.push(...ragExtracts.relationships);      // 4. Data Aggregation and Deduplication
       const finalExtraction = this.mergeExtractions([{ entities: allExtractedEntities, relationships: allExtractedRelationships }]);
@@ -384,69 +385,60 @@ export class KnowledgeGraphSyncService {
     relationships: ExtractedRelationship[];
   }> {
     console.log('[Sync Service] Processing RAG memories...');
-    
+
+    const memoryStore = getMemoryStore();
+    await memoryStore.initialize(); // Ensure this is called.
     const allEntities: ExtractedEntity[] = [];
     const allRelationships: ExtractedRelationship[] = [];
-    
-    // Get memory store instance
-    const memoryStore = getMemoryStore();
-    await memoryStore.initialize();
-    
+
     try {
-      // Retrieve all memories (ChromaDB doesn't support timestamp filtering directly)
-      const searchResults = await memoryStore.retrieveMemories('', {
-        limit: 10000
+      const query = lastSync
+        ? `timestamp:>${lastSync}`
+        : '*';
+
+      const memories = await memoryStore.retrieveMemories(query, {
+        limit: 500
       });
-      
-      // Filter by timestamp if lastSync is provided
-      const filteredResults = lastSync 
-        ? searchResults.filter(result => result.metadata.timestamp > lastSync)
-        : searchResults;
-        
-      console.log(`💾 [KG Sync] Processing ${filteredResults.length} RAG memories...`);
-      
-      for (const result of filteredResults) {
-        // Extract knowledge from memory text
-        const extraction = await this.llmService.extractKnowledge(
-          result.text,
-          `RAG Memory from session ${result.metadata.sessionId}`
-        );
-        
-        allEntities.push(...extraction.entities);
-        allRelationships.push(...extraction.relationships);
-        
-        // Create memory node
+
+      console.log(`[Sync Service] Found ${memories.length} RAG memories to process`);
+
+      for (const memory of memories) {
+        const memoryId = `memory-${memory.id}`;
         const memoryEntity: ExtractedEntity = {
-          id: `rag_memory_${result.id}`,
-          label: 'RAGMemory',
+          id: memoryId,
+          label: 'Memory',
           properties: {
-            content: result.text,
-            timestamp: result.metadata.timestamp,
-            messageType: result.metadata.messageType,
-            sessionId: result.metadata.sessionId,
-            textLength: result.metadata.textLength
+            content: memory.text,
+            sessionId: memory.metadata.sessionId,
+            timestamp: memory.metadata.timestamp,
+            messageType: memory.metadata.messageType,
+            textLength: memory.metadata.textLength
           }
         };
-        
         allEntities.push(memoryEntity);
-        
-        // Link to session
-        if (result.metadata.sessionId) {
-          allRelationships.push({
-            sourceEntityId: memoryEntity.id,
-            targetEntityId: `session_${result.metadata.sessionId}`,
-            type: 'PART_OF_SESSION',
-            properties: { timestamp: result.metadata.timestamp }
-          });
+
+        if (memory.metadata.sessionId) {
+          const sessionRelationship: ExtractedRelationship = {
+            sourceEntityId: memoryId,
+            targetEntityId: `session-${memory.metadata.sessionId}`,
+            type: 'BELONGS_TO',
+            properties: {}
+          };
+          allRelationships.push(sessionRelationship);
         }
       }
+      return { entities: allEntities, relationships: allRelationships };
     } catch (error) {
       console.error('[Sync Service] Error processing RAG memories:', error);
+      return { entities: [], relationships: [] };
     } finally {
-      await memoryStore.cleanup();
+      // It's good practice to clean up, especially if initialize was called.
+      // The getMemoryStore might return a shared instance, so cleanup behavior should be idempotent or managed by the store itself.
+      // Given the previous implementation of ChromaMemoryStore, cleanup resets its internal initialized state.
+      if (memoryStore && typeof memoryStore.cleanup === 'function') {
+          await memoryStore.cleanup();
+      }
     }
-    
-    return { entities: allEntities, relationships: allRelationships };
   }
   /**
    * Log current Neo4j statistics for monitoring
