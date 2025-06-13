@@ -20,8 +20,8 @@ export interface RAGConfig {
 export function getRAGConfig(): RAGConfig {
   return {
     enabled: process.env.RAG_ENABLED !== 'false',
-    maxMemories: parseInt(process.env.RAG_MAX_MEMORIES || '3'),
-    minSimilarity: parseFloat(process.env.RAG_MIN_SIMILARITY || '0.5'),
+    maxMemories: parseInt(process.env.RAG_MAX_MEMORIES || '5'),
+    minSimilarity: parseFloat(process.env.RAG_MIN_SIMILARITY || '0.15'),
     includeSessionContext: process.env.RAG_INCLUDE_SESSION_CONTEXT === 'true',
     chromaUrl: process.env.CHROMA_URL || 'http://localhost:8000',
     chromaCollection: process.env.CHROMA_COLLECTION || 'mcp_chat_memories',

@@ -187,17 +187,24 @@ export class ChromaMemoryStore implements MemoryStore {
     }
 
     const limit = options.limit || this.defaultLimit;
-    const minScore = options.minScore || this.defaultMinScore;    try {
-      // Generate embedding for the query
-      const embedding = await this.embeddingService.generateEmbedding(query);
+    const minScore = options.minScore || this.defaultMinScore;
+    
+    try {
+      // Preprocess the query to focus on the most relevant part
+      const processedQuery = this.preprocessQuery(query);
+      console.log(`Memory retrieval - Original query length: ${query.length}, processed: ${processedQuery.length}`);
+      
+      // Generate embedding for the processed query
+      const embedding = await this.embeddingService.generateEmbedding(processedQuery);
       
       console.log(`Debug - Query embedding dimensions: ${embedding.length}`);
       console.log(`Debug - Collection count before query: ${await this.collection.count()}`);
       
-      // Query ChromaDB for similar vectors
+      // Query ChromaDB for similar vectors with a higher initial result count
+      // to allow for better post-filtering
       const results = await this.collection.query({
         queryEmbeddings: [embedding],
-        nResults: Math.max(limit, 10) // Get more results to filter by score
+        nResults: Math.max(limit * 3, 15) // Get more results for better filtering
       });
       
       console.log(`Debug - Raw ChromaDB results:`, {
@@ -210,17 +217,20 @@ export class ChromaMemoryStore implements MemoryStore {
       
       const memories: MemoryRetrievalResult[] = [];
       
-      if (results.ids && results.ids.length > 0 && results.ids[0].length > 0) {        for (let i = 0; i < results.ids[0].length; i++) {
+      if (results.ids && results.ids.length > 0 && results.ids[0].length > 0) {
+        for (let i = 0; i < results.ids[0].length; i++) {
           const id = results.ids[0][i];
           const metadata = results.metadatas[0][i];
           const distance = results.distances?.[0][i] || 0;
           
           // Convert cosine distance to similarity score (0-1)
-          // ChromaDB uses cosine distance by default, where similarity = 1 - distance
           const score = Math.max(0, Math.min(1, 1 - distance));
           
-          // Filter by minimum score
-          if (score >= minScore) {
+          // Dynamic score threshold - adjust based on query length
+          const dynamicMinScore = this.calculateDynamicThreshold(minScore, processedQuery.length);
+          
+          // Filter by dynamic minimum score
+          if (score >= dynamicMinScore) {
             // Apply session filter if specified
             if (options.sessionId && metadata.sessionId !== options.sessionId) {
               continue;
@@ -251,13 +261,54 @@ export class ChromaMemoryStore implements MemoryStore {
         .sort((a, b) => b.score - a.score)
         .slice(0, limit);
       
-      console.log(`Retrieved ${sortedMemories.length} memories for query (${query.slice(0, 50)}...)`);
+      console.log(`Retrieved ${sortedMemories.length} memories for query (${processedQuery.slice(0, 50)}...)`);
+      if (sortedMemories.length > 0) {
+        console.log(`Top match score: ${sortedMemories[0].score.toFixed(4)}, threshold: ${this.calculateDynamicThreshold(minScore, processedQuery.length).toFixed(4)}`);
+      }
       
       return sortedMemories;
     } catch (error) {
       console.error('Failed to retrieve memories from ChromaDB:', error);
       return [];
     }
+  }
+
+  /**
+   * Preprocess query to focus on relevant information
+   */
+  private preprocessQuery(query: string): string {
+    // If query is short enough, use it directly
+    if (query.length <= 500) {
+      return query;
+    }
+    
+    // For longer queries, try different strategies:
+    
+    // 1. Extract the last significant chunk (likely most relevant for chat)
+    const sentences = query.split(/[.!?]\s+/);
+    if (sentences.length > 3) {
+      // Take the last 3-5 sentences, which are often the most relevant
+      return sentences.slice(-5).join('. ');
+    }
+    
+    // 2. If there are no clear sentence breaks, take the last portion
+    return query.slice(-500);
+  }
+
+  /**
+   * Calculate a dynamic similarity threshold based on query length
+   */
+  private calculateDynamicThreshold(baseThreshold: number, queryLength: number): number {
+    // For longer queries, lower the threshold slightly as exact matches become less likely
+    if (queryLength > 1000) {
+      return Math.max(0.3, baseThreshold - 0.15);
+    } else if (queryLength > 500) {
+      return Math.max(0.3, baseThreshold - 0.10);
+    } else if (queryLength > 200) {
+      return Math.max(0.3, baseThreshold - 0.05);
+    }
+    
+    return baseThreshold;
   }
 
   /**

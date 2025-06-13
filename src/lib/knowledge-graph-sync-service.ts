@@ -380,6 +380,11 @@ export class KnowledgeGraphSyncService {
       }
     }
   }
+  /**
+   * Synchronizes RAG memories with the knowledge graph
+   * @param lastSync Timestamp of the last synchronization
+   * @returns Extracted entities and relationships from RAG memories
+   */
   private async syncRAGMemories(lastSync: string | null): Promise<{
     entities: ExtractedEntity[];
     relationships: ExtractedRelationship[];
@@ -387,56 +392,125 @@ export class KnowledgeGraphSyncService {
     console.log('[Sync Service] Processing RAG memories...');
 
     const memoryStore = getMemoryStore();
-    await memoryStore.initialize(); // Ensure this is called.
+    await memoryStore.initialize(); // Ensure ChromaDB connection is ready
     const allEntities: ExtractedEntity[] = [];
     const allRelationships: ExtractedRelationship[] = [];
 
     try {
+      // Build query to get memories since lastSync
       const query = lastSync
         ? `timestamp:>${lastSync}`
         : '*';
 
+      // Retrieve memories from ChromaDB with pagination to avoid memory issues
       const memories = await memoryStore.retrieveMemories(query, {
-        limit: 500
+        limit: 500 // Process in manageable batches
       });
 
       console.log(`[Sync Service] Found ${memories.length} RAG memories to process`);
 
+      // Process each memory
       for (const memory of memories) {
+        // Create memory entity with a consistent ID format
         const memoryId = `memory-${memory.id}`;
         const memoryEntity: ExtractedEntity = {
           id: memoryId,
           label: 'Memory',
           properties: {
             content: memory.text,
-            sessionId: memory.metadata.sessionId,
-            timestamp: memory.metadata.timestamp,
-            messageType: memory.metadata.messageType,
-            textLength: memory.metadata.textLength
+            // Extract metadata values with fallbacks
+            sessionId: memory.metadata?.sessionId || 'unknown',
+            timestamp: memory.metadata?.timestamp || new Date().toISOString(),
+            messageType: memory.metadata?.messageType || 'unknown',
+            textLength: memory.metadata?.textLength || memory.text.length,
+            vectorId: memory.id // Store original vector ID for reference
           }
         };
         allEntities.push(memoryEntity);
 
-        if (memory.metadata.sessionId) {
+        // Extract the session ID
+        if (memory.metadata?.sessionId) {
+          // Create session entity if it doesn't exist
+          const sessionId = `session-${memory.metadata.sessionId}`;
+          const sessionEntity: ExtractedEntity = {
+            id: sessionId,
+            label: 'Session',
+            properties: {
+              sessionId: memory.metadata.sessionId
+            }
+          };
+          
+          // Add session entity if not already present (avoid duplicates)
+          if (!allEntities.some(entity => entity.id === sessionId)) {
+            allEntities.push(sessionEntity);
+          }
+
+          // Create relationship from memory to session
           const sessionRelationship: ExtractedRelationship = {
             sourceEntityId: memoryId,
-            targetEntityId: `session-${memory.metadata.sessionId}`,
+            targetEntityId: sessionId,
             type: 'BELONGS_TO',
             properties: {}
           };
           allRelationships.push(sessionRelationship);
+          
+          // If we have LLM service available, try to extract additional knowledge
+          try {
+            if (this.llmService) {
+              // Extract knowledge from memory content
+              const llmExtraction = await this.llmService.extractKnowledge(
+                memory.text,
+                `Context: RAG Memory, SessionId: ${memory.metadata.sessionId}`
+              );
+              
+              if (llmExtraction) {
+                // Add extracted entities and relationships
+                if (llmExtraction.entities) {
+                  allEntities.push(...llmExtraction.entities);
+                  
+                  // Connect extracted entities to this memory
+                  for (const entity of llmExtraction.entities) {
+                    const mentionRelationship: ExtractedRelationship = {
+                      sourceEntityId: memoryId,
+                      targetEntityId: entity.id,
+                      type: 'MENTIONS',
+                      properties: {}
+                    };
+                    allRelationships.push(mentionRelationship);
+                  }
+                }
+                
+                // Add extracted relationships
+                if (llmExtraction.relationships) {
+                  allRelationships.push(...llmExtraction.relationships);
+                }
+              }
+            }
+          } catch (llmError) {
+            // Log but continue - knowledge extraction is a non-critical enhancement
+            console.warn('[Sync Service] Error extracting knowledge from memory:', llmError);
+          }
         }
       }
+      
+      // Track processed memory IDs
+      if (memories.length > 0 && this.syncStateManager) {
+        const processedMemoryIds = memories.map(memory => memory.id);
+        await this.syncStateManager.updateLastProcessedIds({
+          ragMemories: processedMemoryIds
+        });
+      }
+
       return { entities: allEntities, relationships: allRelationships };
     } catch (error) {
       console.error('[Sync Service] Error processing RAG memories:', error);
+      
+      // Gracefully handle errors by returning empty arrays rather than failing the entire sync
       return { entities: [], relationships: [] };
     } finally {
-      // It's good practice to clean up, especially if initialize was called.
-      // The getMemoryStore might return a shared instance, so cleanup behavior should be idempotent or managed by the store itself.
-      // Given the previous implementation of ChromaMemoryStore, cleanup resets its internal initialized state.
+      // Clean up memory store connection if needed
       if (memoryStore && typeof memoryStore.cleanup === 'function') {
-          await memoryStore.cleanup();
+        await memoryStore.cleanup();
       }
     }
   }

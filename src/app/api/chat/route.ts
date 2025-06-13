@@ -142,7 +142,11 @@ export async function POST(request: NextRequest) {
     
     console.log(' Chat API: Using provider:', providerInfo.provider, 'with model:', providerInfo.model);
     
+    // Load system prompt
+    const systemPrompt = loadSystemPrompt();
+    
     // Create enhanced system message with RAG context if enabled
+    let enhancedSystemPrompt = systemPrompt;
     let enhancedMessages = [...messages];
     
     // Check if RAG should be used (enabled by default)
@@ -156,19 +160,26 @@ export async function POST(request: NextRequest) {
           const ragResult = await ragService.retrieveAndFormatContext(userMessage, sessionId);
           
           if (ragResult.shouldRetrieve && ragResult.context) {
-            // Add system message with memory context
-            const systemMessage = {
-              role: 'system',
-              content: ragResult.context
-            };
-              console.log(`RAG: Added ${ragResult.memories.length} memories, ${enhancedMessages.length} total messages, roles: ${enhancedMessages.map(m => m.role).join(',')}`);
+            // Combine RAG context with system prompt instead of inserting a new message
+            if (enhancedSystemPrompt) {
+              enhancedSystemPrompt = `${enhancedSystemPrompt}\n\n${ragResult.context}`;
+            } else {
+              enhancedSystemPrompt = ragResult.context;
+            }
             
-            // Insert system message before the last user message
-            enhancedMessages = [
-              ...messages.slice(0, -1),
-              systemMessage,
-              messages[messages.length - 1]
-            ];
+            console.log(`RAG: Added ${ragResult.memories.length} memories to system content`);
+            // Enhanced logging to show memory previews
+            interface MemoryLike {
+              text?: string;
+              content?: string;
+              [key: string]: any;
+            }
+
+            (ragResult.memories as MemoryLike[]).forEach((memory: MemoryLike, index: number) => {
+              const textContent: string = memory.text || memory.content || JSON.stringify(memory);
+              const preview: string = textContent.substring(0, 50) + (textContent.length > 50 ? '...' : '');
+              console.log(`  Memory ${index + 1}: ${preview}`);
+            });
           }
         }      } catch (ragError) {
         console.error(' Chat API: RAG enhancement FAILED:', ragError);
@@ -235,13 +246,12 @@ export async function POST(request: NextRequest) {
     console.log(' Chat API: About to call streamText with', enhancedMessages.length, 'messages');
     console.log(' Chat API: Last message:', JSON.stringify(enhancedMessages[enhancedMessages.length - 1], null, 2));
     
-    // Load system prompt
-    const systemPrompt = loadSystemPrompt();      // Stream the response with tool support
+    // Stream the response with tool support
     try {
       const result = await streamText({
         model: model,
-        system: systemPrompt || undefined, // Include system prompt if available
-        messages: enhancedMessages,
+        system: enhancedSystemPrompt || undefined, // Use the combined system prompt
+        messages: enhancedMessages, // Original messages without RAG insertion
         tools: tools,
         maxTokens: parseInt(process.env.MAX_TOKENS || '4096'),
         temperature: parseFloat(process.env.TEMPERATURE || '0.7'),        maxSteps: 5, // Allow multiple tool calls
