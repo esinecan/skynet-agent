@@ -25,6 +25,8 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
   private kgService: typeof knowledgeGraphServiceInstance; // Use type of the instance
   private initialized = false;
   private syncErrorQueue = new SyncErrorQueue();
+  private retryIntervalId: NodeJS.Timeout | null = null;
+  private isProcessingRetryQueue: boolean = false;
 
   constructor() {
     this.kgService = knowledgeGraphServiceInstance; // Use the singleton instance
@@ -60,6 +62,14 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
           }
         }
       }, 60000); // Process retry queue every minute
+    }
+  }
+
+  public stopRetryProcessor(): void {
+    if (this.retryIntervalId) {
+      clearInterval(this.retryIntervalId);
+      this.retryIntervalId = null;
+      console.log('[ConsciousMemory] Retry processor stopped.');
     }
   }
 
