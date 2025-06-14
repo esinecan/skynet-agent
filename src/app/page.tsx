@@ -22,15 +22,13 @@ export default function Home() {
   }, [currentSessionId]) // Include currentSessionId in dependency to prevent unnecessary runs
   const startNewChat = () => {
     const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
-    console.log('🔄 Starting new chat with session:', newSessionId)
+    console.log(' Starting new chat with session:', newSessionId)
     setCurrentSessionId(newSessionId)
     setSidebarOpen(false)
   }
 
   const loadSession = async (session: ChatSession) => {
-    console.log('🔍 Loading session:', session.id)
-    console.log('🔍 Current session before load:', currentSessionId)
-    console.log('🔍 Session has', session.messages.length, 'messages from sidebar (should be 0)')
+    console.log(' Loading session:', session.id)
     
     // Only change session if it's actually different
     if (currentSessionId !== session.id) {
@@ -125,12 +123,11 @@ function ChatComponent({
 
   // Log when component mounts/remounts with new session
   React.useEffect(() => {
-    console.log('� ChatComponent mounted with session:', sessionId)
-    console.log('� Messages loaded:', messages.length)
+    console.log(' Messages loaded:', messages.length)
   }, [sessionId])
 
   React.useEffect(() => {
-    console.log('� Messages changed:', messages.length)
+    console.log(' Messages changed:', messages.length)
   }, [messages.length])
 
   // Save user messages immediately when sent
@@ -165,7 +162,7 @@ function ChatComponent({
               href="/conscious-memory"
               className="bg-purple-600 text-white px-4 py-2.5 rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-2 font-medium"
               title="Graph Memory Dashboard"
-            >
+           >
               🕸️ 
               <span className="hidden sm:inline">Graph</span>
             </a>
@@ -228,7 +225,7 @@ function ChatComponent({
                           {message.toolInvocations.map((toolCall) => (
                             <div key={toolCall.toolCallId} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
                               <div className="font-medium text-yellow-800 flex items-center gap-2">
-                                🔧 Tool: {toolCall.toolName}
+                                 🔧 Tool: {toolCall.toolName}
                               </div>
                               <details className="mt-2">
                                 <summary className="cursor-pointer text-yellow-700 hover:text-yellow-800">

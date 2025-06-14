@@ -17,14 +17,11 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
     api: '/api/chat',
     maxSteps: 5, // Allow multiple tool calls
     onError: async (error) => {
-      console.error('🚨 Full error object:', error);
-      console.error('🚨 Error message:', error.message);
-      console.error('🚨 Error stack:', error.stack);
-      console.error('🚨 Error cause:', (error as any).cause);
+      console.error(' Full error object:', error);
       
       // Try to get the original response if available
       if ((error as any).cause && typeof (error as any).cause === 'object') {
-        console.error('🚨 Error cause details:', (error as any).cause);
+        console.error(' Error cause details:', (error as any).cause);
       }
       
       // Try to fetch the last response to see actual server error
@@ -40,10 +37,10 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
         
         if (!response.ok) {
           const errorBody = await response.text();
-          console.error('🚨 Server error response:', errorBody);
+          console.error(' Server error response:', errorBody);
         }
       } catch (fetchError) {
-        console.error('🚨 Fetch error:', fetchError);
+        console.error(' Fetch error:', fetchError);
       }
     },    onFinish: async (message) => {
       // Message storage is now handled by the chat API
@@ -125,14 +122,14 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 mt-8">
-            <div className="text-6xl mb-4">🧠</div>
+            <div className="text-6xl mb-4"></div>
             <h2 className="text-2xl font-semibold mb-2">Welcome to MCP Chat</h2>
             <p className="text-lg mb-4">Your AI assistant with conscious memory</p>
             <div className="text-sm text-gray-400 space-y-1">
-              <p>✨ Dual-layer memory system</p>
-              <p>🔧 MCP tool integration</p>
-              <p>📎 File attachment support</p>
-              <p>💾 Persistent conversation history</p>
+              <p> Dual-layer memory system</p>
+              <p> MCP tool integration</p>
+              <p> File attachment support</p>
+              <p> Persistent conversation history</p>
             </div>
           </div>
         ) : (
@@ -154,7 +151,7 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
         {error && (
           <div className="mx-4 p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-start gap-3">
-              <div className="text-red-500 text-xl">⚠️</div>
+              <div className="text-red-500 text-xl"></div>
               <div className="flex-1">
                 <h3 className="font-semibold text-red-800 mb-1">Chat Error</h3>
                 <p className="text-red-700 text-sm">{error.message}</p>

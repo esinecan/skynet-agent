@@ -14,24 +14,24 @@ async function testSync() {
   try {
     // Connect to Neo4j
     await knowledgeGraphService.connect();
-    console.log('✅ Connected to Neo4j');
+    console.log(' Connected to Neo4j');
     
     // Get initial stats
     const beforeStats = await knowledgeGraphService.getStatistics();
-    console.log('📊 Before sync:', beforeStats);
+    console.log(' Before sync:', beforeStats);
     
     // Run incremental sync
-    console.log('\n🔄 Running incremental sync...');
+    console.log('\n Running incremental sync...');
     await knowledgeGraphSyncService.syncKnowledgeGraph({ forceFullResync: false });
     
     // Get after stats
     const afterStats = await knowledgeGraphService.getStatistics();
-    console.log('\n📊 After sync:', afterStats);
+    console.log('\n After sync:', afterStats);
     
-    console.log('\n✅ Sync test completed successfully!');
+    console.log('\n Sync test completed successfully!');
     
   } catch (error) {
-    console.error('❌ Sync test failed:', error);
+    console.error(' Sync test failed:', error);
   } finally {
     await knowledgeGraphService.close();
   }

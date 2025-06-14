@@ -2,13 +2,13 @@ import knowledgeGraphSyncService from '../lib/knowledge-graph-sync-service';
 import knowledgeGraphService from '../lib/knowledge-graph-service';
 
 async function runSyncTest() {
-  console.log('🧪 Starting Neo4j Sync Test...\n');
+  console.log(' Starting Neo4j Sync Test...\n');
 
   try {
     // Test 1: Connection health check
     console.log('Test 1: Checking Neo4j connection...');
     const isHealthy = await knowledgeGraphService.healthCheck();
-    console.log(`✅ Neo4j connection: ${isHealthy ? 'Healthy' : 'Failed'}\n`);
+    console.log(` Neo4j connection: ${isHealthy ? 'Healthy' : 'Failed'}\n`);
 
     // Test 2: Get initial statistics
     console.log('Test 2: Getting initial statistics...');
@@ -40,9 +40,9 @@ async function runSyncTest() {
       await knowledgeGraphService.deleteNode(node.id);
     }
 
-    console.log('\n✅ All tests completed successfully!');
+    console.log('\n All tests completed successfully!');
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error(' Test failed:', error);
   } finally {
     await knowledgeGraphService.close();
   }

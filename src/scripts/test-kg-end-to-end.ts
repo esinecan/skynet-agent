@@ -14,7 +14,7 @@ import { getConsciousMemoryService } from '../lib/conscious-memory';
 import { ChromaMemoryStore } from '../lib/memory-store';
 
 async function testEndToEnd() {
-  console.log('🔍 Testing Knowledge Graph End-to-End Flow\n');
+  console.log(' Testing Knowledge Graph End-to-End Flow\n');
   
   let llmService: LLMService | null = null;
   let consciousMemory: ConsciousMemoryService | null = null;
@@ -23,7 +23,7 @@ async function testEndToEnd() {
   
   try {
     // Step 1: Initialize services
-    console.log('1️⃣ Initializing services...');
+    console.log('1⃣ Initializing services...');
     llmService = new LLMService();
     await llmService.initialize();
     
@@ -35,17 +35,17 @@ async function testEndToEnd() {
     
     await knowledgeGraphService.connect();
     
-    console.log('✅ Services initialized\n');
+    console.log(' Services initialized\n');
     
     // Step 2: Test tool availability
-    console.log('2️⃣ Testing tool availability...');
+    console.log('2⃣ Testing tool availability...');
     const tools = await llmService.getAvailableTools();
     const kgTools = Object.keys(tools).filter(t => t.includes('knowledge') || t.includes('graph'));
     console.log(`Found ${kgTools.length} knowledge graph tools:`, kgTools);
-    console.log('✅ Tools verified\n');
+    console.log(' Tools verified\n');
     
     // Step 3: Create test data through chat history
-    console.log('3️⃣ Creating test chat data...');
+    console.log('3⃣ Creating test chat data...');
     const chatHistory = ChatHistoryDatabase.getInstance();
     
     // Create session
@@ -70,20 +70,20 @@ async function testEndToEnd() {
       content: 'I understand that John Smith is a researcher at OpenAI working on GPT-5. That must be exciting work!'
     });
     
-    console.log('✅ Test chat data created\n');
+    console.log(' Test chat data created\n');
     
     // Step 4: Store in conscious memory
-    console.log('4️⃣ Testing conscious memory storage...');
+    console.log('4⃣ Testing conscious memory storage...');
     const memoryId = await consciousMemory.saveMemory({
       content: 'John Smith is a researcher at OpenAI working on GPT-5 development',
       tags: ['test', 'person', 'organization'],
       importance: 8,
       context: 'Test context for KG integration'
     });
-    console.log(`✅ Memory saved with ID: ${memoryId}\n`);
+    console.log(` Memory saved with ID: ${memoryId}\n`);
     
     // Step 5: Store in RAG memory
-    console.log('5️⃣ Testing RAG memory storage...');
+    console.log('5⃣ Testing RAG memory storage...');
     await memoryStore.storeMemory(
       'John Smith leads the GPT-5 project at OpenAI',
       {
@@ -93,10 +93,10 @@ async function testEndToEnd() {
         textLength: 42
       }
     );
-    console.log('✅ RAG memory stored\n');
+    console.log(' RAG memory stored\n');
     
     // Step 6: Run knowledge graph sync
-    console.log('6️⃣ Running knowledge graph sync...');
+    console.log('6⃣ Running knowledge graph sync...');
     const beforeStats = await knowledgeGraphService.getStatistics();
     console.log('Before sync:', beforeStats);
     
@@ -104,10 +104,10 @@ async function testEndToEnd() {
     
     const afterStats = await knowledgeGraphService.getStatistics();
     console.log('After sync:', afterStats);
-    console.log('✅ Sync completed\n');
+    console.log(' Sync completed\n');
     
     // Step 7: Query the knowledge graph
-    console.log('7️⃣ Querying knowledge graph...');
+    console.log('7⃣ Querying knowledge graph...');
     
     // Test query for Person nodes
     const personQuery = await knowledgeGraphService.runQuery(
@@ -127,10 +127,10 @@ async function testEndToEnd() {
     );
     console.log(`Found ${memoryQuery[0]?.count || 0} ConsciousMemory nodes`);
     
-    console.log('✅ Queries executed successfully\n');
+    console.log(' Queries executed successfully\n');
     
     // Step 8: Test MCP tool calls
-    console.log('8️⃣ Testing MCP tool calls...');
+    console.log('8⃣ Testing MCP tool calls...');
     
     if (kgTools.includes('knowledge-graph.get_entity_details')) {
       // This would need to be adjusted based on actual entity IDs in the graph
@@ -138,14 +138,14 @@ async function testEndToEnd() {
     }
     
     // Cleanup test data
-    console.log('\n🧹 Cleaning up test data...');
+    console.log('\n Cleaning up test data...');
     chatHistory.deleteSession(testSessionId);
     await consciousMemory.deleteMemory(memoryId);
     
-    console.log('\n✅ End-to-end test completed successfully!');
+    console.log('\n End-to-end test completed successfully!');
     
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error(' Test failed:', error);
     throw error;
   } finally {
     // Cleanup

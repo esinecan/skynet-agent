@@ -85,9 +85,7 @@ export default function ConsciousMemoryDemo() {
   const saveMemory = async () => {
     if (!newMemory.content.trim()) return;
       setLoading(true);
-    setError(null);
-    console.log('💾 Saving memory:', newMemory.content);
-    
+    setError(null);    
     try {
       const response = await fetch('/api/conscious-memory', {
         method: 'POST',
@@ -103,17 +101,15 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('💾 Save response:', data);
       
       if (data.success) {
-        console.log('💾 Memory saved successfully with ID:', data.id);
         setNewMemory({ content: '', tags: '', importance: 5, context: '' });
         await Promise.all([fetchStats(), fetchTags()]);
         if (searchQuery) {
           await searchMemories();
         }
       } else {
-        console.error('💾 Save failed:', data.error);
+        console.error(' Save failed:', data.error);
         setError(data.error || 'Failed to save memory');
       }
     } catch (err) {
@@ -124,7 +120,6 @@ export default function ConsciousMemoryDemo() {
   };  const loadAllMemories = async () => {
     setLoading(true);
     setError(null);
-    console.log('🔍 Loading all memories on initial page load');
     
     try {
       const response = await fetch('/api/conscious-memory', {
@@ -138,11 +133,9 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('🔍 Load all response:', data);
       
       if (data.success) {
         setMemories(data.results || []);
-        console.log('🔍 Loaded all memories:', data.results?.length || 0);
       } else {
         setError(data.error || 'Failed to load memories');
       }
@@ -156,7 +149,6 @@ export default function ConsciousMemoryDemo() {
   const searchMemories = async () => {
     setLoading(true);
     setError(null);
-    console.log('🔍 Searching for:', searchQuery);
     
     try {
       const response = await fetch('/api/conscious-memory', {
@@ -170,13 +162,12 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('🔍 Search response:', data);
       
       if (data.success) {
         setMemories(data.results || []);
-        console.log('🔍 Found memories:', data.results?.length || 0);
+        console.log(' Found memories:', data.results?.length || 0);
       } else {
-        console.error('🔍 Search failed:', data.error);
+        console.error(' Search failed:', data.error);
         setError(data.error || 'Failed to search memories');
       }
     } catch (err) {
@@ -187,7 +178,7 @@ export default function ConsciousMemoryDemo() {
 
   const debugMemories = async () => {
     setLoading(true);
-    console.log('🐛 Debug: Checking all memories...');
+    console.log(' Debug: Checking all memories...');
     
     try {
       const response = await fetch('/api/conscious-memory', {
@@ -197,14 +188,14 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('🐛 Debug response:', data);
+      console.log(' Debug response:', data);
       
       if (data.success) {
-        console.log(`🐛 Total memories in database: ${data.totalMemories}`);
-        console.log('🐛 Sample memories:', data.memories);
+        console.log(` Total memories in database: ${data.totalMemories}`);
+        console.log(' Sample memories:', data.memories);
       }
     } catch (err) {
-      console.error('🐛 Debug failed:', err);
+      console.error(' Debug failed:', err);
     } finally {
       setLoading(false);
     }  };
@@ -214,7 +205,7 @@ export default function ConsciousMemoryDemo() {
     }
     
     setLoading(true);
-    console.log('🗑️ Deleting memory:', id);
+    console.log(' Deleting memory:', id);
     
     try {
       const response = await fetch('/api/conscious-memory', {
@@ -227,20 +218,20 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('🗑️ Delete response:', data);
+      console.log(' Delete response:', data);
       
       if (data.success) {
-        console.log('🗑️ Memory deleted successfully');
+        console.log(' Memory deleted successfully');
         // Remove from current memories list immediately
         setMemories(prev => prev.filter(m => m.id !== id));
         // Refresh stats and tags
         await Promise.all([fetchStats(), fetchTags()]);
       } else {
-        console.error('🗑️ Delete failed:', data.error);
+        console.error(' Delete failed:', data.error);
         setError(data.error || 'Failed to delete memory');
       }
     } catch (err) {
-      console.error('🗑️ Delete error:', err);
+      console.error(' Delete error:', err);
       setError('Network error while deleting memory');
     } finally {
       setLoading(false);
@@ -251,7 +242,7 @@ export default function ConsciousMemoryDemo() {
     if (selectedMemories.length === 0) return;
     
     setLoading(true);
-    console.log('🗑️ Deleting selected memories:', selectedMemories);
+    console.log(' Deleting selected memories:', selectedMemories);
     
     try {
       const response = await fetch('/api/conscious-memory', {
@@ -264,10 +255,10 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('🗑️ Bulk delete response:', data);
+      console.log(' Bulk delete response:', data);
       
       if (data.success) {
-        console.log(`🗑️ Successfully deleted ${selectedMemories.length} memories`);
+        console.log(` Successfully deleted ${selectedMemories.length} memories`);
         // Clear selected memories
         setSelectedMemories([]);
         // Refresh the search results and stats
@@ -276,11 +267,11 @@ export default function ConsciousMemoryDemo() {
           await searchMemories();
         }
       } else {
-        console.error('🗑️ Bulk delete failed:', data.error);
+        console.error(' Bulk delete failed:', data.error);
         setError(data.error || 'Failed to delete selected memories');
       }
     } catch (err) {
-      console.error('🗑️ Bulk delete error:', err);
+      console.error(' Bulk delete error:', err);
       setError('Network error while deleting memories');
     } finally {
       setLoading(false);
@@ -290,7 +281,7 @@ export default function ConsciousMemoryDemo() {
   const getAllMemories = async () => {
     setSearchQuery('');
     setLoading(true);
-    console.log('📋 Getting all memories...');
+    console.log(' Getting all memories...');
     
     try {
       const response = await fetch('/api/conscious-memory', {
@@ -304,17 +295,17 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('📋 All memories response:', data);
+      console.log(' All memories response:', data);
       
       if (data.success) {
         setMemories(data.results || []);
-        console.log('📋 Found all memories:', data.results?.length || 0);
+        console.log(' Found all memories:', data.results?.length || 0);
       } else {
-        console.error('📋 Failed to get all memories:', data.error);
+        console.error(' Failed to get all memories:', data.error);
         setError(data.error || 'Failed to get all memories');
       }
     } catch (err) {
-      console.error('📋 Get all memories error:', err);
+      console.error(' Get all memories error:', err);
       setError('Network error while getting all memories');
     } finally {
       setLoading(false);
@@ -341,7 +332,7 @@ export default function ConsciousMemoryDemo() {
   const fetchRelatedMemories = async (memoryId: string) => {
     setLoadingRelations(memoryId);
     setError(null);
-    console.log('🔗 Fetching related memories for:', memoryId);
+    console.log(' Fetching related memories for:', memoryId);
     
     try {
       const response = await fetch('/api/conscious-memory', {
@@ -355,7 +346,7 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('🔗 Related memories response:', data);
+      console.log(' Related memories response:', data);
       
       if (data.success) {
         // Update the specific memory with its related memories
@@ -368,13 +359,13 @@ export default function ConsciousMemoryDemo() {
               }
             : memory
         ));
-        console.log('🔗 Found', data.relatedMemories?.length || 0, 'related memories');
+        console.log(' Found', data.relatedMemories?.length || 0, 'related memories');
       } else {
-        console.error('🔗 Failed to fetch related memories:', data.error);
+        console.error(' Failed to fetch related memories:', data.error);
         setError(data.error || 'Failed to fetch related memories');
       }
     } catch (err) {
-      console.error('🔗 Error fetching related memories:', err);
+      console.error(' Error fetching related memories:', err);
       setError('Network error while fetching related memories');
     } finally {
       setLoadingRelations(null);
@@ -409,7 +400,7 @@ export default function ConsciousMemoryDemo() {
     }
     
     setLoading(true);
-    console.log('🗑️ Bulk deleting memories:', memories.length);
+    console.log(' Bulk deleting memories:', memories.length);
     
     try {
       // More efficient implementation using single API call
@@ -424,10 +415,10 @@ export default function ConsciousMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('🗑️ Bulk delete response:', data);
+      console.log(' Bulk delete response:', data);
       
       if (data.success) {
-        console.log(`🗑️ Successfully deleted ${memoryIds.length} memories`);
+        console.log(` Successfully deleted ${memoryIds.length} memories`);
         setMemories([]);
         await Promise.all([fetchStats(), fetchTags()]); // Also refresh tags
       } else {
@@ -450,7 +441,7 @@ export default function ConsciousMemoryDemo() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-4">
-            🕸️ Graph Memory System
+             Graph Memory System
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
             A structured memory system that allows explicit storage and management of 
@@ -501,7 +492,7 @@ export default function ConsciousMemoryDemo() {
 
         {/* Add Memory Form */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">💾 Save New Memory</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4"> Save New Memory</h2>
           
           <div className="space-y-4">
             <div>
@@ -572,7 +563,7 @@ export default function ConsciousMemoryDemo() {
                 disabled={loading}
                 className="bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 disabled:opacity-50"
               >
-                🐛 Debug DB
+                 Debug DB
               </button>
             </div>
           </div>
@@ -580,7 +571,7 @@ export default function ConsciousMemoryDemo() {
 
         {/* Search Memories */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">🔍 Search Memories</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4"> Search Memories</h2>
           
           <div className="flex gap-4 mb-4">
             <input
@@ -629,7 +620,7 @@ export default function ConsciousMemoryDemo() {
                       const totalRelations = memoriesWithRelations.reduce((sum, m) => sum + (m.relatedMemories?.length || 0), 0);
                       return memoriesWithRelations.length > 0 ? (
                         <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-xs">
-                          🔗 {memoriesWithRelations.length} connected • {totalRelations} total relations
+                           {memoriesWithRelations.length} connected • {totalRelations} total relations
                         </span>
                       ) : null;
                     })()} 
@@ -640,7 +631,7 @@ export default function ConsciousMemoryDemo() {
                   disabled={loading}
                   className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 disabled:opacity-50 text-sm"
                 >
-                  🗑️ Delete All ({memories.length})
+                   Delete All ({memories.length})
                 </button>
               </div>
               {memories.map((memory, index) => (
@@ -665,7 +656,7 @@ export default function ConsciousMemoryDemo() {
                       {/* Indicate if memory has been checked for relations */}
                       {memory.relatedMemories && (
                         <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex items-center gap-1">
-                          🔗 {memory.relatedMemories.length}
+                           {memory.relatedMemories.length}
                         </span>
                       )}
                     </div>
@@ -694,7 +685,7 @@ export default function ConsciousMemoryDemo() {
                   {memory.showingRelations && memory.relatedMemories && (
                     <div className="mt-4 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500">
                       <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        🔗 Related Memories ({memory.relatedMemories.length})
+                         Related Memories ({memory.relatedMemories.length})
                       </h4>
                       {memory.relatedMemories.length > 0 ? (
                         <div className="space-y-2">
@@ -748,9 +739,9 @@ export default function ConsciousMemoryDemo() {
                           Loading...
                         </span>
                       ) : memory.showingRelations ? (
-                        '🔗 Hide Relations'
+                        ' Hide Relations'
                       ) : (
-                        '🔗 Show Relations'
+                        ' Show Relations'
                       )}
                     </button>
                     
@@ -759,7 +750,7 @@ export default function ConsciousMemoryDemo() {
                       disabled={loading}
                       className="bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 disabled:opacity-50 text-sm"
                     >
-                      🗑️ Delete
+                       Delete
                     </button>
                   </div>
                 </div>

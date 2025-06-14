@@ -296,7 +296,6 @@ export async function POST(request: NextRequest) {
                   result: result.result
                 };
                 completeToolCalls.push(toolInvocation);
-                console.log(` ✅ Step 1: Tool execution complete: ${call.toolCallId} (${call.toolName})`);
               } else {
                 console.warn(` No result found for tool call: ${call.toolCallId} (${call.toolName}) - this may cause AI SDK streaming issues`);
               }
@@ -315,7 +314,6 @@ export async function POST(request: NextRequest) {
                 finishResult.text || "Memory tool response (no text content)", 
                 sessionId
               );
-              console.log(' ✅ Step 2: Memory storage complete');
             } else {
               console.log(' Chat API: Skipping memory storage for memory tool call');
             }
@@ -371,13 +369,12 @@ export async function POST(request: NextRequest) {
             role: 'assistant',
             content: assistantContent,
             toolInvocations: completeToolCalls,
-          });            console.log(' ✅ Step 3: Chat history saved successfully');
+          });           
             // Trigger knowledge graph sync via queue (async, don't wait)
           // Run this completely asynchronously to avoid affecting the stream
           Promise.resolve().then(async () => {
             try {
               await kgSyncQueue.addSyncRequest('chat');
-              console.log(' ✅ Step 4: Knowledge graph sync queued successfully');
             } catch (queueError) {
               console.error(' Chat API: Failed to queue knowledge graph sync:', queueError);
               // Error is contained here and won't affect the stream
@@ -397,7 +394,7 @@ export async function POST(request: NextRequest) {
     const dataStreamResponse = result.toDataStreamResponse();
     console.log(' Chat API: stream response: ', dataStreamResponse.json);
     
-    console.log(' ✅ Step 5: AI SDK stream finalized successfully');
+    console.log('AI SDK stream finalized successfully');
     return dataStreamResponse;  } catch (streamError) {
     console.error(' Chat API: streamText failed:', streamError);
 

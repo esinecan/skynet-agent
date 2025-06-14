@@ -83,12 +83,12 @@ export default function SemanticMemoryDemo() {
   const testMemorySystem = async () => {
     setLoading(true);
     setError(null);
-    console.log('🧪 Testing semantic memory system...');
+    console.log(' Testing semantic memory system...');
     
     try {
       const response = await fetch('/api/memory?action=test');
       const data = await response.json();
-      console.log('🧪 Test response:', data);
+      console.log(' Test response:', data);
       
       if (data.success) {
         setStats(prev => ({
@@ -97,7 +97,7 @@ export default function SemanticMemoryDemo() {
           totalMemories: prev?.totalMemories || 0,
           healthStatus: prev?.healthStatus || false
         }));
-        console.log('🧪 Memory system test passed:', data.data.testPassed);
+        console.log(' Memory system test passed:', data.data.testPassed);
       } else {
         setError(data.error || 'Memory system test failed');
       }
@@ -116,7 +116,7 @@ export default function SemanticMemoryDemo() {
 
     setLoading(true);
     setError(null);
-    console.log('💾 Storing conversation:', conversationForm);
+    console.log(' Storing conversation:', conversationForm);
     
     try {
       const response = await fetch('/api/memory', {
@@ -131,10 +131,10 @@ export default function SemanticMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('💾 Store response:', data);
+      console.log(' Store response:', data);
       
       if (data.success) {
-        console.log('💾 Conversation stored successfully');
+        console.log(' Conversation stored successfully');
         setConversationForm({
           userMessage: '',
           assistantMessage: '',
@@ -159,7 +159,7 @@ export default function SemanticMemoryDemo() {
 
     setLoading(true);
     setError(null);
-    console.log('🔍 Searching semantic memories for:', searchQuery);
+    console.log(' Searching semantic memories for:', searchQuery);
     
     try {
       const response = await fetch('/api/memory', {
@@ -173,14 +173,14 @@ export default function SemanticMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log('🔍 Search response:', data);
+      console.log(' Search response:', data);
       
       if (data.success) {
         const result: SearchResult = data.data;
         setSearchResults(result.memories || []);
-        console.log(`🔍 Found ${result.memories?.length || 0} memories in ${result.retrievalTime}ms`);
-        console.log('🔍 Should retrieve:', result.shouldRetrieve);
-        console.log('🔍 Context generated:', result.context ? 'Yes' : 'No');
+        console.log(` Found ${result.memories?.length || 0} memories in ${result.retrievalTime}ms`);
+        console.log(' Should retrieve:', result.shouldRetrieve);
+        console.log(' Context generated:', result.context ? 'Yes' : 'No');
       } else {
         setError(data.error || 'Failed to search memories');
       }
@@ -200,7 +200,7 @@ export default function SemanticMemoryDemo() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-4">
-            🧠 Semantic Memory System
+             Semantic Memory System
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
             An intelligent RAG-based memory system that automatically stores conversations
@@ -244,7 +244,7 @@ export default function SemanticMemoryDemo() {
 
         {/* System Actions */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">🔧 System Management</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4"> System Management</h2>
           
           <div className="flex gap-4">
             <button
@@ -252,7 +252,7 @@ export default function SemanticMemoryDemo() {
               disabled={loading}
               className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
             >
-              {loading ? 'Checking...' : '🏥 Health Check'}
+              {loading ? 'Checking...' : ' Health Check'}
             </button>
             
             <button
@@ -260,14 +260,14 @@ export default function SemanticMemoryDemo() {
               disabled={loading}
               className="bg-yellow-600 text-white px-6 py-2 rounded-md hover:bg-yellow-700 disabled:opacity-50"
             >
-              {loading ? 'Testing...' : '🧪 Test System'}
+              {loading ? 'Testing...' : ' Test System'}
             </button>
           </div>
         </div>
 
         {/* Store Conversation */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">💾 Store Conversation</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4"> Store Conversation</h2>
           
           <div className="space-y-4">
             <div>
@@ -321,7 +321,7 @@ export default function SemanticMemoryDemo() {
 
         {/* Search Memories */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">🔍 Search Semantic Memories</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4"> Search Semantic Memories</h2>
           
           <div className="flex gap-4 mb-4">
             <input

@@ -19,10 +19,6 @@ const envLocalPath = join(process.cwd(), '.env.local');
 config({ path: envPath });
 config({ path: envLocalPath });
 
-console.log('🔧 [KG Sync] Environment variables loaded');
-console.log('   GOOGLE_API_KEY:', !!process.env.GOOGLE_API_KEY);
-console.log('   DEEPSEEK_API_KEY:', !!process.env.DEEPSEEK_API_KEY);
-
 // Now import services after environment variables are loaded
 async function importServices() {
   const { default: knowledgeGraphSyncServiceInstance } = await import('../lib/knowledge-graph-sync-service');
@@ -44,8 +40,6 @@ const processAll = args.includes('--process-all');
 const syncIntervalMs = 30000; // 30 seconds between sync operations in watch mode
 
 async function runSync() {
-  console.log(`🔄 [KG Sync] Starting knowledge graph synchronization at ${new Date().toISOString()}`);
-  console.log(`📋 [KG Sync] Mode: ${forceFullResync ? 'FULL RESYNC' : 'INCREMENTAL SYNC'}`);
 
   // Import services after environment variables are loaded
   const {
@@ -63,7 +57,7 @@ async function runSync() {
     const queueSize = await kgSyncQueue.getQueueSize();
     
     if (queueSize > 0) {
-      console.log(`📊 [KG Sync] Found ${queueSize} items in sync queue`);
+      console.log(` [KG Sync] Found ${queueSize} items in sync queue`);
       
       // Process queue items if there are any
       if (processAll) {
@@ -76,7 +70,7 @@ async function runSync() {
           }
         });
         
-        console.log(`✅ [KG Sync] Processed ${processedCount} queue items`);
+        console.log(` [KG Sync] Processed ${processedCount} queue items`);
       } else {
         // Process just one item (oldest first)
         const processed = await kgSyncQueue.processNext(async (request: any) => {
@@ -87,7 +81,7 @@ async function runSync() {
           }
         });
         
-        console.log(`✅ [KG Sync] Processed ${processed ? 1 : 0} queue items`);
+        console.log(` [KG Sync] Processed ${processed ? 1 : 0} queue items`);
       }
     } else if (forceFullResync) {
       // If no queue items but full resync requested, run it directly
@@ -97,7 +91,7 @@ async function runSync() {
       await syncService.syncKnowledgeGraph({ forceFullResync: false });
     }
   } catch (error) {
-    console.error('❌ [KG Sync] Error during synchronization:', error);
+    console.error(' [KG Sync] Error during synchronization:', error);
     process.exitCode = 1; // Indicate failure
   } finally {
     // Ensure Neo4j connection is closed (unless in watch mode)
@@ -105,7 +99,7 @@ async function runSync() {
       try {
         await neo4jService.close();
       } catch (closeError) {
-        console.error('❌ [KG Sync] Error closing Neo4j connection:', closeError);
+        console.error(' [KG Sync] Error closing Neo4j connection:', closeError);
       }
     }
   }
@@ -114,11 +108,11 @@ async function runSync() {
 // Main execution flow
 async function main() {
   if (watchMode) {
-    console.log(`🔄 [KG Sync] Starting in continuous watch mode (interval: ${syncIntervalMs}ms)`);
+    console.log(` [KG Sync] Starting in continuous watch mode (interval: ${syncIntervalMs}ms)`);
     
     // Run initial sync
     await runSync().catch(error => {
-      console.error('❌ [KG Sync] Error in initial sync:', error);
+      console.error(' [KG Sync] Error in initial sync:', error);
     });
     
     // Set up interval for continuous operation
@@ -126,29 +120,29 @@ async function main() {
       try {
         await runSync();
       } catch (error) {
-        console.error('❌ [KG Sync] Error in scheduled sync:', error);
+        console.error(' [KG Sync] Error in scheduled sync:', error);
       }
     }, syncIntervalMs);
     
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
-      console.log('🛑 [KG Sync] Shutting down gracefully...');
+      console.log(' [KG Sync] Shutting down gracefully...');
       try {
         const { knowledgeGraphServiceInstanceNeo4j } = await importServices();
         await knowledgeGraphServiceInstanceNeo4j.close();
       } catch (error) {
-        console.error('❌ [KG Sync] Error during shutdown:', error);
+        console.error(' [KG Sync] Error during shutdown:', error);
       }
       process.exit(0);
     });
   } else {
     // One-time execution
     await runSync();
-    console.log('✅ [KG Sync] One-time synchronization complete');
+    console.log(' [KG Sync] One-time synchronization complete');
   }
 }
 
 main().catch(error => {
-  console.error('❌ [KG Sync] Fatal error:', error);
+  console.error(' [KG Sync] Fatal error:', error);
   process.exitCode = 1;
 });

@@ -15,19 +15,20 @@
 ##  Minimal But Powerful
 
 ###  Dual-Layer Memory Architecture
-- **Automatic Layer (RAG)**: Background conversation storage and retrieval
-- **Conscious Layer**: Explicit, volitional memory operations controlled by AI
-- **Hybrid Search**: Solves embedding similarity limitations with semantic + keyword search
+- **Automatic Memory (RAG)**: Non-volitional background memory that automatically stores and retrieves conversational context using ChromaDB vector embeddings and Google's text-embedding-004 model
+- **Conscious Memory**: Volitional memory operations where AI explicitly saves, searches, updates, and deletes memories through MCP tools - mimics human conscious memory control
+- **Knowledge Graph**: Structured long-term memory using Neo4j to represent complex relationships between entities and concepts with automatic synchronization
 
 ###  MCP Tool Integration
 - Exposes conscious memory as **Model Context Protocol tools**
 - AI naturally saves and recalls memories during conversation
 - Clean separation between UI, memory, and AI operations
 
-###  Advanced Search Capabilities
-- **Semantic Search**: Vector embeddings for conceptual similarity
-- **Keyword Fallback**: Exact text matching when embeddings fail
-- **Smart Merging**: Combines results with intelligent ranking
+###  Advanced Memory Capabilities
+- **Dual-Process Architecture**: Automatic RAG system for non-volitional memory plus conscious memory tools for explicit control
+- **Semantic + Keyword Search**: Vector embeddings for conceptual similarity with keyword fallback for exact matches
+- **Knowledge Graph Integration**: Neo4j-powered relationship mapping with automatic synchronization from chat history
+- **Smart Memory Ranking**: Combines semantic similarity, importance scores, and recency for optimal retrieval
 
 ---
 
@@ -124,8 +125,8 @@ GOOGLE_API_KEY=your_google_api_key
 ### Prerequisites
 
 - **Node.js** 18+ 
-- **Docker** & **Docker Compose**
-- **API Key** (Google/Anthropic/OpenAI - see supported providers above)
+- **Docker** & **Docker Compose** (for ChromaDB and Neo4j)
+- **API Key** for your chosen LLM provider (see supported providers above)
 
 ### Installation
 
@@ -135,30 +136,96 @@ git clone https://github.com/esinecan/skynet-agent.git
 cd skynet-agent
 npm install
 
-# Configure environment
+# Set up environment configuration
 cp .env.example .env.local
-# Edit .env.local with your API keys
+# Edit .env.local with your API keys and configuration
 
-# Start services and app
-docker-compose up -d     # Start ChromaDB + Neo4j
-npm run dev             # Start the app
+# Start required services
+docker-compose up -d     # Starts ChromaDB (port 8000) and Neo4j (ports 7474, 7687)
+
+# Start the application
+npm run dev             # Starts Next.js (port 3000) + background KG sync service
 ```
 
-**That's it.** Visit `http://localhost:3000` and start chatting.
+**Access Points:**
+- Main application: `http://localhost:3000`
+- Conscious Memory dashboard: `http://localhost:3000/conscious-memory`
+- Semantic Memory demo: `http://localhost:3000/semantic-memory`
+- Neo4j browser: `http://localhost:7474` (neo4j/password123)
+
+### Development Scripts
+
+```bash
+# Development modes
+npm run dev              # Start Next.js + background KG sync (recommended)
+npm run dev:debug        # Same as above with Node.js debugging enabled
+npm run dev:next         # Start only Next.js (no KG sync)
+npm run dev:kg           # Start only KG sync service in watch mode
+
+# Knowledge Graph operations
+npm run kg:sync          # One-time incremental sync
+npm run kg:sync:full     # Full resync from scratch
+npm run kg:sync:queue    # Process error retry queue
+npm run kg:sync:watch    # Continuous sync service
+
+# Testing
+npm run test             # Run all test suites
+npm run test:rag         # Test RAG system
+npm run test:integration # Test API endpoints
+npm run test:neo4j       # Test Neo4j integration
+
+# Production
+npm run build            # Build for production
+npm run start            # Start production server
+npm run type-check       # TypeScript validation
+```
 
 ### Environment Configuration
 
+Required environment variables in `.env.local`:
+
 ```env
-# .env.local - Pick your provider
+# LLM Provider Configuration (choose one)
 GOOGLE_API_KEY=your_google_api_key
 # OR
 ANTHROPIC_API_KEY=your_anthropic_api_key  
 # OR  
 OPENAI_API_KEY=your_openai_api_key
+# OR
+DEEPSEEK_API_KEY=your_deepseek_api_key
 
-# Optional overrides
-LLM_PROVIDER=google
-LLM_MODEL=gemini-2.5-flash-preview-05-20
+# Provider and model selection
+LLM_PROVIDER=google                           # google, anthropic, openai, deepseek, groq, mistral, ollama
+LLM_MODEL=gemini-2.5-flash-preview-05-20     # Model name for chosen provider
+
+# Database connections (when using Docker)
+CHROMA_URL=http://localhost:8000              # ChromaDB endpoint
+NEO4J_URI=bolt://localhost:7687               # Neo4j connection
+NEO4J_USER=neo4j                              # Neo4j username
+NEO4J_PASSWORD=password123                    # Neo4j password
+
+# Optional: RAG system configuration
+RAG_ENABLED=true                              # Enable automatic memory
+RAG_MAX_MEMORIES=3                            # Max memories to retrieve per query
+```
+
+### Docker Services
+
+```bash
+# Start all services
+docker-compose up -d
+
+# Check service status
+docker-compose ps
+
+# View logs
+docker-compose logs -f [service_name]        # chromadb or neo4j
+
+# Stop services
+docker-compose down
+
+# Clean reset (removes all data)
+docker-compose down -v
 ```
 
 ---
@@ -205,33 +272,85 @@ AI: [Searches both conscious and RAG memories]
 
 ##  Technical Deep Dive
 
-### Memory Architecture
+### Memory Architecture Deep Dive
 
-#### Automatic Memory (RAG)
+#### Automatic Memory (RAG System)
+The RAG system (`src/lib/rag.ts`) provides non-volitional background memory:
+
 ```typescript
 interface Memory {
   id: string;
-  text: string;
-  embedding: number[];
-  metadata: MemoryMetadata;
-  timestamp: string;
+  text: string;                    // Original message content
+  embedding: number[];             // Google text-embedding-004 vector
+  metadata: {
+    sender: 'user' | 'assistant';
+    timestamp: string;
+    conversationId: string;
+    messageIndex: number;
+    summary?: string;              // Auto-summarized if over token limit
+  };
 }
 ```
 
-#### Conscious Memory
+**Key Features:**
+- Automatic storage of all conversational turns in ChromaDB
+- Semantic similarity search using vector embeddings
+- Fallback hash-based embeddings when API unavailable
+- Smart context formatting with conversation flow preservation
+- Configurable retrieval limits and similarity thresholds
+
+#### Conscious Memory System
+Volitional memory operations via MCP tools (`src/lib/conscious-memory.ts`):
+
 ```typescript
 interface ConsciousMemory {
   id: string;
-  content: string;
-  tags: string[];
-  importance: number; // 1-10 scale
+  content: string;                 // Memory content
+  tags: string[];                  // Categorical organization
+  importance: number;              // 1-10 relevance score
   source: 'explicit' | 'suggested' | 'derived';
-  context?: string;
-  metadata: ConsciousMemoryMetadata;
-  createdAt: string;
-  updatedAt?: string;
+  context?: string;                // Situational context
+  metadata: {
+    createdAt: string;
+    updatedAt?: string;
+    accessCount: number;
+    lastAccessed: string;
+  };
 }
 ```
+
+**Available MCP Tools:**
+- `save_memory`: Store important information with tagging
+- `search_memories`: Query with filters (tags, importance, date)
+- `update_memory`: Modify existing memories
+- `delete_memory`: Remove memories
+- `get_memory_stats`: Usage analytics
+- `get_memory_tags`: Available tag categories
+
+#### Knowledge Graph Integration
+Neo4j-powered relationship mapping (`src/lib/knowledge-graph-service.ts`):
+
+```typescript
+interface KnowledgeNode {
+  id: string;
+  type: 'Person' | 'Concept' | 'Project' | 'Location' | 'Event';
+  properties: Record<string, any>;
+  relationships: KnowledgeRelationship[];
+}
+
+interface KnowledgeRelationship {
+  type: string;                    // KNOWS, WORKS_ON, LOCATED_IN, etc.
+  target: string;                  // Target node ID
+  properties?: Record<string, any>;
+  strength: number;                // Relationship confidence
+}
+```
+
+**Synchronization Process:**
+- Automatic extraction from chat history
+- Background sync service (`src/scripts/run-kg-sync.ts`)
+- Retry queue for failed operations
+- Metrics collection and error handling
 
 ### Hybrid Search Algorithm
 
@@ -495,68 +614,147 @@ npm run test:all
 npm run type-check
 ```
 
-### Development Scripts
+### Development Scripts Reference
 
 ```bash
-# Start everything
-npm run dev              # App + KG sync  
-npm run dev:debug        # With debugging enabled
+# Primary development workflows
+npm run dev              # Next.js app + KG sync (recommended for full development)
+npm run dev:debug        # Same as above with Node.js debugging on port 9229
 
-# Production  
-npm run build            # Build for production
+# Individual services
+npm run dev:next         # Start only Next.js application (port 3000)
+npm run dev:kg           # Start only Knowledge Graph sync service
+
+# Knowledge Graph operations
+npm run kg:sync          # One-time incremental synchronization
+npm run kg:sync:full     # Complete resync from scratch (slow)
+npm run kg:sync:watch    # Continuous sync service (used by npm run dev)
+npm run kg:sync:queue    # Process error retry queue
+
+# Testing and validation
+npm run test             # Complete test suite
+npm run test:rag         # RAG system tests
+npm run test:integration # API endpoint tests  
+npm run test:neo4j       # Neo4j integration tests
+npm run test:neo4j-advanced # Advanced Neo4j deletion tests
+npm run type-check       # TypeScript compilation check
+
+# Production builds
+npm run build            # Production build
 npm run start            # Start production server
-
-# Services
-docker-compose up -d     # Start ChromaDB + Neo4j
-docker-compose down      # Stop services
-docker-compose logs -f   # View logs
-
-# Testing
-npm run test:rag         # Test RAG system
-npm run test:all         # All available tests
+npm run lint             # ESLint code analysis
 ```
 
-### Docker Services
+### Service Management
 
 ```bash
-# Start ChromaDB and Neo4j
-docker-compose up -d
+# Docker services (ChromaDB + Neo4j)
+docker-compose up -d                    # Start services in background
+docker-compose ps                       # Check running services
+docker-compose logs -f chromadb         # View ChromaDB logs
+docker-compose logs -f neo4j            # View Neo4j logs
+docker-compose down                     # Stop all services
+docker-compose down -v                  # Stop and remove data volumes
 
-# Stop services  
-docker-compose down
-
-# View logs
-docker-compose logs -f
+# Service health checks
+curl http://localhost:8000/api/v1/heartbeat     # ChromaDB health
+curl http://localhost:7474                      # Neo4j browser
 ```
 
-### Debugging
+### Debugging and Monitoring
 
-Check memory store status:
 ```bash
-curl http://localhost:3000/api/conscious-memory?action=stats
+# Memory system status
+curl "http://localhost:3000/api/conscious-memory?action=stats"
+
+# Knowledge Graph sync status  
+curl "http://localhost:3000/api/knowledge-graph?action=status"
+
+# Chat history stats
+curl "http://localhost:3000/api/chat-history/stats"
+
+# Enable debug mode
+cross-env DEBUG=* npm run dev           # Full debug logging
+cross-env NODE_OPTIONS='--inspect' npm run dev:next  # Node.js debugging
 ```
 
 ##  Debugging & Troubleshooting
 
-### Development Mode
+### Common Development Issues
+
+#### Memory System
 ```bash
-npm run dev:debug  # Enables Node.js debugging on port 9229
+# Check ChromaDB connection
+curl http://localhost:8000/api/v1/heartbeat
+
+# Verify memory stats
+curl "http://localhost:3000/api/conscious-memory?action=stats"
+
+# Test embeddings service
+npm run test:rag
 ```
-Connect via Chrome DevTools at `chrome://inspect`
 
-### Common Issues
-- **Embeddings fail**: Service auto-falls back to hash-based embeddings
-- **RAG duplicates**: Check `ChromaMemoryStore.storeMemory()` similarity threshold  
-- **Tool calls error**: Verify MCP server registration in `default-mcp-servers.ts`
-- **Neo4j connection**: Ensure `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` are set
+#### Knowledge Graph Issues  
+```bash
+# Check Neo4j connectivity
+curl http://localhost:7474
 
-### Environment Variables
+# Verify KG sync status
+curl "http://localhost:3000/api/knowledge-graph?action=status"
+
+# Process retry queue manually
+npm run kg:sync:queue
+```
+
+#### Debug Mode
+```bash
+# Enable Node.js debugging
+npm run dev:debug              # Debugger on port 9229
+# Connect via Chrome DevTools at chrome://inspect
+
+# Full debug logging
+cross-env DEBUG=* npm run dev
+
+# Component-specific debugging
+cross-env DEBUG=mcp:* npm run dev        # MCP-related logs
+cross-env DEBUG=kg:* npm run dev         # Knowledge Graph logs
+cross-env DEBUG=rag:* npm run dev        # RAG system logs
+```
+
+### Environment Variable Reference
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RAG_ENABLED` | `true` | Enable/disable RAG system |
-| `RAG_MAX_MEMORIES` | `3` | Max memories to retrieve |
-| `CHROMA_URL` | `http://localhost:8000` | ChromaDB server URL |
+| `LLM_PROVIDER` | `deepseek` | AI provider (google, anthropic, openai, deepseek, groq, mistral, ollama) |
+| `LLM_MODEL` | `deepseek-chat` | Model name for chosen provider |
+| `RAG_ENABLED` | `true` | Enable automatic RAG system |
+| `RAG_MAX_MEMORIES` | `3` | Maximum memories retrieved per query |
+| `CHROMA_URL` | `http://localhost:8000` | ChromaDB server endpoint |
 | `NEO4J_URI` | `bolt://localhost:7687` | Neo4j connection string |
+| `NEO4J_USER` | `neo4j` | Neo4j authentication username |
+| `NEO4J_PASSWORD` | `password123` | Neo4j authentication password |
+
+### Error Resolution
+
+#### "Embeddings service unavailable"
+- System automatically falls back to hash-based embeddings
+- Check Google API key configuration
+- Verify network connectivity
+
+#### "ChromaDB connection failed"  
+- Ensure Docker services are running: `docker-compose up -d`
+- Check port 8000 availability
+- Review ChromaDB logs: `docker-compose logs chromadb`
+
+#### "Neo4j sync errors"
+- Verify Neo4j credentials in `.env.local`
+- Check Neo4j logs: `docker-compose logs neo4j`
+- Process retry queue: `npm run kg:sync:queue`
+
+#### "MCP tool registration failed"
+- Verify MCP server configuration in `config.json`
+- Check tool implementations in `src/lib/mcp-servers/`
+- Review MCP manager logs in development console
 
 ---
 
