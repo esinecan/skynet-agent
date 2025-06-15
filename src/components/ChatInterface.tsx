@@ -12,35 +12,42 @@ interface ChatInterfaceProps {
   sessionId?: string
 }
 
-export default function ChatInterface({ onNewSession, sessionId }: ChatInterfaceProps) {  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, error } = useChat({
+export default function ChatInterface({ onNewSession, sessionId }: ChatInterfaceProps) {  
+  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, error } = useChat({
     id: sessionId,
     api: '/api/chat',
-    maxSteps: 5, // Allow multiple tool calls
+    maxSteps: 35, // Allow multiple tool calls
+    streamProtocol: 'text', // Add for debugging
     onError: async (error) => {
       console.error(' Full error object:', error);
       
-      // Try to get the original response if available
-      if ((error as any).cause && typeof (error as any).cause === 'object') {
-        console.error(' Error cause details:', (error as any).cause);
+      // Add check for stream error type that matches the pattern
+      if (error.message?.includes('Stream error:') || 
+          (error as any).type === 'error') {
+        console.error(' Stream contained error detected:', error);
       }
       
-      // Try to fetch the last response to see actual server error
-      try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            messages: [{ role: 'user', content: 'test error' }],
-            id: sessionId 
-          })
-        });
-        
-        if (!response.ok) {
-          const errorBody = await response.text();
-          console.error(' Server error response:', errorBody);
+      // Keep existing error handling logic
+      if ((error as any).fullStream) {
+        try {
+          const fullStreamText = await (error as any).fullStream.text();
+          console.error(' Full stream error details:', fullStreamText);
+          
+          try {
+            const errorData = JSON.parse(fullStreamText);
+            if (errorData.error) {
+              console.error(' Parsed error:', errorData.error);
+            }
+          } catch (parseError) {
+            // Stream might not be JSON, that's okay
+          }
+        } catch (streamError) {
+          console.error(' Error parsing full stream:', streamError);
         }
-      } catch (fetchError) {
-        console.error(' Fetch error:', fetchError);
+      }
+      
+      if ((error as any).cause && typeof (error as any).cause === 'object') {
+        console.error(' Error cause details:', (error as any).cause);
       }
     },    onFinish: async (message) => {
       // Message storage is now handled by the chat API
@@ -62,40 +69,46 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
   const handleChatSubmit = async (e: React.FormEvent, attachments?: FileAttachment[]) => {
     e.preventDefault()
     
-    // If we have attachments, we need to handle them specially
     if (attachments && attachments.length > 0) {
-      // Add user message with attachments to UI immediately
-      const userMessage: Message & { attachments?: FileAttachment[] } = {
-        id: `user-${Date.now()}`,
-        role: 'user',
-        content: input,
-        createdAt: new Date(),
-        attachments
+      // Validation code remains unchanged
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+      const MAX_FILES = 10; // Maximum number of files
+      
+      if (attachments.length > MAX_FILES) {
+        alert(`Maximum ${MAX_FILES} files allowed. You selected ${attachments.length}.`);
+        return;
       }
-        setMessages(prev => [...prev, userMessage])
       
-      // User message storage is now handled by the chat API
-      // No need to store separately here
+      for (let i = 0; i < attachments.length; i++) {
+        if (attachments[i].size > MAX_FILE_SIZE) {
+          alert(`File "${attachments[i].name}" exceeds the 10MB size limit (${(attachments[i].size / 1024 / 1024).toFixed(2)}MB)`);
+          return;
+        }
+      }
       
-      // Send to chat API with attachment info in the message content
-      const attachmentInfo = attachments.map(att => 
-        `[Attachment: ${att.name} (${att.type}, ${(att.size/1024).toFixed(1)}KB)]`
-      ).join('\n')
-      
-      const enhancedContent = attachmentInfo + (input ? '\n\n' + input : '')
-      
-      // Use the regular handleSubmit with enhanced content
-      const syntheticEvent = {
-        target: { value: enhancedContent }
-      } as React.ChangeEvent<HTMLInputElement>
-      handleInputChange(syntheticEvent)
+      // Use experimental_attachments with error handling
+      try {
+        // Convert FileAttachment[] to match AI SDK's expected format
+        await handleSubmit(e, { 
+          experimental_attachments: attachments.map(attachment => ({
+            name: attachment.name,
+            type: attachment.type,
+            size: attachment.size,
+            data: attachment.data,
+            // Add url property as required by AI SDK's Attachment type
+            url: `data:${attachment.type};base64,${attachment.data}`
+          }))
+        });
+      } catch (attachmentError) {
+        console.error('Attachment error:', attachmentError);
+        // Fallback to processing without attachments if needed
+        if (confirm('Unable to process attachments. Continue without attachments?')) {
+          handleSubmit(e);
+        }
+      }
+    } else {
+      // Regular submit without attachments
       handleSubmit(e)
-      
-    } else {      // Regular submit without attachments
-      handleSubmit(e)
-      
-      // User message storage is now handled by the chat API
-      // No need to store separately here
     }
   }
 

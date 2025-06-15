@@ -111,7 +111,7 @@ function ChatComponent({
     id: sessionId,
     api: '/api/chat',
     initialMessages: initialMessages,
-    maxSteps: 5, // Allow multiple tool calls
+    maxSteps: 35, // Allow multiple tool calls
     onError: (error) => {
       console.error('Chat error:', error);
     },
@@ -131,7 +131,7 @@ function ChatComponent({
   }, [messages.length])
 
   // Save user messages immediately when sent
-  const handleChatSubmit = async (e: React.FormEvent, attachments?: FileAttachment[]) => {
+  const handleChatSubmit = (e: React.FormEvent) => {
     handleSubmit(e)
     
     // User message storage is now handled by the chat API
