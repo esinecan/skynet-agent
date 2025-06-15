@@ -111,7 +111,7 @@ function ChatComponent({
     id: sessionId,
     api: '/api/chat',
     initialMessages: initialMessages,
-    maxSteps: 5, // Allow multiple tool calls
+    maxSteps: 35, // Allow multiple tool calls
     onError: (error) => {
       console.error('Chat error:', error);
     },
@@ -131,8 +131,20 @@ function ChatComponent({
   }, [messages.length])
 
   // Save user messages immediately when sent
-  const handleChatSubmit = async (e: React.FormEvent, attachments?: FileAttachment[]) => {
-    handleSubmit(e)
+  const handleChatSubmit = (e: React.FormEvent, files?: FileList) => {
+    console.log('page.tsx: handleChatSubmit called with files:', files)
+    if (files && files.length > 0) {
+      console.log('page.tsx: Files count:', files.length)
+      for (let i = 0; i < files.length; i++) {
+        console.log(`page.tsx: File ${i + 1}:`, files[i].name, files[i].type, files[i].size)
+      }
+      // Use experimental_attachments as per AI SDK v3.3
+      handleSubmit(e, {
+        experimental_attachments: files
+      })
+    } else {
+      handleSubmit(e)
+    }
     
     // User message storage is now handled by the chat API
     // No need to store separately here

@@ -12,6 +12,11 @@ import { join } from 'path';
 import { MCPManager } from './mcp-manager';
 import { getAllMCPServers } from '../config/default-mcp-servers';
 import { getRAGService, RAGResult } from './rag';
+import { withRetry, isRetryableNetworkError } from './retry';
+import { ToolError, ErrorCode } from './errors';
+import { createLogger } from './logger';
+
+const logger = createLogger('llm-service');
 
 // --- Knowledge Extraction Structures ---
 export interface ExtractedEntity {
@@ -87,11 +92,8 @@ export class LLMService {
     if (envProvider === 'mistral') return 'mistral';
     if (envProvider === 'ollama') return 'ollama';
     
-    // Default to Google if Google API key is available
-    if (process.env.GOOGLE_API_KEY) return 'google';
-    
-    // Otherwise default to DeepSeek
-    return 'deepseek';
+    // Otherwise default to Google
+    return 'google';
   }
   private getDefaultModel(provider: LLMProvider): string {
     switch (provider) {
@@ -268,8 +270,24 @@ export class LLMService {
           // Convert MCP JSON Schema to Zod schema
           const parameters = this.convertJsonSchemaToZod(mcpTool.inputSchema);tools[toolKey] = tool({
               description: mcpTool.description || `Tool ${mcpTool.name} from ${serverName}`,
-              parameters: parameters,              execute: async (args: any) => {                try {
-                  const result = await this.mcpManager.callTool(serverName, mcpTool.name, args);
+              parameters: parameters,              execute: async (args: any) => {
+                try {
+                  // Wrap tool execution with retry logic
+                  const result = await withRetry(
+                    async () => {
+                      logger.debug(`Executing tool ${serverName}_${mcpTool.name}`, args);
+                      return await this.mcpManager.callTool(serverName, mcpTool.name, args);
+                    },
+                    {
+                      maxAttempts: 3,
+                      initialDelay: 1000,
+                      shouldRetry: (error, attemptNumber) => {
+                        logger.warn(`Tool ${serverName}_${mcpTool.name} failed (attempt ${attemptNumber})`, error);
+                        return isRetryableNetworkError(error) || 
+                               (error instanceof ToolError && error.retryable);
+                      }
+                    }
+                  );
                   
                   // Ensure we return a clean result
                   if (result && typeof result === 'object') {
@@ -283,15 +301,20 @@ export class LLMService {
                   
                   return result;
                 } catch (error) {
-                  console.error(`TOOL_ERROR: ${serverName}_${mcpTool.name} failed`);
+                  logger.error(`Tool ${serverName}_${mcpTool.name} failed after retries`, error);
                   
-                  // Return a structured error response instead of throwing
-                  const errorMessage = error instanceof Error ? error.message : String(error);
-                  return {
-                    error: true,
-                    message: `Tool execution failed: ${errorMessage}`,
-                    tool: `${serverName}_${mcpTool.name}`
-                  };
+                  // Throw a proper ToolError that includes metadata
+                  if (error instanceof ToolError) {
+                    throw error;
+                  }
+                  
+                  throw new ToolError(
+                    error instanceof Error ? error.message : String(error),
+                    mcpTool.name,
+                    serverName,
+                    ErrorCode.TOOL_EXECUTION_FAILED,
+                    { originalError: error }
+                  );
                 }
               }
             });
