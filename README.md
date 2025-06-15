@@ -22,13 +22,6 @@
 - Exposes conscious memory as **Model Context Protocol tools**
 - AI naturally saves and recalls memories during conversation
 - Clean separation between UI, memory, and AI operations
-
-###  Advanced Memory Capabilities
-- **Dual-Process Architecture**: Automatic RAG system for non-volitional memory plus conscious memory tools for explicit control
-- **Semantic + Keyword Search**: Vector embeddings for conceptual similarity with keyword fallback for exact matches
-- **Knowledge Graph Integration**: Neo4j-powered relationship mapping with automatic synchronization from chat history
-- **Smart Memory Ranking**: Combines semantic similarity, importance scores, and recency for optimal retrieval
-
 ---
 
 ##  Supported LLM Providers
@@ -43,85 +36,19 @@
 | **Mistral** | Cloud | Natural language & code | `mistral-large-latest` |
 | **Ollama** | Local | Privacy-focused | `llama3.2:latest` |
 
-Quick setup:
+## Quick setup:
+
+### Prerequisites
+
+#### A Strong LLM:
+I suggest getting a free Google API Key from Google AI Studio to have a fairly strong model with super long context length and a free tier that'll probably be enough for personal use.
 ```env
 LLM_PROVIDER=google
 LLM_MODEL=gemini-2.5-flash-preview-05-20
 GOOGLE_API_KEY=your_key_here
 ```
 
-##  Architecture Overview
-
-```
-        
-   User Interface  Next.js Chat      Chat API      
-   (React/TS)           Client               Routes        
-        
-                                                       
-                           
-                         LLM Service      MCP Manager    
-                         (Anthropic)                         
-                           
-                                                       
-                                              
-                                               Conscious Memory
-                                                MCP Server     
-                                              
-                                                       
-        
-   Memory UI      Conscious Memory ChromaDB Memory 
-   Dashboard             Service               Store       
-        
-                                                       
-                           
-                          RAG System      Google         
-                         (Automatic)          Embeddings     
-                           
-```
-
-### Core Components
-
-| Component | Purpose | Technology |
-|-----------|---------|------------|
-| **Chat Interface** | Real-time AI conversations | Next.js, React, TypeScript |
-| **RAG System** | Automatic memory storage & retrieval | ChromaDB, Google Embeddings |
-| **Conscious Memory** | Explicit memory operations | MCP Tools, Vector Search |
-| **Hybrid Search** | Semantic + keyword matching | Custom algorithm |
-| **MCP Integration** | Tool-based AI memory access | Model Context Protocol |
-
-##  Multi-Provider LLM Support
-
-**Skynet-Agent** supports **7 different LLM providers** with proper default models and API integrations.
-
-
-
-
-| ** Groq**              | Cloud             | Ultra‑fast inference                  | `grok-3-mini`, `grok-3-beta`                           |
-| ** Mistral**            | Cloud             | Natural language & code generation    | `mistral-7b-instruct`, `mistral-coder-7b`               |
-| ** OpenAI-Compatible**  | Cloud / Self‑Hosted | Broad ecosystem integration           | `gpt-4o-chat`, `gpt-4o-code`, and more                  |
-| ** Ollama**             | Local             | Privacy-focused, truly free           | Any local model (Llama 3, Qwen3, etc.)                  |
-| ** Google Gemini**      | Cloud             | Multimodal integration & high speed   | `gemini-2.5-flash`, `gemini-2.5-pro`                    |
-| ** DeepSeek**           | Cloud             | Cost‑effective, robust performance    | `deepseek-chat-r1`, `deepseek-coder-r1`                 |
-
-
-
-###  Quick Provider Setup
-```env
-# Choose your provider
-LLM_PROVIDER=google
-LLM_MODEL=gemini-2.5-flash-preview-05-20
-
-# Add your API key
-GOOGLE_API_KEY=your_google_api_key
-```
-
-** Complete Provider Setup Guide** - Installation, configuration, and usage examples for all providers detailed above.
-
----
-
-##  Quick Start
-
-### Prerequisites
+Also, while not free, deepseek-chat is very affordable and performs very well. So basically you need:
 
 - **Node.js** 18+ 
 - **Docker** & **Docker Compose** (for ChromaDB and Neo4j)
@@ -143,7 +70,7 @@ cp .env.example .env.local
 docker-compose up -d     # Starts ChromaDB (port 8000) and Neo4j (ports 7474, 7687)
 
 # Start the application
-npm run dev             # Starts Next.js (port 3000) + background KG sync service
+npm run dev             # Starts Next.js (port 3000) + background KG sync service.
 ```
 
 **Access Points:**
@@ -193,19 +120,33 @@ OPENAI_API_KEY=your_openai_api_key
 # OR
 DEEPSEEK_API_KEY=your_deepseek_api_key
 
-# Provider and model selection
-LLM_PROVIDER=google                           # google, anthropic, openai, deepseek, groq, mistral, ollama
-LLM_MODEL=gemini-2.5-flash-preview-05-20     # Model name for chosen provider
+# ChromaDB Configuration
+CHROMA_URL=http://localhost:8000
+CHROMA_COLLECTION=mcp_chat_memories
 
-# Database connections (when using Docker)
-CHROMA_URL=http://localhost:8000              # ChromaDB endpoint
-NEO4J_URI=bolt://localhost:7687               # Neo4j connection
-NEO4J_USER=neo4j                              # Neo4j username
-NEO4J_PASSWORD=password123                    # Neo4j password
+# RAG Configuration
+RAG_ENABLED=true
+RAG_MAX_MEMORIES=5
+RAG_MIN_SIMILARITY=0.15
+RAG_INCLUDE_SESSION_CONTEXT=true
 
-# Optional: RAG system configuration
-RAG_ENABLED=true                              # Enable automatic memory
-RAG_MAX_MEMORIES=3                            # Max memories to retrieve per query
+# Memory Storage Path (for backup/metadata)
+MEMORY_DATA_PATH=./data/memories
+
+# Model Configuration
+#LLM_PROVIDER=google
+#LLM_MODEL=gemini-2.5-flash-preview-05-20
+LLM_PROVIDER=deepseek
+LLM_MODEL=deepseek-chat
+
+# LLM Configuration
+MAX_TOKENS=65536
+TEMPERATURE=0.7
+
+# Neo4j Knowledge Graph
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password123
 ```
 
 ### Docker Services
