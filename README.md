@@ -2,7 +2,8 @@
 
 > *"What if AI could not only access memories, but consciously choose what to remember? With MCP tool access fully supported?"*
 
-![New Project](https://github.com/user-attachments/assets/453e192b-805c-4275-a3fe-358f37c50470)
+![image](https://github.com/user-attachments/assets/0e8d3705-066b-432e-80ae-836e5b75c8ca)
+
 
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
