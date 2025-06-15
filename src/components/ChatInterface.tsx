@@ -5,7 +5,6 @@ import { useChat } from 'ai/react'
 import ChatMessage from './ChatMessage'
 import MessageInput from './MessageInput'
 import { Message } from 'ai'
-import { FileAttachment } from '../types/chat'
 
 interface ChatInterfaceProps {
   onNewSession?: (sessionId: string) => void
@@ -66,46 +65,30 @@ export default function ChatInterface({ onNewSession, sessionId }: ChatInterface
   }
 
   // Enhanced submit handler with attachment support
-  const handleChatSubmit = async (e: React.FormEvent, attachments?: FileAttachment[]) => {
+  const handleChatSubmit = async (e: React.FormEvent, files?: FileList) => {
     e.preventDefault()
     
-    if (attachments && attachments.length > 0) {
-      // Validation code remains unchanged
-      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
-      const MAX_FILES = 10; // Maximum number of files
+    if (files && files.length > 0) {
+      // Validation
+      const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
+      const MAX_FILES = 20; // Maximum number of files
       
-      if (attachments.length > MAX_FILES) {
-        alert(`Maximum ${MAX_FILES} files allowed. You selected ${attachments.length}.`);
+      if (files.length > MAX_FILES) {
+        alert(`Maximum ${MAX_FILES} files allowed. You selected ${files.length}.`);
         return;
       }
       
-      for (let i = 0; i < attachments.length; i++) {
-        if (attachments[i].size > MAX_FILE_SIZE) {
-          alert(`File "${attachments[i].name}" exceeds the 10MB size limit (${(attachments[i].size / 1024 / 1024).toFixed(2)}MB)`);
+      for (let i = 0; i < files.length; i++) {
+        if (files[i].size > MAX_FILE_SIZE) {
+          alert(`File "${files[i].name}" exceeds the 50MB size limit (${(files[i].size / 1024 / 1024).toFixed(2)}MB)`);
           return;
         }
       }
       
-      // Use experimental_attachments with error handling
-      try {
-        // Convert FileAttachment[] to match AI SDK's expected format
-        await handleSubmit(e, { 
-          experimental_attachments: attachments.map(attachment => ({
-            name: attachment.name,
-            type: attachment.type,
-            size: attachment.size,
-            data: attachment.data,
-            // Add url property as required by AI SDK's Attachment type
-            url: `data:${attachment.type};base64,${attachment.data}`
-          }))
-        });
-      } catch (attachmentError) {
-        console.error('Attachment error:', attachmentError);
-        // Fallback to processing without attachments if needed
-        if (confirm('Unable to process attachments. Continue without attachments?')) {
-          handleSubmit(e);
-        }
-      }
+      // Use experimental_attachments as per AI SDK v3.3
+      handleSubmit(e, { 
+        experimental_attachments: files
+      });
     } else {
       // Regular submit without attachments
       handleSubmit(e)

@@ -114,6 +114,13 @@ export async function POST(request: NextRequest) {
     console.log(' Chat API: Request body.sessionId:', body.sessionId);
     console.log(' Chat API: Request body.id:', body.id);
     console.log(' Chat API: Any other ID fields:', Object.keys(body).filter(k => k.toLowerCase().includes('id')));
+    console.log(' Chat API: Messages array length:', body.messages?.length);
+    if (body.messages && body.messages.length > 0) {
+      const lastMsg = body.messages[body.messages.length - 1];
+      console.log(' Chat API: Last message keys:', Object.keys(lastMsg));
+      console.log(' Chat API: Last message experimental_attachments:', lastMsg.experimental_attachments);
+      console.log(' Chat API: Last message attachments:', lastMsg.attachments);
+    }
     
     const { messages, sessionId: providedSessionId, id: providedId } = body;
     
@@ -326,21 +333,15 @@ export async function POST(request: NextRequest) {
               console.log(' Chat API: Created new session:', sessionId);
             }
             // Store user message
-            const userMessageAttachments = lastMessage?.experimental_attachments || lastMessage?.attachments || undefined;
+            // Skip attachment storage for now - AI SDK v3.3 handles attachments differently
+            // They're included in the message parts, not as separate attachments
             await chatHistory.addMessage({
               id: `msg_${Date.now()}_user`,
               sessionId: sessionId,
               role: 'user',
               content: userMessage,
-              attachments: userMessageAttachments ? userMessageAttachments.map((att: any) => ({
-                id: att.id || `att_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
-                messageId: `msg_${Date.now()}_user`,
-                name: att.name,
-                type: att.contentType || att.type,
-                size: att.size || 0,
-                data: att.data,
-                createdAt: new Date(),
-              })) : undefined,
+              // TODO: Update chat history to handle AI SDK v3.3 attachment format
+              attachments: undefined,
             });
             
             // When storing assistant response, handle memory tool calls with no text
