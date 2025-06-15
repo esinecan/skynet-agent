@@ -70,7 +70,7 @@ cp .env.example .env.local
 docker-compose up -d     # Starts ChromaDB (port 8000) and Neo4j (ports 7474, 7687)
 
 # Start the application
-npm run dev             # Starts Next.js (port 3000) + background KG sync service.
+npm run dev             # try "npm run dev:next" if you encounter neo4j session issues
 ```
 
 **Access Points:**
