@@ -1,4 +1,4 @@
-# An Open Source, Claude Code Like Tool, With RAG + Graph RAG + MCP Integration, and Supports Most LLMs (Incomplete But Functional & Usable)
+# An Open Source, Claude Code Like Tool, With RAG + Graph RAG + MCP Integration, **Autopilot Mode** and Supports Most LLMs (Incomplete But Functional & Usable)
 
 > *"What if AI could not only access memories, but consciously choose what to remember? With MCP tool access fully supported?"*
 
@@ -102,7 +102,10 @@ MOTIVE_FORCE_USE_CONSCIOUS_MEMORY=true        # Include conscious memory in anal
 
 **Autopilot Usage:**
 - Click the "Autopilot" toggle in the chat interface to enable/disable
-- Use `/autopilot [instruction]` in chat to modify autopilot behavior on-the-fly
+- Your next message will kind of be Autopilot's objective. For instance I run this daily: 
+```
+( **User's final message before Motive Force takes over was as follows:** Using querying by timestamp or normal querying, divide the memories of the day into something like 5 to 10 groups and perform gardening by deleting unnecessary things, maybe deleting some items because they are redundant or too generic etc. Maybe consolidating the content of some in a new memory. Maybe summarizing some and deleting the original. maybe adding new memories due to insights you gain during the process. Every now and then talk to autopilot for confirmation that you're on right track. By doing this daily, over time you will culitivate your own self curated memory. Motive Force's latest instructions are going to be above this message)
+```
 - Configure settings via the gear icon when autopilot is enabled
 - Autopilot automatically disables after consecutive errors or hitting turn limits
 

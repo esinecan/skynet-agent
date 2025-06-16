@@ -52,6 +52,15 @@ export class MotiveForceService {
       // Get the base system prompt from motive-force-prompt.md
       const baseSystemPrompt = MotiveForceStorage.getSystemPrompt();
       
+      // Debug: Log first 100 chars of the prompt to verify it's correct
+      console.log('[MotiveForce] Using system prompt:', baseSystemPrompt.substring(0, 100) + '...');
+      
+      // Verify we're not accidentally getting the main system prompt
+      if (baseSystemPrompt.includes('tool-empowered assistant')) {
+        console.error('[MotiveForce] ERROR: Got main system prompt instead of motive force prompt!');
+        throw new Error('Motive force is using the wrong system prompt file');
+      }
+      
       // Get the last user message before motive force takes over
       const lastUserMessage = messages
         .filter(m => m.role === 'user')
@@ -115,23 +124,41 @@ You should act as the human user of the system and continue their conversation a
           content: msg.content
         }));
 
-      const formattedMessages = [
-        { role: 'system' as const, content: enhancedSystemPrompt },
-        ...conversationMessages
-      ];
-      
       // Get model without tools to avoid naming issues
       const { model } = await this.llmService.getModelAndTools(false);
-        const streamOptions = {
-        model,
-        messages: formattedMessages,
-        temperature: this.config.temperature || 0.7,
-        maxTokens: 8000,
-      };
+      
+      // If no conversation history, use a prompt approach
+      let streamOptions: any;
+      
+      if (conversationMessages.length === 0) {
+        // Use prompt-based approach when no history
+        streamOptions = {
+          model,
+          system: enhancedSystemPrompt,
+          prompt: "What should I do next?",
+          temperature: this.config.temperature || 0.7,
+          maxTokens: 8000,
+        };
+      } else {
+        // Use messages-based approach with history
+        streamOptions = {
+          model,
+          system: enhancedSystemPrompt,
+          messages: conversationMessages,
+          temperature: this.config.temperature || 0.7,
+          maxTokens: 8000,
+        };
+      }
       
       // Stream the response
       let resultText = '';
       try {
+        console.log('[MotiveForce] Calling streamText with options:', {
+          ...streamOptions,
+          system: streamOptions.system?.substring(0, 100) + '...',
+          messages: streamOptions.messages?.length || 0
+        });
+        
         const result = await streamText(streamOptions);
         
         for await (const chunk of result.textStream) {

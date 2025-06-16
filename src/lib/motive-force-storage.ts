@@ -27,12 +27,24 @@ You are an AI assistant operating in "autopilot mode" - your job is to analyze t
 export class MotiveForceStorage {
   static getSystemPrompt(): string {
     try {
+      console.log('[MotiveForceStorage] Reading from:', PROMPT_FILE_PATH);
+      
       if (!existsSync(PROMPT_FILE_PATH)) {
+        console.warn('[MotiveForceStorage] File does not exist, creating default');
         this.resetSystemPrompt();
       }
-      return readFileSync(PROMPT_FILE_PATH, 'utf-8').trim();
+      
+      const content = readFileSync(PROMPT_FILE_PATH, 'utf-8').trim();
+      console.log('[MotiveForceStorage] Read', content.length, 'characters');
+      
+      // Verify it's the correct prompt
+      if (!content.includes('MotiveForce') && !content.includes('Autopilot')) {
+        console.error('[MotiveForceStorage] WARNING: Prompt might be incorrect!');
+      }
+      
+      return content;
     } catch (error) {
-      console.error('Error reading system prompt:', error);
+      console.error('[MotiveForceStorage] Error reading system prompt:', error);
       return DEFAULT_SYSTEM_PROMPT;
     }
   }
