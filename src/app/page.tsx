@@ -124,7 +124,22 @@ function ChatComponent({
   }, [sessionId])
   
   // Handle autopilot toggle
-  const handleAutopilotToggle = React.useCallback((enabled: boolean) => {
+  const handleAutopilotToggle = React.useCallback(async (enabled: boolean) => {
+    if (enabled) {
+      try {
+        const response = await fetch('/api/motive-force', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'resetPrompt' })
+        });
+        if (!response.ok) {
+          console.error('Failed to reset motive force prompt on enable:', await response.text());
+        }
+      } catch (error) {
+        console.error('Error resetting motive force prompt on enable:', error);
+      }
+    }
+
     setAutopilotState(prev => ({
       ...prev,
       enabled,
