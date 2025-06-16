@@ -43,22 +43,28 @@ export class MotiveForceService {
   }
     async generateNextQuery(
     messages: ChatMessage[],
-    sessionId: string
+    sessionId: string,
+    isInitiatingAutopilot?: boolean
   ): Promise<string> {
     if (!this.initialized) {
       await this.initialize();
     }
       try {
       // Get system prompt
-      const systemPrompt = MotiveForceStorage.getSystemPrompt();
+      let systemPrompt = MotiveForceStorage.getSystemPrompt();
       
-      // Get the last user message before motive force takes over
-      const lastUserMessage = messages
-        .filter(m => m.role === 'user')
-        .slice(-1)[0];
+      if (isInitiatingAutopilot) {
+        const lastUserMessage = messages.filter(m => m.role === 'user').slice(-1)[0];
+        if (lastUserMessage && lastUserMessage.content) {
+          const userMessageString = `user's last message was as follows: ${lastUserMessage.content}`;
+          MotiveForceStorage.appendToSystemPrompt(userMessageString);
+          systemPrompt = MotiveForceStorage.getSystemPrompt(); // Re-fetch after append
+        }
+      }
       
       // Get additional context if enabled
       let additionalContext = '';
+      const lastUserMessage = messages.filter(m => m.role === 'user').slice(-1)[0]; // Keep for RAG context for now
       
       if (this.config.useRag && this.ragService) {
         if (lastUserMessage) {
@@ -97,25 +103,19 @@ export class MotiveForceService {
         }
       }
       
-      // Enhanced system prompt with last user message context and task instructions
-      const enhancedSystemPrompt = `${systemPrompt}
-
-## Context: Last Message from User Before Takeover
-The last message from the user before you took over for them was: "${lastUserMessage?.content || 'No previous user message found'}"
-
-Your task is to retain focus and task fidelity of the discussion by providing thoughtful analysis, reasoning about the topics, and generating comprehensive follow-up questions or suggestions that would help advance this conversation in a ${this.config.mode} manner. Fill in gaps in understanding and provide valuable context or insights.${additionalContext}`;
-
-      // Convert ChatMessage[] to proper message format, excluding the last user message to avoid duplication
+      // Convert ChatMessage[] to proper message format
       const conversationMessages = messages
         .slice(-this.config.historyDepth)
-        .slice(0, -1) // Remove last message since it's now in system prompt
+        .slice(0, -1) // Remove last message as it's either in system prompt or not needed directly by LLM
         .map(msg => ({
           role: msg.role as 'user' | 'assistant',
           content: msg.content
         }));
 
-      const formattedMessages = [
-        { role: 'system' as const, content: enhancedSystemPrompt },
+      const messagesForLLM = [
+        { role: 'system' as const, content: systemPrompt + (additionalContext ? `
+
+${additionalContext}` : '') },
         ...conversationMessages
       ];
       
@@ -123,7 +123,7 @@ Your task is to retain focus and task fidelity of the discussion by providing th
       const { model } = await this.llmService.getModelAndTools(false);
         const streamOptions = {
         model,
-        messages: formattedMessages,
+        messages: messagesForLLM,
         temperature: this.config.temperature || 0.7,
         maxTokens: 8000,
       };

@@ -16,7 +16,8 @@
     "kg:sync:watch": "tsx src/scripts/run-kg-sync.ts --watch",
     "kg:sync:full": "tsx src/scripts/run-kg-sync.ts --full-resync",
     "kg:sync:queue": "tsx src/scripts/run-kg-sync.ts --process-all",
-    "test": "npm run test:integration && npm run test:rag && npm run test:neo4j",
+    "test": "npm run test:unit && npm run test:integration && npm run test:rag && npm run test:neo4j",
+    "test:unit": "jest",
     "test:rag": "tsx src/tests/rag-test.ts",
     "test:integration": "node src/tests/integration-test.js",
     "test:neo4j": "tsx src/tests/neo4j-integration.test.js",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.8",
+    "@types/jest": "^29.5.14",
     "@types/node": "^20.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
@@ -52,9 +54,11 @@
     "cross-env": "^7.0.3",
     "eslint": "^8.0.0",
     "eslint-config-next": "15.0.0",
+    "jest": "^30.0.0",
     "npm-run-all": "^4.1.5",
     "postcss": "^8.5.4",
     "tailwindcss": "^4.1.8",
+    "ts-jest": "^29.4.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   }

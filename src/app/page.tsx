@@ -137,6 +137,17 @@ function ChatComponent({
       clearTimeout(autopilotTimeoutId);
       setAutopilotTimeoutId(null);
     }
+
+    // If turning off, reset the prompt on the server
+    if (!enabled) {
+      fetch('/api/motive-force', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resetPrompt' })
+      }).catch(error => {
+        console.error('Failed to reset prompt on autopilot disable:', error);
+      });
+    }
   }, [autopilotTimeoutId]);
   
   // Save config changes
@@ -202,7 +213,8 @@ function ChatComponent({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'generate',
-          sessionId: sessionId
+          sessionId: sessionId,
+          isInitiatingAutopilot: autopilotState.currentTurn === 0
         })
       });
       
@@ -506,10 +518,18 @@ function ChatComponent({
       state={autopilotState}
       onStop={() => handleAutopilotToggle(false)}
       onReset={async () => {
-        await fetch('/api/motive-force', {
-          method: 'POST',
-          body: JSON.stringify({ action: 'resetPrompt' })
-        });
+        try {
+          const response = await fetch('/api/motive-force', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'resetPrompt' })
+          });
+          if (!response.ok) {
+            console.error('Failed to reset prompt via status button:', await response.text());
+          }
+        } catch (error) {
+          console.error('Error resetting prompt via status button:', error);
+        }
         handleAutopilotToggle(false);
       }}
     />

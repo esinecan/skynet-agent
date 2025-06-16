@@ -6,7 +6,7 @@ import { ChatHistoryDatabase } from '../../../lib/chat-history';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, sessionId, data } = body;
+    const { action, sessionId, data, isInitiatingAutopilot } = body;
     
     switch (action) {
       case 'generate': {
@@ -32,7 +32,8 @@ export async function POST(request: NextRequest) {
         
         const query = await service.generateNextQuery(
           session.messages,
-          sessionId
+          sessionId,
+          isInitiatingAutopilot
         );
         
         return NextResponse.json({
