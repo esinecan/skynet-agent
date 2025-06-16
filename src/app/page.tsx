@@ -6,6 +6,10 @@ import ChatHistorySidebar from '../components/ChatHistorySidebar'
 import MessageInput from '../components/MessageInput'
 import { ChatSession } from '../lib/chat-history'
 import { FileAttachment } from '../types/chat'
+import MotiveForceToggle from '../components/MotiveForceToggle'
+import MotiveForceStatus from '../components/MotiveForceStatus'
+import MotiveForceSettings from '../components/MotiveForceSettings'
+import { MotiveForceState, MotiveForceConfig, DEFAULT_MOTIVE_FORCE_CONFIG } from '../types/motive-force'
 
 export default function Home() {
   // Initialize with null to indicate we haven't determined the session ID yet
@@ -79,6 +83,18 @@ function ChatComponent({
 }) {
   const [initialMessages, setInitialMessages] = React.useState<any[]>([])
   const [isLoadingSession, setIsLoadingSession] = React.useState(true)
+  
+  // Autopilot state
+  const [autopilotState, setAutopilotState] = React.useState<MotiveForceState>({
+    enabled: false,
+    isGenerating: false,
+    currentTurn: 0,
+    errorCount: 0
+  })
+  
+  const [autopilotConfig, setAutopilotConfig] = React.useState<MotiveForceConfig>(DEFAULT_MOTIVE_FORCE_CONFIG)
+  const [showAutopilotSettings, setShowAutopilotSettings] = React.useState(false)
+  const [autopilotTimeoutId, setAutopilotTimeoutId] = React.useState<NodeJS.Timeout | null>(null)
 
   // Load messages when sessionId changes
   React.useEffect(() => {
@@ -106,8 +122,43 @@ function ChatComponent({
         setIsLoadingSession(false)
       })
   }, [sessionId])
+  
+  // Handle autopilot toggle
+  const handleAutopilotToggle = React.useCallback((enabled: boolean) => {
+    setAutopilotState(prev => ({
+      ...prev,
+      enabled,
+      currentTurn: enabled ? 0 : prev.currentTurn,
+      errorCount: 0
+    }));
+    
+    // Clear any pending autopilot actions
+    if (!enabled && autopilotTimeoutId) {
+      clearTimeout(autopilotTimeoutId);
+      setAutopilotTimeoutId(null);
+    }
+  }, [autopilotTimeoutId]);
+  
+  // Save config changes
+  const handleSaveAutopilotConfig = async (config: MotiveForceConfig) => {
+    try {
+      await fetch('/api/motive-force', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'saveConfig',
+          data: { config }
+        })
+      });
+      
+      setAutopilotConfig(config);
+    } catch (error) {
+      console.error('Failed to save autopilot config:', error);
+    }
+  };
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+
+  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
     id: sessionId,
     api: '/api/chat',
     initialMessages: initialMessages,
@@ -118,6 +169,19 @@ function ChatComponent({
     onFinish: async (message) => {
       // Message storage is now handled by the chat API
       // No need to store separately here
+      
+      // Trigger autopilot if enabled
+      if (
+        autopilotState.enabled && 
+        autopilotState.currentTurn < autopilotConfig.maxConsecutiveTurns &&
+        message.role === 'assistant'
+      ) {
+        const timeoutId = setTimeout(() => {
+          generateAutopilotQuery();
+        }, autopilotConfig.delayBetweenTurns);
+        
+        setAutopilotTimeoutId(timeoutId);
+      }
     }
   })
 
@@ -125,6 +189,73 @@ function ChatComponent({
   React.useEffect(() => {
     console.log(' Messages loaded:', messages.length)
   }, [sessionId])
+  
+  // Generate autopilot query
+  const generateAutopilotQuery = React.useCallback(async () => {
+    if (!sessionId || autopilotState.isGenerating) return;
+    
+    try {
+      setAutopilotState(prev => ({ ...prev, isGenerating: true }));
+      
+      const response = await fetch('/api/motive-force', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate',
+          sessionId: sessionId
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate autopilot query');
+      }
+      
+      const { query } = await response.json();
+      
+      // Add autopilot query as user message
+      const autopilotMessage = {
+        id: `autopilot-${Date.now()}`,
+        role: 'user' as const,
+        content: `[Autopilot] ${query}`,
+        createdAt: new Date()
+      };
+      
+      setMessages(prev => [...prev, autopilotMessage]);
+      
+      // Save to chat history
+      await fetch(`/api/chat-history/${sessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: autopilotMessage })
+      });
+      
+      // Submit the query
+      handleInputChange({ target: { value: query } } as any);
+      const submitEvent = new Event('submit') as any;
+      submitEvent.preventDefault = () => {};
+      handleSubmit(submitEvent);
+      
+      setAutopilotState(prev => ({
+        ...prev,
+        isGenerating: false,
+        currentTurn: prev.currentTurn + 1,
+        lastGeneratedAt: new Date()
+      }));
+      
+    } catch (error) {
+      console.error('Autopilot error:', error);
+      setAutopilotState(prev => ({
+        ...prev,
+        isGenerating: false,
+        errorCount: prev.errorCount + 1
+      }));
+      
+      // Disable autopilot after 3 consecutive errors
+      if (autopilotState.errorCount >= 2) {
+        handleAutopilotToggle(false);
+      }
+    }
+  }, [sessionId, autopilotState.isGenerating, autopilotState.errorCount, handleSubmit, setMessages, handleAutopilotToggle]);
 
   React.useEffect(() => {
     console.log(' Messages changed:', messages.length)
@@ -132,6 +263,35 @@ function ChatComponent({
 
   // Save user messages immediately when sent
   const handleChatSubmit = (e: React.FormEvent, files?: FileList) => {
+    e.preventDefault();
+    
+    // Check if this is an autopilot instruction
+    if (autopilotState.enabled && input.trim().toLowerCase().startsWith('/autopilot ')) {
+      const instruction = input.trim().substring(11);
+      
+      fetch('/api/motive-force', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'savePrompt',
+          data: { text: instruction, mode: 'append' }
+        })
+      }).then(() => {
+        setMessages(prev => [...prev, {
+          id: `system-${Date.now()}`,
+          role: 'system' as const,
+          content: '✅ Autopilot instructions updated',
+          createdAt: new Date()
+        }]);
+        
+        handleInputChange({ target: { value: '' } } as any);
+      }).catch(error => {
+        console.error('Failed to save autopilot instructions:', error);
+      });
+      
+      return;
+    }
+    
     console.log('page.tsx: handleChatSubmit called with files:', files)
     if (files && files.length > 0) {
       console.log('page.tsx: Files count:', files.length)
@@ -149,10 +309,20 @@ function ChatComponent({
     // User message storage is now handled by the chat API
     // No need to store separately here
   }
+  
+  // Cleanup on unmount
+  React.useEffect(() => {
+    return () => {
+      if (autopilotTimeoutId) {
+        clearTimeout(autopilotTimeoutId);
+      }
+    };
+  }, [autopilotTimeoutId]);
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      {/* Main chat area */}
-      <div className="flex-1 flex flex-col">        {/* Header */}
+    <>
+      <div className="flex h-screen overflow-hidden bg-gray-50">
+        {/* Main chat area */}
+        <div className="flex-1 flex flex-col">        {/* Header */}
         <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-4">
             <button
@@ -197,6 +367,31 @@ function ChatComponent({
               <span className="hidden sm:inline">Files</span>
             </a>
             
+            
+            {/* Autopilot controls */}
+            <div className="flex items-center gap-2">
+              <MotiveForceToggle
+                enabled={autopilotState.enabled}
+                onToggle={handleAutopilotToggle}
+              />
+              
+              {autopilotState.enabled && (
+                <button
+                  onClick={() => setShowAutopilotSettings(true)}
+                  className="p-1.5 rounded-md bg-gray-200 hover:bg-gray-300 text-gray-700"
+                  title="Autopilot Settings"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" 
+                    />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" 
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
             <button
               onClick={onNewChat}
               className="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
@@ -299,15 +494,33 @@ function ChatComponent({
               input={input}
               handleInputChange={handleInputChange}
               handleSubmit={handleChatSubmit}
-              isLoading={isLoading}
+              isLoading={isLoading || autopilotState.isGenerating}
             />
-            
-            <div className="text-xs text-gray-500 mt-2 text-center">
-              Connected MCP servers: filesystem, windows-cli, playwright, sequential-thinking
-            </div>
           </div>
         </div>
       </div>
     </div>
+    
+    {/* Autopilot status indicator */}
+    <MotiveForceStatus
+      state={autopilotState}
+      onStop={() => handleAutopilotToggle(false)}
+      onReset={async () => {
+        await fetch('/api/motive-force', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'resetPrompt' })
+        });
+        handleAutopilotToggle(false);
+      }}
+    />
+    
+    {/* Settings modal */}
+    <MotiveForceSettings
+      isOpen={showAutopilotSettings}
+      onClose={() => setShowAutopilotSettings(false)}
+      onSave={handleSaveAutopilotConfig}
+      initialConfig={autopilotConfig}
+    />
+  </>
   )
 }

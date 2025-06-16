@@ -44,7 +44,6 @@ export class KnowledgeGraphSyncService {
   }
 
   private async processErrorQueue(): Promise<void> {
-    console.log('[Sync Service] Processing error queue...');
     await this.errorQueue.processQueue(async (item) => {
       try {
         // Parse the stored metadata to get entity/relationship data

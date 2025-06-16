@@ -35,11 +35,6 @@ export class ChromaMemoryStore implements MemoryStore {
     this.defaultMinScore = config.defaultMinScore || 0.5;
     
     this.embeddingService = getEmbeddingService();
-    
-    console.log('ChromaMemoryStore initialized', { 
-      url: this.chromaUrl,
-      collection: this.collectionName 
-    });
   }
 
   /**
@@ -67,7 +62,7 @@ export class ChromaMemoryStore implements MemoryStore {
     this.initializationInProgress = true;
     this.initPromise = (async () => {
       try {
-        console.log('Initializing ChromaDB memory store...');
+        //console.log('Initializing ChromaDB memory store...');
         
         // Initialize ChromaDB client
         this.client = new ChromaClient({
@@ -84,14 +79,14 @@ export class ChromaMemoryStore implements MemoryStore {
           this.collection = await this.client.getCollection({
             name: this.collectionName
           });
-          console.log(`Using existing collection: ${this.collectionName}`);
+          //console.log(`Using existing collection: ${this.collectionName}`);
         } catch (getError) {
           // Collection doesn't exist or couldn't be accessed, try to create it
           try {
             this.collection = await this.client.createCollection({
               name: this.collectionName
             });
-            console.log(`Created new collection: ${this.collectionName}`);
+            //console.log(`Created new collection: ${this.collectionName}`);
           } catch (createError: any) {
             // If creation fails because collection already exists, try getting it again
             if (createError.toString().includes('already exists')) {
@@ -105,7 +100,7 @@ export class ChromaMemoryStore implements MemoryStore {
                 this.collection = await this.client.getCollection({
                   name: this.collectionName
                 });
-                console.log(`Successfully retrieved existing collection: ${this.collectionName}`);
+                //console.log(`Successfully retrieved existing collection: ${this.collectionName}`);
               } catch (finalError) {
                 throw new Error(`Failed to retrieve existing collection: ${finalError}`);
               }
@@ -117,7 +112,7 @@ export class ChromaMemoryStore implements MemoryStore {
         
         // Test the collection with a count operation
         const initialCount = await this.collection.count();
-        console.log(`ChromaDB connected successfully. Memory count: ${initialCount}`);
+        //console.log(`ChromaDB connected successfully. Memory count: ${initialCount}`);
         
         this.initialized = true;
       } catch (error) {
@@ -163,13 +158,13 @@ export class ChromaMemoryStore implements MemoryStore {
         metadatas: [fullMetadata]
       });
       
-      console.log(`Memory stored successfully: ${memoryId} (${text.length} chars)`);
-      console.log(`Debug - Stored embedding dimensions: ${embedding.length}`);
-      console.log(`Debug - Stored metadata:`, fullMetadata);
+      ////console.log(`Memory stored successfully: ${memoryId} (${text.length} chars)`);
+      ////console.log(`Debug - Stored embedding dimensions: ${embedding.length}`);
+      ////console.log(`Debug - Stored metadata:`, fullMetadata);
       
       // Verify storage by immediate count check
       const currentCount = await this.collection.count();
-      console.log(`Debug - Collection count after storage: ${currentCount}`);
+      ////console.log(`Debug - Collection count after storage: ${currentCount}`);
       
       return memoryId;
     } catch (error) {
@@ -192,27 +187,15 @@ export class ChromaMemoryStore implements MemoryStore {
     try {
       // Preprocess the query to focus on the most relevant part
       const processedQuery = this.preprocessQuery(query);
-      console.log(`Memory retrieval - Original query length: ${query.length}, processed: ${processedQuery.length}`);
-      
+     
       // Generate embedding for the processed query
       const embedding = await this.embeddingService.generateEmbedding(processedQuery);
-      
-      console.log(`Debug - Query embedding dimensions: ${embedding.length}`);
-      console.log(`Debug - Collection count before query: ${await this.collection.count()}`);
       
       // Query ChromaDB for similar vectors with a higher initial result count
       // to allow for better post-filtering
       const results = await this.collection.query({
         queryEmbeddings: [embedding],
         nResults: Math.max(limit * 3, 15) // Get more results for better filtering
-      });
-      
-      console.log(`Debug - Raw ChromaDB results:`, {
-        idsLength: results.ids?.[0]?.length || 0,
-        metadatasLength: results.metadatas?.[0]?.length || 0,
-        distancesLength: results.distances?.[0]?.length || 0,
-        firstDistance: results.distances?.[0]?.[0],
-        firstMetadata: results.metadatas?.[0]?.[0]
       });
       
       const memories: MemoryRetrievalResult[] = [];
@@ -260,11 +243,6 @@ export class ChromaMemoryStore implements MemoryStore {
       const sortedMemories = memories
         .sort((a, b) => b.score - a.score)
         .slice(0, limit);
-      
-      console.log(`Retrieved ${sortedMemories.length} memories for query (${processedQuery.slice(0, 50)}...)`);
-      if (sortedMemories.length > 0) {
-        console.log(`Top match score: ${sortedMemories[0].score.toFixed(4)}, threshold: ${this.calculateDynamicThreshold(minScore, processedQuery.length).toFixed(4)}`);
-      }
       
       return sortedMemories;
     } catch (error) {
@@ -416,13 +394,10 @@ export class ChromaMemoryStore implements MemoryStore {
     }
 
     try {
-      console.log(`Deleting memory with ID: ${id}`);
-      
       await this.collection.delete({
         ids: [id]
       });
       
-      console.log(`Successfully deleted memory: ${id}`);
       return true;
     } catch (error) {
       console.error('Failed to delete memory:', error);
@@ -439,13 +414,10 @@ export class ChromaMemoryStore implements MemoryStore {
     }
 
     try {
-      console.log(`Deleting ${ids.length} memories:`, ids);
-      
       await this.collection.delete({
         ids: ids
       });
       
-      console.log(`Successfully deleted ${ids.length} memories`);
       return true;
     } catch (error) {
       console.error('Failed to delete memories:', error);
@@ -462,17 +434,12 @@ export class ChromaMemoryStore implements MemoryStore {
     }
 
     try {
-      console.log('Clearing all memories from collection');
-      
       // Get all IDs first
       const results = await this.collection.get();
       if (results.ids && results.ids.length > 0) {
         await this.collection.delete({
           ids: results.ids
         });
-        console.log(`Successfully cleared ${results.ids.length} memories`);
-      } else {
-        console.log('No memories to clear');
       }
       
       return true;
@@ -490,8 +457,6 @@ export class ChromaMemoryStore implements MemoryStore {
     this.initialized = false;
     this.initializationInProgress = false;
     this.initPromise = null;
-    
-    console.log('ChromaMemoryStore connections cleaned up');
   }
 }
 

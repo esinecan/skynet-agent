@@ -1,4 +1,4 @@
-# An Open Source, Claude Code Like Tool, With RAG + Graph RAG + MCP Integration, and Supports Most LLMs (Incomplete But Functional & Usable)
+# An Open Source, Claude Code Like Tool, With RAG + Graph RAG + MCP Integration, **Autopilot Mode** and Supports Most LLMs (Incomplete But Functional & Usable)
 
 > *"What if AI could not only access memories, but consciously choose what to remember? With MCP tool access fully supported?"*
 
@@ -12,6 +12,12 @@
 **Skynet-Agent Client** is a revolutionary AI conversation platform that implements a **dual-layer memory architecture** inspired by human cognition. It combines automatic background memory (like human non-volitional memory) with conscious, deliberate memory operations that AI can control. It also has the tool access powers similar to those of Claude Desktop.
 
 ##  Minimal But Powerful
+
+###  Autonomous Conversation (MotiveForce)
+- **Autopilot Mode**: AI can autonomously continue conversations by analyzing context and generating follow-up queries
+- **Configurable Behavior**: Adjustable parameters for turn frequency, conversation depth, and memory integration  
+- **User Embodiment**: AI attempts to seamlessly continue conversations as if it were the user
+- **Safety Controls**: Automatic disabling after errors, turn limits, and manual override capabilities
 
 ###  Dual-Layer Memory Architecture
 - **Automatic Memory (RAG)**: Non-volitional background memory that automatically stores and retrieves conversational context using ChromaDB vector embeddings and Google's text-embedding-004 model
@@ -78,6 +84,30 @@ npm run dev             # try "npm run dev:next" if you encounter neo4j session 
 - Conscious Memory dashboard: `http://localhost:3000/conscious-memory`
 - Semantic Memory demo: `http://localhost:3000/semantic-memory`
 - Neo4j browser: `http://localhost:7474` (neo4j/password123)
+
+### Autopilot Configuration
+
+The autopilot system allows AI to autonomously continue conversations. Configure via the UI toggle or environment variables:
+
+```env
+# Autopilot/MotiveForce Configuration
+MOTIVE_FORCE_ENABLED=false                    # Enable autopilot by default
+MOTIVE_FORCE_DELAY_BETWEEN_TURNS=2000         # Milliseconds between autonomous turns
+MOTIVE_FORCE_MAX_CONSECUTIVE_TURNS=10         # Maximum autonomous turns before stopping
+MOTIVE_FORCE_TEMPERATURE=0.8                  # Creativity level for query generation
+MOTIVE_FORCE_HISTORY_DEPTH=5                  # Messages to analyze for context
+MOTIVE_FORCE_USE_RAG=true                     # Include RAG memory in analysis
+MOTIVE_FORCE_USE_CONSCIOUS_MEMORY=true        # Include conscious memory in analysis
+```
+
+**Autopilot Usage:**
+- Click the "Autopilot" toggle in the chat interface to enable/disable
+- Your next message will kind of be Autopilot's objective. For instance I run this daily: 
+```
+( **User's final message before Motive Force takes over was as follows:** Using querying by timestamp or normal querying, divide the memories of the day into something like 5 to 10 groups and perform gardening by deleting unnecessary things, maybe deleting some items because they are redundant or too generic etc. Maybe consolidating the content of some in a new memory. Maybe summarizing some and deleting the original. maybe adding new memories due to insights you gain during the process. Every now and then talk to autopilot for confirmation that you're on right track. By doing this daily, over time you will culitivate your own self curated memory. Motive Force's latest instructions are going to be above this message)
+```
+- Configure settings via the gear icon when autopilot is enabled
+- Autopilot automatically disables after consecutive errors or hitting turn limits
 
 ### Development Scripts
 
@@ -199,6 +229,22 @@ User: "What have I learned about Next.js?"
 AI: [Searches both conscious and RAG memories]
 ```
 
+###  Autopilot/Autonomous Conversation
+
+```
+User: [Enables autopilot via toggle]
+AI: "What aspects of your React project would you like to explore further?"
+
+User: "The state management patterns"
+AI: "Are you considering Redux, Zustand, or React's built-in state? What's your current setup?"
+
+[Autopilot continues asking relevant follow-ups]
+AI: "How are you handling complex state updates? Are you using reducers or setState?"
+
+User: "/autopilot focus more on performance optimization"
+AI: [Updates behavior] "What performance bottlenecks have you noticed in your state updates?"
+```
+
 ###  Memory Types
 
 | Type | Description | Example |
@@ -207,6 +253,7 @@ AI: [Searches both conscious and RAG memories]
 | **Knowledge** | Technical insights and learnings | "React hooks are better for state logic" |
 | **Context** | Project and work information | "Working on e-commerce platform" |
 | **References** | Important links and resources | "Useful TypeScript patterns guide" |
+| **Autopilot** | Autonomous conversation queries | "[Autopilot] How can we optimize the database queries?" |
 
 ---
 
@@ -266,6 +313,37 @@ interface ConsciousMemory {
 - `delete_memory`: Remove memories
 - `get_memory_stats`: Usage analytics
 - `get_memory_tags`: Available tag categories
+
+### Autopilot/MotiveForce System
+Autonomous conversation continuation (`src/lib/motive-force.ts`):
+
+```typescript
+interface MotiveForceConfig {
+  enabled: boolean;
+  delayBetweenTurns: number;      // milliseconds between autonomous turns
+  maxConsecutiveTurns: number;    // safety limit for autonomous operation
+  temperature: number;            // creativity level for query generation
+  historyDepth: number;           // conversation messages to analyze
+  useRag: boolean;                // include RAG memory in context
+  useConsciousMemory: boolean;    // include conscious memory in context
+  mode: 'aggressive' | 'balanced' | 'conservative';
+}
+
+interface MotiveForceState {
+  enabled: boolean;
+  isGenerating: boolean;
+  currentTurn: number;
+  errorCount: number;
+  lastGeneratedAt?: Date;
+}
+```
+
+**Key Features:**
+- Context-aware query generation based on conversation history
+- Integration with both memory systems for relevant context
+- Configurable personality modes (aggressive, balanced, conservative)
+- Safety mechanisms: turn limits, error counting, manual override
+- Real-time instruction updates via `/autopilot` commands
 
 #### Knowledge Graph Integration
 Neo4j-powered relationship mapping (`src/lib/knowledge-graph-service.ts`):
@@ -358,6 +436,12 @@ Each tool returns structured content that the LLM can use naturally in conversat
 - **Cross-Memory Search**: Find connections across different memory types
 - **Relevance Ranking**: Smart scoring combines multiple signals
 
+###  Autonomous Conversation
+- **Context Analysis**: Autopilot analyzes conversation flow and user patterns
+- **Smart Query Generation**: Creates relevant follow-up questions and commands
+- **Memory Integration**: Incorporates both RAG and conscious memory for context
+- **Safety Controls**: Turn limits, error handling, and manual override capabilities
+
 ###  Beautiful User Interface
 - **Real-Time Chat**: Smooth conversation experience
 - **Memory Dashboard**: Visual memory management interface
@@ -415,6 +499,57 @@ GET /api/conscious-memory?action=stats
 GET /api/conscious-memory?action=tags
 ```
 
+### Autopilot/MotiveForce API
+
+#### Generate Autopilot Query
+```http
+POST /api/motive-force
+Content-Type: application/json
+
+{
+  "action": "generate",
+  "sessionId": "session_123"
+}
+```
+
+#### Update Autopilot Configuration
+```http
+POST /api/motive-force
+Content-Type: application/json
+
+{
+  "action": "saveConfig",
+  "data": {
+    "config": {
+      "enabled": true,
+      "delayBetweenTurns": 3000,
+      "maxConsecutiveTurns": 15,
+      "temperature": 0.7,
+      "mode": "balanced"
+    }
+  }
+}
+```
+
+#### Get Autopilot Status
+```http
+GET /api/motive-force?action=status
+```
+
+#### Update System Prompt
+```http
+POST /api/motive-force
+Content-Type: application/json
+
+{
+  "action": "savePrompt",
+  "data": {
+    "text": "Focus on technical implementation details",
+    "mode": "append"
+  }
+}
+```
+
 ### MCP Tools
 
 The conscious memory system exposes these tools to the LLM:
@@ -459,38 +594,46 @@ The conscious memory system exposes these tools to the LLM:
 
 ```
 skynet-agent/
- src/
-    app/                    # Next.js app router
-       api/               # API routes
-          chat/          # Chat endpoints
-          conscious-memory/ # Memory API
-          chat-history/  # Chat history API
-       conscious-memory/  # Memory dashboard page
-       globals.css        # Global styles
-    components/            # React components
-       ChatInterface.tsx  # Main chat UI
-       ChatMessage.tsx    # Message components
-       MessageInput.tsx   # Input handling
-       ToolCallDisplay.tsx # Tool visualization
-    lib/                   # Core libraries
-       mcp-servers/       # MCP server implementations
-          conscious-memory-server.ts
-       chat-history.ts    # SQLite chat storage
-       conscious-memory.ts # Memory service
-       embeddings.ts      # Google embeddings
-       llm-service.ts     # AI service
-       mcp-manager.ts     # MCP orchestration
-       memory-store.ts    # ChromaDB interface
-       rag.ts            # RAG implementation
-    types/                 # TypeScript definitions
-        chat.ts           # Chat types
-        memory.ts         # Memory types
-        mcp.ts            # MCP types
-        tool.ts           # Tool types
- config.json               # MCP server configuration
- docker-compose.yml        # ChromaDB setup
- package.json             # Dependencies
- README.md               # This file
+├── src/
+│   ├── app/                    # Next.js app router
+│   │   ├── api/               # API routes
+│   │   │   ├── chat/          # Chat endpoints
+│   │   │   ├── conscious-memory/ # Memory API
+│   │   │   ├── motive-force/  # Autopilot API
+│   │   │   └── chat-history/  # Chat history API
+│   │   ├── conscious-memory/  # Memory dashboard page
+│   │   └── globals.css        # Global styles
+│   ├── components/            # React components
+│   │   ├── ChatInterface.tsx  # Main chat UI
+│   │   ├── ChatMessage.tsx    # Message components
+│   │   ├── MessageInput.tsx   # Input handling
+│   │   ├── MotiveForceToggle.tsx # Autopilot controls
+│   │   ├── MotiveForceStatus.tsx # Autopilot status
+│   │   ├── MotiveForceSettings.tsx # Autopilot config
+│   │   └── ToolCallDisplay.tsx # Tool visualization
+│   ├── lib/                   # Core libraries
+│   │   ├── mcp-servers/       # MCP server implementations
+│   │   │   └── conscious-memory-server.ts
+│   │   ├── chat-history.ts    # SQLite chat storage
+│   │   ├── conscious-memory.ts # Memory service
+│   │   ├── motive-force.ts    # Autopilot service
+│   │   ├── motive-force-storage.ts # Autopilot storage
+│   │   ├── embeddings.ts      # Google embeddings
+│   │   ├── llm-service.ts     # AI service
+│   │   ├── mcp-manager.ts     # MCP orchestration
+│   │   ├── memory-store.ts    # ChromaDB interface
+│   │   └── rag.ts            # RAG implementation
+│   └── types/                 # TypeScript definitions
+│       ├── chat.ts           # Chat types
+│       ├── memory.ts         # Memory types
+│       ├── motive-force.ts   # Autopilot types
+│       ├── mcp.ts            # MCP types
+│       └── tool.ts           # Tool types
+├── motive-force-prompt.md     # Default autopilot system prompt
+├── config.json               # MCP server configuration
+├── docker-compose.yml        # ChromaDB + Neo4j setup
+├── package.json             # Dependencies
+└── README.md               # This file
 ```
 
 ---
@@ -673,6 +816,9 @@ cross-env DEBUG=rag:* npm run dev        # RAG system logs
 | `NEO4J_URI` | `bolt://localhost:7687` | Neo4j connection string |
 | `NEO4J_USER` | `neo4j` | Neo4j authentication username |
 | `NEO4J_PASSWORD` | `password123` | Neo4j authentication password |
+| `MOTIVE_FORCE_ENABLED` | `false` | Enable autopilot by default |
+| `MOTIVE_FORCE_DELAY_BETWEEN_TURNS` | `2000` | Milliseconds between autonomous turns |
+| `MOTIVE_FORCE_MAX_CONSECUTIVE_TURNS` | `10` | Maximum autonomous turns before stopping |
 
 ### Error Resolution
 
@@ -775,6 +921,8 @@ We welcome contributions! Here's how to get started:
 -  **Memory algorithms**: Improve search and relevance scoring
 -  **UI/UX**: Enhance the memory management interface  
 -  **MCP tools**: Add new memory operations and capabilities
+-  **Autopilot intelligence**: Improve query generation and context analysis
+-  **Safety mechanisms**: Enhance autopilot error handling and recovery
 -  **Documentation**: Improve guides and examples
 -  **Testing**: Add comprehensive test coverage
 -  **Performance**: Optimize memory operations and search

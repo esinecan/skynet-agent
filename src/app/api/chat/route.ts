@@ -110,16 +110,16 @@ export async function POST(request: NextRequest) {
   try {
    
     const body = await request.json();
-    console.log(' Chat API: Received request body keys:', Object.keys(body));
-    console.log(' Chat API: Request body.sessionId:', body.sessionId);
-    console.log(' Chat API: Request body.id:', body.id);
-    console.log(' Chat API: Any other ID fields:', Object.keys(body).filter(k => k.toLowerCase().includes('id')));
-    console.log(' Chat API: Messages array length:', body.messages?.length);
+    //console.log(' Chat API: Received request body keys:', Object.keys(body));
+    //console.log(' Chat API: Request body.sessionId:', body.sessionId);
+    //console.log(' Chat API: Request body.id:', body.id);
+    //console.log(' Chat API: Any other ID fields:', Object.keys(body).filter(k => k.toLowerCase().includes('id')));
+    //console.log(' Chat API: Messages array length:', body.messages?.length);
     if (body.messages && body.messages.length > 0) {
       const lastMsg = body.messages[body.messages.length - 1];
-      console.log(' Chat API: Last message keys:', Object.keys(lastMsg));
-      console.log(' Chat API: Last message experimental_attachments:', lastMsg.experimental_attachments);
-      console.log(' Chat API: Last message attachments:', lastMsg.attachments);
+      //console.log(' Chat API: Last message keys:', Object.keys(lastMsg));
+      //console.log(' Chat API: Last message experimental_attachments:', lastMsg.experimental_attachments);
+      //console.log(' Chat API: Last message attachments:', lastMsg.attachments);
     }
     
     const { messages, sessionId: providedSessionId, id: providedId } = body;
@@ -132,17 +132,17 @@ export async function POST(request: NextRequest) {
     const sessionId = providedSessionId || providedId || extractOrGenerateSessionId(messages);
     const userMessage = extractUserMessage(messages);
     
-    console.log(' Chat API: Processing messages:', messages.length);
+    //console.log(' Chat API: Processing messages:', messages.length);
     console.log('  Chat API: Provided Session ID:', providedSessionId);
     console.log('  Chat API: Provided ID:', providedId);
     console.log('  Chat API: Final Session ID:', sessionId);
-    console.log(' Chat API: User message:', userMessage.slice(0, 100) + '...');
+    //console.log(' Chat API: User message:', userMessage.slice(0, 100) + '...');
     
     // Check if last message has experimental_attachments (AI SDK format)
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.experimental_attachments) {
-      console.log(' Chat API: Experimental attachments:', lastMessage.experimental_attachments.length);
-      console.log(' Chat API: Attachment types:', lastMessage.experimental_attachments.map((a: any) => a.contentType).join(', '));
+      //console.log(' Chat API: Experimental attachments:', lastMessage.experimental_attachments.length);
+      //console.log(' Chat API: Attachment types:', lastMessage.experimental_attachments.map((a: any) => a.contentType).join(', '));
     }
     else if (lastMessage?.attachments) {
       lastMessage.experimental_attachments = lastMessage.attachments
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
     const model = service.getModel();
     const providerInfo = service.getProviderInfo();
     
-    console.log(' Chat API: Using provider:', providerInfo.provider, 'with model:', providerInfo.model);
+    //console.log(' Chat API: Using provider:', providerInfo.provider, 'with model:', providerInfo.model);
     
     // Load system prompt
     const systemPrompt = loadSystemPrompt();
@@ -202,19 +202,19 @@ export async function POST(request: NextRequest) {
       }}    
     // experimental_attachments are handled by AI SDK in the messages array
       
-    console.log(' Chat API: About to call streamText with', enhancedMessages.length, 'messages');
-    console.log(' Chat API: Last message:', JSON.stringify(enhancedMessages[enhancedMessages.length - 1], null, 2));
+    //console.log(' Chat API: About to call streamText with', enhancedMessages.length, 'messages');
+    //console.log(' Chat API: Last message:', JSON.stringify(enhancedMessages[enhancedMessages.length - 1], null, 2));
 
     // --- Start of added logging for attachments ---
     const attachmentsForStream = enhancedMessages[enhancedMessages.length - 1]?.experimental_attachments;
     if (attachmentsForStream && attachmentsForStream.length > 0) {
-      console.log(' Chat API: Attachments being sent to streamText:');
+      //console.log(' Chat API: Attachments being sent to streamText:');
       attachmentsForStream.forEach((att: any, index: number) => {
         const dataPreview = att.data ? (att.data.substring(0, 50) + (att.data.length > 50 ? '...' : '')) : '[No data]';
         console.log(`  Attachment ${index + 1}: Name='${att.name}', Type='${att.contentType}', Size=${att.size}, DataPreview='${dataPreview}'`);
       });
     } else {
-      console.log(' Chat API: No experimental_attachments found on the last message for streamText.');
+      //console.log(' Chat API: No experimental_attachments found on the last message for streamText.');
     }
     // --- End of added logging for attachments ---
     
@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
           console.error('❌ Stream error occurred:', error);
         },
         onFinish: async (finishResult) => {
-          console.log(' Chat API: onFinish callback started');
+          //console.log(' Chat API: onFinish callback started');
           console.log(' finishResult.text length:', finishResult.text?.length || 0);
           
           // Extract tool calls from finishResult - AI SDK provides them in a cleaner format
@@ -297,14 +297,14 @@ export async function POST(request: NextRequest) {
             try {
               // Don't try to store empty content if using a memory tool
               if (finishResult.text || !memoryToolCallFound) {
-                console.log(' Chat API: Storing conversation in memory...');
+                //console.log(' Chat API: Storing conversation in memory...');
                 await service.storeConversationInMemory(
                   userMessage, 
                   finishResult.text || "Memory tool response (no text content)", 
                   sessionId
                 );
               } else {
-                console.log(' Chat API: Skipping memory storage for memory tool call');
+                //console.log(' Chat API: Skipping memory storage for memory tool call');
               }
             } catch (memoryError) {
               console.error(' Chat API: Memory storage FAILED:', memoryError);
@@ -330,7 +330,7 @@ export async function POST(request: NextRequest) {
                 messages: []
               });
               
-              console.log(' Chat API: Created new session:', sessionId);
+              //console.log(' Chat API: Created new session:', sessionId);
             }
             // Store user message
             // Skip attachment storage for now - AI SDK v3.3 handles attachments differently

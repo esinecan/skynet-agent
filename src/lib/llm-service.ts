@@ -329,6 +329,14 @@ export class LLMService {
     return this.model;
   }
 
+  /**
+   * Get model and optionally tools for external use
+   */
+  async getModelAndTools(includeTools = true): Promise<{model: any, tools?: Record<string, any>}> {
+    const tools = includeTools ? await this.getAvailableTools() : undefined;
+    return { model: this.model, tools };
+  }
+
   private convertJsonSchemaToZod(schema: any): z.ZodSchema {
     if (!schema || !schema.properties) {
       return z.object({});
