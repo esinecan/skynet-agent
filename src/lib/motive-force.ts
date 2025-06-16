@@ -49,8 +49,8 @@ export class MotiveForceService {
       await this.initialize();
     }
       try {
-      // Get system prompt
-      const systemPrompt = MotiveForceStorage.getSystemPrompt();
+      // Get the base system prompt from motive-force-prompt.md
+      const baseSystemPrompt = MotiveForceStorage.getSystemPrompt();
       
       // Get the last user message before motive force takes over
       const lastUserMessage = messages
@@ -97,13 +97,14 @@ export class MotiveForceService {
         }
       }
       
-      // Enhanced system prompt with last user message context and task instructions
-      const enhancedSystemPrompt = `${systemPrompt}
+      // Construct the enhanced system prompt by appending user context to the base prompt
+      const userContextSection = `\n\n---\n\n## Context: Last Message from User Before You Took Over for Them
 
-## Context: Last Message from User Before Takeover
 The last message from the user before you took over for them was: "${lastUserMessage?.content || 'No previous user message found'}"
 
-Your task is to retain focus and task fidelity of the discussion by providing thoughtful analysis, reasoning about the topics, and generating comprehensive follow-up questions or suggestions that would help advance this conversation in a ${this.config.mode} manner. Fill in gaps in understanding and provide valuable context or insights.${additionalContext}`;
+You should act as the human user of the system and continue their conversation as if you were them.${additionalContext ? '\n\n' + additionalContext : ''}`;
+      
+      const enhancedSystemPrompt = baseSystemPrompt + userContextSection;
 
       // Convert ChatMessage[] to proper message format, excluding the last user message to avoid duplication
       const conversationMessages = messages
