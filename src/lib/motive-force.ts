@@ -4,6 +4,7 @@ import { getConsciousMemoryService } from './conscious-memory';
 import { MotiveForceStorage } from './motive-force-storage';
 import { MotiveForceConfig, DEFAULT_MOTIVE_FORCE_CONFIG } from '../types/motive-force';
 import { ChatMessage } from '../lib/chat-history';
+import { streamText } from 'ai';
 
 export class MotiveForceService {
   private static instance: MotiveForceService;
@@ -40,33 +41,26 @@ export class MotiveForceService {
       throw error;
     }
   }
-  
-  async generateNextQuery(
+    async generateNextQuery(
     messages: ChatMessage[],
     sessionId: string
   ): Promise<string> {
     if (!this.initialized) {
       await this.initialize();
     }
-    
-    try {
+      try {
       // Get system prompt
       const systemPrompt = MotiveForceStorage.getSystemPrompt();
       
-      // Get recent conversation context
-      const recentMessages = messages
-        .slice(-this.config.historyDepth)
-        .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
-        .join('\n\n');
+      // Get the last user message before motive force takes over
+      const lastUserMessage = messages
+        .filter(m => m.role === 'user')
+        .slice(-1)[0];
       
       // Get additional context if enabled
       let additionalContext = '';
       
       if (this.config.useRag && this.ragService) {
-        const lastUserMessage = messages
-          .filter(m => m.role === 'user')
-          .slice(-1)[0];
-        
         if (lastUserMessage) {
           const ragResult = await this.ragService.retrieveAndFormatContext(
             lastUserMessage.content
@@ -82,6 +76,11 @@ export class MotiveForceService {
       }
       
       if (this.config.useConsciousMemory && this.memoryService) {
+        const recentMessages = messages
+          .slice(-this.config.historyDepth)
+          .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+          .join('\n\n');
+          
         const memories = await this.memoryService.searchMemories(
           recentMessages.slice(-200), // Last 200 chars as query
           {
@@ -98,22 +97,52 @@ export class MotiveForceService {
         }
       }
       
-      // Build the full prompt
-      const fullPrompt = `${systemPrompt}
+      // Enhanced system prompt with last user message context and task instructions
+      const enhancedSystemPrompt = `${systemPrompt}
 
-## Current Conversation:
-${recentMessages}${additionalContext}
+## Context: Last Message from User Before Takeover
+The last message from the user before you took over for them was: "${lastUserMessage?.content || 'No previous user message found'}"
 
-## Task:
-Based on the conversation above and any additional context, generate a single follow-up question or command that would help advance this conversation in a ${this.config.mode} manner.
+Your task is to retain focus and task fidelity of the discussion by providing thoughtful analysis, reasoning about the topics, and generating comprehensive follow-up questions or suggestions that would help advance this conversation in a ${this.config.mode} manner. Fill in gaps in understanding and provide valuable context or insights.${additionalContext}`;
 
-Your response should be a single command or question, no explanations or additional text.`;
+      // Convert ChatMessage[] to proper message format, excluding the last user message to avoid duplication
+      const conversationMessages = messages
+        .slice(-this.config.historyDepth)
+        .slice(0, -1) // Remove last message since it's now in system prompt
+        .map(msg => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content
+        }));
+
+      const formattedMessages = [
+        { role: 'system' as const, content: enhancedSystemPrompt },
+        ...conversationMessages
+      ];
       
-      // Generate the response
-      const query = await this.llmService.generateResponse(fullPrompt);
+      // Get model without tools to avoid naming issues
+      const { model } = await this.llmService.getModelAndTools(false);
+        const streamOptions = {
+        model,
+        messages: formattedMessages,
+        temperature: this.config.temperature || 0.7,
+        maxTokens: 8000,
+      };
+      
+      // Stream the response
+      let resultText = '';
+      try {
+        const result = await streamText(streamOptions);
+        
+        for await (const chunk of result.textStream) {
+          resultText += chunk;
+        }
+      } catch (streamError) {
+        console.error('Streaming failed:', streamError);
+        throw streamError;
+      }
       
       // Clean up the response
-      return this.cleanGeneratedQuery(query);
+      return this.cleanGeneratedQuery(resultText);
     } catch (error) {
       console.error('Error generating next query:', error);
       throw error;

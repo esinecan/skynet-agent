@@ -496,10 +496,6 @@ function ChatComponent({
               handleSubmit={handleChatSubmit}
               isLoading={isLoading || autopilotState.isGenerating}
             />
-            
-            <div className="text-xs text-gray-500 mt-2 text-center">
-              Connected MCP servers: filesystem, windows-cli, playwright, sequential-thinking
-            </div>
           </div>
         </div>
       </div>

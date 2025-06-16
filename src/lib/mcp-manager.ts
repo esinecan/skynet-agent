@@ -65,8 +65,8 @@ export class MCPManager {
       }
     }
   }  async callTool(serverName: string, toolName: string, args: any): Promise<any> {
-    console.log(` MCP Manager: Calling tool ${toolName} on server ${serverName}`);
-    console.log(` MCP Manager: Tool arguments:`, JSON.stringify(args, null, 2));
+    //console.log(` MCP Manager: Calling tool ${toolName} on server ${serverName}`);
+    //console.log(` MCP Manager: Tool arguments:`, JSON.stringify(args, null, 2));
     
     const client = this.clients.get(serverName);
     if (!client) {
@@ -76,12 +76,11 @@ export class MCPManager {
     }
 
     try {
-      console.log(` MCP Manager: Calling client.callTool...`);
+      //console.log(` MCP Manager: Calling client.callTool...`);
       const result = await client.callTool({
         name: toolName,
         arguments: args
       });
-      console.log(` MCP Manager: Tool call succeeded:`, JSON.stringify(result, null, 2));
       
       // Ensure the result is properly serializable
       if (result && typeof result === 'object') {

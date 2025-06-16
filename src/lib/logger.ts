@@ -35,11 +35,11 @@ class Logger {
   }
 
   debug(...args: any[]) {
-    this.log('debug', ...args);
+    //this.log('debug', ...args);
   }
 
   info(...args: any[]) {
-    this.log('info', ...args);
+    //this.log('info', ...args);
   }
 
   warn(...args: any[]) {
