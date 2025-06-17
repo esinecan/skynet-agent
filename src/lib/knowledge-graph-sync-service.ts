@@ -116,8 +116,7 @@ export class KnowledgeGraphSyncService {
 
   private async processConsciousMemory(memory: ConsciousMemorySearchResult): Promise<{ entities: ExtractedEntity[]; relationships: ExtractedRelationship[] }> {
     const llmExtraction = await this.llmService.extractKnowledge(memory.text, `Context: Conscious Memory, Source: ${memory.metadata.source}`);    // The 'extractUsingRules' function can take a ConsciousMemory object.
-    // We need to reconstruct a partial one or adapt extractUsingRules.
-    // For now, assuming SearchResult has enough data or we can fetch the full memory object.
+    // We need to reconstruct a partial one or adapt extractUsingRules.    // For now, assuming SearchResult has enough data or we can fetch the full memory object.
     // This might require a method in ConsciousMemoryService to get a full memory object by ID.
     const ruleInputMemory: ConsciousMemory = { // Proper ConsciousMemory object for rule extraction
         id: memory.id,
@@ -127,12 +126,14 @@ export class KnowledgeGraphSyncService {
         source: memory.source || 'derived',
         context: memory.context,
         metadata: memory.metadata as ConsciousMemoryMetadata,
-        createdAt: new Date().toISOString(),
+        createdAt: Date.now(), // Use numeric timestamp
     };
     const ruleExtraction = extractUsingRules(undefined, undefined, ruleInputMemory);
 
     return this.mergeExtractions([llmExtraction, ruleExtraction]);
-  }  public async syncKnowledgeGraph(options: { forceFullResync?: boolean } = {}): Promise<void> {
+  }
+
+  public async syncKnowledgeGraph(options: { forceFullResync?: boolean } = {}): Promise<void> {
     const startTime = Date.now();
     
     // Initialize metrics collector

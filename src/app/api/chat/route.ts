@@ -240,8 +240,7 @@ export async function POST(request: NextRequest) {
           } else if (chunk.type === 'tool-result') {
             console.log(`✅ Tool result: ${chunk.toolCallId} - ${chunk.toolName}`);
           }*/
-        },
-        onError: ({ error }) => {
+        },        onError: ({ error }) => {
           console.error('❌ Stream error occurred:', error);
         },
         onFinish: async (finishResult) => {

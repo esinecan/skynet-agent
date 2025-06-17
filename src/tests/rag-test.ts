@@ -76,10 +76,9 @@ async function testMemoryStore() {
     ];
     
     const memoryIds = [];
-    for (const memory of testMemories) {
-      const id = await memoryStore.storeMemory(memory.text, {
+    for (const memory of testMemories) {      const id = await memoryStore.storeMemory(memory.text, {
         sessionId: 'test-session-123',
-        timestamp: new Date().toISOString(),
+        timestamp: Date.now(), // Use numeric timestamp
         messageType: memory.type,
         textLength: memory.text.length
       });

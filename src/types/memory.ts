@@ -7,12 +7,12 @@ export interface Memory {
   text: string;
   embedding: number[];
   metadata: MemoryMetadata;
-  timestamp: string;
+  timestamp: number; // Changed from string to number (epoch ms)
 }
 
 export interface MemoryMetadata {
   sessionId: string;
-  timestamp: string;
+  timestamp: number; // Changed from string to number (epoch ms)
   messageType: 'user' | 'assistant';
   textLength: number;
   [key: string]: any; // Allow additional metadata
@@ -65,8 +65,8 @@ export interface ConsciousMemory {
   source: 'explicit' | 'suggested' | 'derived';
   context?: string; // Surrounding conversation context
   metadata: ConsciousMemoryMetadata;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: number; // Changed from string to number (epoch ms)
+  updatedAt?: number; // Changed from string to number (epoch ms)
 }
 
 export interface ConsciousMemoryMetadata extends MemoryMetadata {
@@ -85,6 +85,10 @@ export interface ConsciousMemorySearchOptions extends MemorySearchOptions {
   source?: 'explicit' | 'suggested' | 'derived';
   includeRelated?: boolean;
   consciousOnly?: boolean; // If true, only search explicit conscious memories
+  startDate?: string; // ISO date string
+  endDate?: string;   // ISO date string  
+  page?: number;      // Page number (1-based)
+  pageSize?: number;  // Results per page
 }
 
 export interface ConsciousMemorySearchResult extends MemoryRetrievalResult {
@@ -93,6 +97,25 @@ export interface ConsciousMemorySearchResult extends MemoryRetrievalResult {
   source: 'explicit' | 'suggested' | 'derived';
   context?: string;
   relatedMemoryIds?: string[];
+}
+
+// New interface for paginated results
+export interface PaginatedMemorySearchResult {
+  results: ConsciousMemorySearchResult[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalResults: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+  };
+  timeRange: {
+    startDate?: string;
+    endDate?: string;
+    actualStartDate?: string; // Earliest memory found
+    actualEndDate?: string;   // Latest memory found
+  };
 }
 
 export interface MemorySaveRequest {
@@ -125,6 +148,7 @@ export interface ConsciousMemoryService {
   initialize(): Promise<void>;
   saveMemory(request: MemorySaveRequest): Promise<string>;
   searchMemories(query: string, options?: ConsciousMemorySearchOptions): Promise<ConsciousMemorySearchResult[]>;
+  searchMemoriesByTimeRange(query: string, options?: ConsciousMemorySearchOptions): Promise<PaginatedMemorySearchResult>;
   updateMemory(request: MemoryUpdateRequest): Promise<boolean>;
   deleteMemory(id: string): Promise<boolean>;
   deleteMultipleMemories(ids: string[]): Promise<boolean>;

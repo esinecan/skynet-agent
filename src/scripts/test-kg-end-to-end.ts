@@ -83,13 +83,12 @@ async function testEndToEnd() {
     console.log(` Memory saved with ID: ${memoryId}\n`);
     
     // Step 5: Store in RAG memory
-    console.log('5⃣ Testing RAG memory storage...');
-    await memoryStore.storeMemory(
+    console.log('5⃣ Testing RAG memory storage...');    await memoryStore.storeMemory(
       'John Smith leads the GPT-5 project at OpenAI',
       {
         sessionId: testSessionId,
         messageType: 'user',
-        timestamp: new Date().toISOString(),
+        timestamp: Date.now(), // Use numeric timestamp
         textLength: 42
       }
     );

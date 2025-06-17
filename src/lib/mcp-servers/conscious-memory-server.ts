@@ -407,19 +407,94 @@ async function main() {
     }
   );
 
+  // === SEARCH MEMORIES BY TIME RANGE TOOL ===
+  server.tool("search_memories_by_time_range",
+    {
+      query: z.string().optional().describe("Search query (optional - if empty, returns all memories in time range)"),
+      startDate: z.string().optional().describe("Start date for time range filter (ISO 8601 format, e.g., '2024-01-01T00:00:00Z')"),
+      endDate: z.string().optional().describe("End date for time range filter (ISO 8601 format, e.g., '2024-12-31T23:59:59Z')"),
+      tags: z.array(z.string()).optional().describe("Filter by specific tags"),
+      importance_min: z.number().min(1).max(10).optional().describe("Minimum importance level"),
+      importance_max: z.number().min(1).max(10).optional().describe("Maximum importance level"),
+      pageSize: z.number().min(1).max(50).optional().describe("Number of results per page (default: 10, max: 50)"),
+      page: z.number().min(1).optional().describe("Page number to retrieve (1-based, default: 1)"),
+      sessionId: z.string().optional().describe("Filter by session ID")
+    },
+    async ({ query, startDate, endDate, tags, importance_min, importance_max, pageSize, page, sessionId }) => {
+      try {
+        const result = await memoryService.searchMemoriesByTimeRange(query || "", {
+          startDate,
+          endDate,
+          tags,
+          importanceMin: importance_min,
+          importanceMax: importance_max,
+          pageSize: pageSize || 10,
+          page: page || 1,
+          sessionId
+        });
+
+        const response = {
+          success: true,
+          query: query || "all memories in time range",
+          found: result.results.length,
+          totalResults: result.pagination.totalResults,
+          pagination: result.pagination,
+          timeRange: result.timeRange,
+          memories: result.results.map(memory => ({
+            id: memory.id,
+            content: memory.text,
+            tags: memory.tags,
+            importance: memory.importance,
+            score: Math.round(memory.score * 100) / 100,
+            context: memory.context,
+            source: memory.source,
+            timestamp: memory.metadata.timestamp
+          }))
+        };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(response, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        console.error('Failed to search memories by time range:', error);
+        const errorResult = {
+          success: false,
+          error: 'Failed to search memories by time range',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        };
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(errorResult, null, 2)
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+
   // Start the server
   const transport = new StdioServerTransport();
   await server.connect(transport);
-
   console.log(' Conscious Memory MCP Server started successfully');
   console.log(' Available tools:');
   console.log('   - save_memory: Save important information');
   console.log('   - search_memories: Search through conscious memories');
+  console.log('   - search_memories_by_time_range: Search memories within a time range with pagination');
   console.log('   - update_memory: Update existing memories');
   console.log('   - delete_memory: Delete memories');
   console.log('   - get_memory_tags: List all available tags');
   console.log('   - get_related_memories: Find semantically similar memories');
   console.log('   - get_memory_stats: Get memory statistics');
+  console.log('   - search_memories_by_time_range: Search memories within a specific time range');
 }
 
 // Handle graceful shutdown

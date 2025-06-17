@@ -27,10 +27,6 @@ function loadMCPConfig(): MCPConfig {
     return {
       mcp: {
         servers: {
-          'sequential-thinking': {
-            command: "npx",
-            args: ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-          },
           'conscious-memory': {
             command: 'npx',
             args: ['tsx', './src/lib/mcp-servers/conscious-memory-server.ts']

@@ -10,7 +10,8 @@ import {
   ConsciousMemoryMetadata,
   MemorySaveRequest,
   MemoryUpdateRequest,
-  ConsciousMemoryStats
+  ConsciousMemoryStats,
+  PaginatedMemorySearchResult
 } from '../types/memory';
 import { getMemoryStore } from './memory-store';
 import { getEmbeddingService } from './embeddings';
@@ -167,24 +168,26 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       // Do not re-throw, as KG sync is secondary to memory storage
     }
   }
-
   async saveMemory(request: MemorySaveRequest): Promise<string> {
     if (!this.initialized) {
       await this.initialize();
     }
-    const timestamp = new Date().toISOString();
+    
+    // Use numeric timestamps (epoch ms) for consistency with memory-store.ts
+    const timestampMs = Date.now();
+    
     const metadata: ConsciousMemoryMetadata = {
       sessionId: request.sessionId || 'default',
-      timestamp: timestamp, // Used as updatedAt
-      createdAt: timestamp, // Explicitly set createdAt
+      timestamp: timestampMs, // Now using numeric timestamp
+      createdAt: timestampMs, // Now using numeric timestamp
       messageType: 'assistant', // Conscious memories are typically assistant-generated
       textLength: request.content.length,
-      memoryType: 'conscious', // Ensure this is set
+      memoryType: 'conscious',
       tags: request.tags || [],
       importance: request.importance || 5,
       source: request.source || 'explicit',
       context: request.context,
-      relatedMemoryIds: request.relatedMemoryIds || [] // Ensure this is captured
+      relatedMemoryIds: request.relatedMemoryIds || []
     };
 
     // Create ChromaDB-compatible metadata (flatten arrays to strings)
@@ -194,7 +197,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
       tags: JSON.stringify(metadata.tags),
       relatedMemoryIds: JSON.stringify(metadata.relatedMemoryIds),
       context: metadata.context || '',
-      // Ensure all fields needed by memoryStore are present
+      // All timestamp fields are already numeric
       memoryType: metadata.memoryType,
       timestamp: metadata.timestamp,
       createdAt: metadata.createdAt,
@@ -218,7 +221,7 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
         metadata,
         retryCount: 0,
         lastError: e.message,
-        timestamp: Date.now()
+        timestamp: timestampMs // Also using numeric timestamp here
       });
     });
     
@@ -236,13 +239,14 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
     // Special case: empty query returns all memories (for management purposes)
     if (!query.trim()) {
       console.log(' Empty query - returning all memories');
-      try {
-        // Use a generic search to get all memories
+      try {        // Use a generic search to get all memories
         const allMemories = await this.memoryStore.retrieveMemories('the', {
           limit: options.limit || 100,
           sessionId: options.sessionId,
-          minScore: -2.0  // Get everything
-        });
+          minScore: -2.0,  // Get everything
+          startDate: options.startDate,
+          endDate: options.endDate
+        } as any);
         console.log(` Retrieved ${allMemories.length} total memories`);        // Process and return all memories using existing logic
         const combinedResults = this.mergeSearchResults(allMemories, []);
         
@@ -308,8 +312,10 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
     const semanticResults = await this.memoryStore.retrieveMemories(query, {
       limit: options.limit || 10,
       sessionId: options.sessionId,
-      minScore: -2.0  // Very low threshold to catch all potential results
-    });
+      minScore: -2.0,  // Very low threshold to catch all potential results
+      startDate: options.startDate,
+      endDate: options.endDate
+    } as any);
 
     console.log(` Semantic search results: ${semanticResults.length} memories found`);
     
@@ -455,13 +461,12 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
         context: currentChromaMeta.context,
         relatedMemoryIds: typeof currentChromaMeta.relatedMemoryIds === 'string' ? JSON.parse(currentChromaMeta.relatedMemoryIds) : (currentChromaMeta.relatedMemoryIds || []),
       };
-      
-      const newContent = request.content !== undefined ? request.content : currentContent;
-      const newTimestamp = new Date().toISOString();
+        const newContent = request.content !== undefined ? request.content : currentContent;
+      const updateTimestampMs = Date.now(); // Use numeric timestamp
 
       const updatedMetadata: ConsciousMemoryMetadata = {
         ...currentMetadata,
-        timestamp: newTimestamp, // Update timestamp to now
+        timestamp: updateTimestampMs, // Update timestamp with numeric value
         textLength: newContent.length,
         tags: request.tags !== undefined ? request.tags : currentMetadata.tags,
         importance: request.importance !== undefined ? request.importance : currentMetadata.importance,
@@ -861,6 +866,120 @@ export class ConsciousMemoryServiceImpl implements ConsciousMemoryService {
         }
         return b.score - a.score;
       });
+  }
+
+  /**
+   * Search memories by time range with pagination support
+   */  async searchMemoriesByTimeRange(
+    query: string = "", 
+    options: ConsciousMemorySearchOptions = {}
+  ): Promise<PaginatedMemorySearchResult> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    // Validate and set defaults
+    const page = Math.max(1, options.page || 1);
+    const pageSize = Math.min(50, Math.max(1, options.pageSize || 10));
+    const offset = (page - 1) * pageSize;
+    
+    // Convert ISO date strings to numeric timestamps if provided
+    let startTimestamp: number | undefined = undefined;
+    let endTimestamp: number | undefined = undefined;
+    
+    if (options.startDate) {
+      if (!this.isValidISODate(options.startDate)) {
+        throw new Error("Invalid startDate format. Use ISO 8601 format.");
+      }
+      startTimestamp = Date.parse(options.startDate);
+    }
+    
+    if (options.endDate) {
+      if (!this.isValidISODate(options.endDate)) {
+        throw new Error("Invalid endDate format. Use ISO 8601 format.");
+      }
+      endTimestamp = Date.parse(options.endDate);
+    }
+    
+    // Create modified options with numeric timestamps
+    const modifiedOptions: ConsciousMemorySearchOptions = {
+      ...options,
+    };
+    
+    // Use startDate/endDate fields with numeric values (internally handled by memory-store)
+    if (startTimestamp !== undefined) {
+      (modifiedOptions as any).startDate = startTimestamp;
+    }
+    
+    if (endTimestamp !== undefined) {
+      (modifiedOptions as any).endDate = endTimestamp;
+    }
+    
+    // Get total count for pagination
+    const countOptions = {
+      sessionId: options.sessionId,
+      startDate: startTimestamp,
+      endDate: endTimestamp
+    };
+    
+    const totalResults = await this.memoryStore.getMemoryCount(countOptions);
+    const totalPages = Math.ceil(totalResults / pageSize);
+    
+    // Perform search with pagination
+    const searchOptions = {
+      ...modifiedOptions,
+      limit: Math.min(offset + pageSize, 100)
+    };
+    
+    const allMemories = await this.searchMemories(query, searchOptions);
+    const memories = allMemories.slice(offset, offset + pageSize);
+    
+    // Calculate actual date range from results - convert numeric back to ISO for API consistency
+    const actualDateRange = this.calculateActualDateRange(memories);
+    
+    return {
+      results: memories,
+      pagination: {
+        page,
+        pageSize,
+        totalResults,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1
+      },
+      timeRange: {
+        startDate: options.startDate,
+        endDate: options.endDate,
+        ...actualDateRange
+      }
+    };
+  }
+
+  private isValidISODate(dateString: string): boolean {
+    const date = new Date(dateString);
+    return date instanceof Date && !isNaN(date.getTime()) && dateString.includes('T');
+  }
+  private calculateActualDateRange(memories: ConsciousMemorySearchResult[]): 
+    { actualStartDate?: string; actualEndDate?: string } {
+    if (memories.length === 0) {
+      return {};
+    }
+
+    // Extract numeric timestamps and sort them
+    const timestamps = memories
+      .map(m => m.metadata.timestamp)
+      .filter(t => t !== undefined)
+      .sort((a, b) => a - b); // Numeric sort
+
+    if (timestamps.length === 0) {
+      return {};
+    }
+
+    // Convert numeric timestamps back to ISO for the API response
+    return {
+      actualStartDate: new Date(timestamps[0]).toISOString(),
+      actualEndDate: new Date(timestamps[timestamps.length - 1]).toISOString()
+    };
   }
 }
 

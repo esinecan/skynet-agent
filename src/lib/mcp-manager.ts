@@ -65,18 +65,41 @@ export class MCPManager {
       }
     }
   }  async callTool(serverName: string, toolName: string, args: any): Promise<any> {
-    //console.log(` MCP Manager: Calling tool ${toolName} on server ${serverName}`);
-    //console.log(` MCP Manager: Tool arguments:`, JSON.stringify(args, null, 2));
-    
+    // Check if the server exists
     const client = this.clients.get(serverName);
     if (!client) {
-      const error = `Not connected to server: ${serverName}`;
-      console.error(` MCP Manager: ${error}`);
-      throw new Error(error);
+      console.warn(` MCP Manager: Server not found: ${serverName}`);
+      return {
+        error: true,
+        isError: true,
+        message: `Tool call failed: Server "${serverName}" not found.`,
+        details: `Available servers: ${this.getConnectedServers().join(', ')}`,
+        server: serverName,
+        tool: toolName
+      };
     }
 
     try {
-      //console.log(` MCP Manager: Calling client.callTool...`);
+      // Check if the tool exists before calling it
+      const availableTools = await this.listTools(serverName);
+      const toolExists = availableTools.some(tool => tool.name === toolName);
+      
+      if (!toolExists) {
+        console.warn(` MCP Manager: Tool "${toolName}" not found in server "${serverName}"`);
+        const allTools = await this.getAllAvailableTools();
+        
+        return {
+          error: true,
+          isError: true,
+          message: `Tool "${toolName}" does not exist on server "${serverName}".`,
+          details: `Available tools on server "${serverName}": ${availableTools.map(t => t.name).join(', ')}`,
+          suggestedAlternatives: this.findSimilarTools(toolName, allTools),
+          server: serverName,
+          tool: toolName
+        };
+      }
+      
+      // If tool exists, proceed with the call
       const result = await client.callTool({
         name: toolName,
         arguments: args
@@ -102,6 +125,7 @@ export class MCPManager {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         error: true,
+        isError: true,
         message: `MCP tool call failed: ${errorMessage}`,
         server: serverName,
         tool: toolName
@@ -152,5 +176,42 @@ export class MCPManager {
       .map(serverName => this.disconnectFromServer(serverName));
     
     await Promise.all(disconnectPromises);
+  }
+
+  // Helper method to get all available tools across all servers
+  async getAllAvailableTools(): Promise<{serverName: string, toolName: string}[]> {
+    const allTools: {serverName: string, toolName: string}[] = [];
+    
+    for (const serverName of this.getConnectedServers()) {
+      try {
+        const tools = await this.listTools(serverName);
+        tools.forEach(tool => {
+          allTools.push({
+            serverName,
+            toolName: tool.name
+          });
+        });
+      } catch (error) {
+        console.error(`Error getting tools for ${serverName}:`, error);
+      }
+    }
+    
+    return allTools;
+  }
+
+  // Find similar tool names to suggest alternatives
+  findSimilarTools(toolName: string, allTools: {serverName: string, toolName: string}[]): string[] {
+    // Basic similarity - tools that contain part of the requested name
+    const nameParts = toolName.toLowerCase().split('_');
+    
+    return allTools
+      .filter(tool => {
+        const lowerToolName = tool.toolName.toLowerCase();
+        return nameParts.some(part => 
+          part.length > 3 && lowerToolName.includes(part)
+        );
+      })
+      .map(tool => `${tool.serverName}_${tool.toolName}`)
+      .slice(0, 5); // Limit to 5 suggestions
   }
 }

@@ -14,6 +14,15 @@ import type {
 } from '../types/memory';
 import { getEmbeddingService, GoogleEmbeddingService } from './embeddings';
 
+/**
+ * Convert ISO date string to epoch milliseconds for ChromaDB numeric filtering
+ */
+function toEpochMs(isoDate?: string): number | undefined {
+  if (!isoDate) return undefined;
+  const timestamp = Date.parse(isoDate);
+  return isNaN(timestamp) ? undefined : timestamp;
+}
+
 export class ChromaMemoryStore implements MemoryStore {
   private client!: ChromaClient;
   private collection: any;
@@ -142,12 +151,11 @@ export class ChromaMemoryStore implements MemoryStore {
       
       // Use provided ID or generate a unique one
       const memoryId = id || `mem_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-      
-      // Prepare metadata for storage
+        // Prepare metadata for storage
       const fullMetadata = {
         ...metadata,
         text,
-        timestamp: new Date().toISOString(),
+        timestamp: Date.now(), // Store as numeric timestamp
         textLength: text.length
       };
 
@@ -175,8 +183,7 @@ export class ChromaMemoryStore implements MemoryStore {
 
   /**
    * Retrieve similar memories based on query text
-   */
-  async retrieveMemories(query: string, options: MemorySearchOptions = {}): Promise<MemoryRetrievalResult[]> {
+   */  async retrieveMemories(query: string, options: MemorySearchOptions = {}): Promise<MemoryRetrievalResult[]> {
     if (!this.initialized) {
       await this.initialize();
     }
@@ -186,16 +193,45 @@ export class ChromaMemoryStore implements MemoryStore {
     
     try {
       // Preprocess the query to focus on the most relevant part
-      const processedQuery = this.preprocessQuery(query);
-     
-      // Generate embedding for the processed query
+      const processedQuery = this.preprocessQuery(query);      // Generate embedding for the processed query
       const embedding = await this.embeddingService.generateEmbedding(processedQuery);
+      
+      // Build where clause for metadata filtering
+      let whereClause: any = undefined;
+      const conditions: any[] = [];
+      
+      if (options.sessionId) {
+        conditions.push({ sessionId: options.sessionId });
+      }
+      
+      // Add time filtering if provided
+      const startTimestamp = toEpochMs((options as any).startDate);
+      const endTimestamp = toEpochMs((options as any).endDate);
+
+      if (startTimestamp !== undefined || endTimestamp !== undefined) {
+        const timeRange: Record<string, number> = {};
+        if (startTimestamp !== undefined) {
+          timeRange["$gte"] = startTimestamp;
+        }
+        if (endTimestamp !== undefined) {
+          timeRange["$lte"] = endTimestamp;
+        }
+        conditions.push({ timestamp: timeRange });
+      }
+      
+      // Build final where clause
+      if (conditions.length === 1) {
+        whereClause = conditions[0];
+      } else if (conditions.length > 1) {
+        whereClause = { "$and": conditions };
+      }
       
       // Query ChromaDB for similar vectors with a higher initial result count
       // to allow for better post-filtering
       const results = await this.collection.query({
         queryEmbeddings: [embedding],
-        nResults: Math.max(limit * 3, 15) // Get more results for better filtering
+        nResults: Math.max(limit * 3, 15), // Get more results for better filtering
+        where: whereClause
       });
       
       const memories: MemoryRetrievalResult[] = [];
@@ -323,18 +359,52 @@ export class ChromaMemoryStore implements MemoryStore {
       return null;
     }
   }
-
   /**
-   * Get total memory count
+   * Get total memory count with optional filtering
    */
-  async getMemoryCount(): Promise<number> {
+  async getMemoryCount(options: MemorySearchOptions = {}): Promise<number> {
     if (!this.initialized) {
       await this.initialize();
     }
 
     try {
-      const count = await this.collection.count();
-      return count;
+      // If no filters, use simple count
+      if (!options.sessionId && !(options as any).startDate && !(options as any).endDate) {
+        const count = await this.collection.count();        return count;
+      }      // Build where clause for metadata filtering
+      let whereClause: any = undefined;
+      const conditions: any[] = [];
+      
+      if (options.sessionId) {
+        conditions.push({ sessionId: options.sessionId });
+      }
+      
+      // Add time filtering if provided
+      const startTimestamp = toEpochMs((options as any).startDate);
+      const endTimestamp = toEpochMs((options as any).endDate);
+
+      if (startTimestamp !== undefined || endTimestamp !== undefined) {
+        const timeRange: Record<string, number> = {};
+        if (startTimestamp !== undefined) {
+          timeRange["$gte"] = startTimestamp;
+        }
+        if (endTimestamp !== undefined) {
+          timeRange["$lte"] = endTimestamp;
+        }
+        conditions.push({ timestamp: timeRange });
+      }
+      
+      // Build final where clause
+      if (conditions.length === 1) {
+        whereClause = conditions[0];
+      } else if (conditions.length > 1) {
+        whereClause = { "$and": conditions };
+      }
+      
+      const results = await this.collection.get({
+        where: whereClause
+      });
+      return results.ids?.length || 0;
     } catch (error) {
       console.error('Failed to get memory count from ChromaDB:', error);
       return 0;
@@ -363,11 +433,10 @@ export class ChromaMemoryStore implements MemoryStore {
    * Test the memory system with a simple store/retrieve cycle
    */
   async testMemorySystem(): Promise<boolean> {
-    try {
-      const testText = `Memory system test at ${new Date().toISOString()}`;
+    try {      const testText = `Memory system test at ${new Date().toISOString()}`;
       const testMetadata: MemoryMetadata = {
         sessionId: 'test-session',
-        timestamp: new Date().toISOString(),
+        timestamp: Date.now(), // Use numeric timestamp
         messageType: 'user',
         textLength: testText.length
       };
@@ -457,6 +526,82 @@ export class ChromaMemoryStore implements MemoryStore {
     this.initialized = false;
     this.initializationInProgress = false;
     this.initPromise = null;
+  }
+
+  /**
+   * Migrate existing ISO string timestamps to numeric timestamps
+   */
+  async migrateTimestamps(): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+    
+    console.log('Starting timestamp migration from ISO strings to numeric values');
+    
+    const BATCH_SIZE = 256;
+    let offset = 0;
+    let totalProcessed = 0;
+    let migrated = 0;
+    
+    try {
+      while (true) {
+        // Get batch of records
+        const batch = await this.collection.get({
+          limit: BATCH_SIZE,
+          offset: offset,
+          include: ["metadatas", "documents", "embeddings"]
+        });
+        
+        if (!batch.ids || batch.ids.length === 0) {
+          break; // No more records
+        }
+        
+        const needsUpdate: number[] = [];
+        const newMetadatas: any[] = [];
+        const idsToUpdate: string[] = [];
+        const embeddingsToUpdate: number[][] = [];
+        const documentsToUpdate: string[] = [];
+          // Check which records need timestamp migration
+        batch.ids.forEach((id: string, idx: number) => {
+          const metadata = batch.metadatas[idx];
+          
+          if (typeof metadata.timestamp === 'string') {
+            needsUpdate.push(idx);
+            const newMetadata = { ...metadata };
+            const timestamp = Date.parse(metadata.timestamp);
+            newMetadata.timestamp = !isNaN(timestamp) ? timestamp : Date.now();
+            
+            idsToUpdate.push(id);
+            newMetadatas.push(newMetadata);
+            embeddingsToUpdate.push(batch.embeddings[idx]);
+            documentsToUpdate.push(batch.documents[idx]);
+          }
+        });
+        
+        // Update records that need migration
+        if (needsUpdate.length > 0) {
+          await this.collection.upsert({
+            ids: idsToUpdate,
+            embeddings: embeddingsToUpdate,
+            documents: documentsToUpdate,
+            metadatas: newMetadatas
+          });
+          
+          migrated += needsUpdate.length;
+        }
+        
+        totalProcessed += batch.ids.length;
+        offset += BATCH_SIZE;
+        
+        console.log(`Processed ${totalProcessed} records, migrated ${migrated} records with string timestamps`);
+      }
+      
+      console.log(`Timestamp migration complete. Total records processed: ${totalProcessed}, migrated: ${migrated}`);
+      return;
+    } catch (error) {
+      console.error('Error during timestamp migration:', error);
+      throw error;
+    }
   }
 }
 

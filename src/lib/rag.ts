@@ -149,7 +149,7 @@ export class RAGService {
     sessionId: string
   ): Promise<{ userMemoryId: string; assistantMemoryId: string }> {
     try {
-      const timestamp = new Date().toISOString();
+      const timestamp = Date.now(); // Use numeric timestamp
       const config = getRAGConfig();
       
       // Process user message (with potential summarization)
