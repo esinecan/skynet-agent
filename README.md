@@ -1,7 +1,6 @@
-# An Open Source, Claude Code Like Tool, With RAG + Graph RAG + MCP Integration, **Autopilot Mode** and Supports Most LLMs (Incomplete But Functional & Usable)
+# Skynet Agent
 
-> *"What if AI could not only access memories, but consciously choose what to remember? With MCP tool access fully supported?"*
-
+> *What if AI could not only access memories, but consciously choose what to remember? With MCP tool access fully supported?*
 ![image](https://github.com/user-attachments/assets/0e8d3705-066b-432e-80ae-836e5b75c8ca)
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -9,943 +8,255 @@
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6B6B?style=for-the-badge&logo=database&logoColor=white)](https://www.trychroma.com/)
 [![MCP](https://img.shields.io/badge/MCP-4A90E2?style=for-the-badge&logo=protocol&logoColor=white)](https://modelcontextprotocol.io/)
 
-**Skynet-Agent Client** is a revolutionary AI conversation platform that implements a **dual-layer memory architecture** inspired by human cognition. It combines automatic background memory (like human non-volitional memory) with conscious, deliberate memory operations that AI can control. It also has the tool access powers similar to those of Claude Desktop.
+AI conversation platform implementing dual-layer memory architecture inspired by human cognition. Combines automatic background memory with conscious, deliberate memory operations that AI controls. Tool access powers similar to Claude Desktop.
 
-##  Minimal But Powerful
+## Core Features
 
-###  Autonomous Conversation (MotiveForce)
-- **Autopilot Mode**: AI can autonomously continue conversations by analyzing context and generating follow-up queries
-- **Configurable Behavior**: Adjustable parameters for turn frequency, conversation depth, and memory integration  
-- **User Embodiment**: AI attempts to seamlessly continue conversations as if it were the user
-- **Safety Controls**: Automatic disabling after errors, turn limits, and manual override capabilities
+### LangGraph-Powered Autopilot
+**Purpose-driven autonomous execution** replacing simple query generation with sophisticated multi-step workflows:
+- Purpose analysis and strategic planning
+- Context gathering from all memory systems  
+- Smart tool orchestration with error recovery
+- Progress monitoring with adaptive replanning
+- Reflection engine for continuous learning
+- Configurable aggressiveness and safety controls
 
-###  Dual-Layer Memory Architecture
-- **Automatic Memory (RAG)**: Non-volitional background memory that automatically stores and retrieves conversational context using ChromaDB vector embeddings and Google's text-embedding-004 model
-- **Conscious Memory**: Volitional memory operations where AI explicitly saves, searches, updates, and deletes memories through MCP tools - mimics human conscious memory control
-- **Knowledge Graph**: Structured long-term memory using Neo4j to represent complex relationships between entities and concepts with automatic synchronization
+### Dual-Layer Memory
+**Automatic Memory (RAG)**: Non-volitional background memory using ChromaDB vectors and Google text-embedding-004  
+**Conscious Memory**: Volitional operations via MCP tools - save, search, update, delete with tags and importance scoring  
+**Knowledge Graph**: Neo4j-powered relationship mapping with automatic synchronization and retry mechanisms
 
-###  MCP Tool Integration
-- Exposes conscious memory as **Model Context Protocol tools**
-- AI naturally saves and recalls memories during conversation
-- Clean separation between UI, memory, and AI operations
----
+### MCP Tool Ecosystem
+Exposes memory operations as Model Context Protocol tools for natural conversation flow. Clean separation between UI, memory, and AI operations.
 
-##  Supported LLM Providers
-
-| Provider | Type | Best For | Default Model |
-|----------|------|----------|---------------|
-| **Google** | Cloud | Multimodal & speed | `gemini-2.5-flash-preview-05-20` |
-| **DeepSeek** | Cloud | Cost-effective performance | `deepseek-chat` |
-| **OpenAI-Compatible** | Cloud/Self-Hosted | Broad ecosystem support | `gpt-4o-mini` |
-| **Anthropic** | Cloud | Advanced reasoning & safety | `claude-3-5-haiku-20241022` |
-| **Groq** | Cloud | Ultra-fast inference | `llama-3.3-70b-versatile` |
-| **Mistral** | Cloud | Natural language & code | `mistral-large-latest` |
-| **Ollama** | Local | Privacy-focused | `llama3.2:latest` |
-
-## Quick setup:
+## Quick Setup
 
 ### Prerequisites
-
-#### A Strong LLM:
-I suggest getting a free Google API Key from Google AI Studio to have a fairly strong model with super long context length and a free tier that'll probably be enough for personal use.
-```env
-LLM_PROVIDER=google
-LLM_MODEL=gemini-2.5-flash-preview-05-20
-GOOGLE_API_KEY=your_key_here
-```
-
-Also, while not free, deepseek-chat is very affordable and performs very well. So basically you need:
-
-- **Node.js** 18+ 
-- **Docker** & **Docker Compose** (for ChromaDB and Neo4j)
-- **API Key** for your chosen LLM provider (see supported providers above)
+- Node.js 18+
+- Docker & Docker Compose
+- LLM API key (free Google AI Studio recommended)
 
 ### Installation
 
 ```bash
-# Clone and install
 git clone https://github.com/esinecan/skynet-agent.git
 cd skynet-agent
 npm install
 
-# Set up environment configuration
 cp .env.example .env.local
-# Edit .env.local with your API keys and configuration
+# Edit .env.local with your API keys
 
-# Start required services
-docker-compose up -d     # Starts ChromaDB (port 8000) and Neo4j (ports 7474, 7687)
-
-# Start the application
-npm run dev             # try "npm run dev:next" if you encounter neo4j session issues
+docker-compose up -d    # ChromaDB (8000) + Neo4j (7474, 7687)
+npm run dev             # Or npm run dev:next if Neo4j issues
 ```
 
-**Access Points:**
-- Main application: `http://localhost:3000`
-- Conscious Memory dashboard: `http://localhost:3000/conscious-memory`
-- Semantic Memory demo: `http://localhost:3000/semantic-memory`
-- Neo4j browser: `http://localhost:7474` (neo4j/password123)
+**Access:**
+- Application: `http://localhost:3000`
+- Conscious Memory: `http://localhost:3000/conscious-memory`
+- Neo4j Browser: `http://localhost:7474` (neo4j/password123)
 
-### Autopilot Configuration
+## Supported LLMs
 
-The autopilot system allows AI to autonomously continue conversations. Configure via the UI toggle or environment variables:
+| Provider | Best For | Model |
+|----------|----------|-------|
+| Google | Multimodal & speed | `gemini-2.5-flash-preview-05-20` |
+| DeepSeek | Cost-effective | `deepseek-chat` |
+| OpenAI | Ecosystem | `gpt-4o-mini` |
+| Anthropic | Reasoning | `claude-3-5-haiku-20241022` |
+| Groq | Ultra-fast | `llama-3.3-70b-versatile` |
+| Mistral | Natural language | `mistral-large-latest` |
+| Ollama | Privacy | `llama3.2:latest` |
+
+## Configuration
+
+### Essential Environment Variables
 
 ```env
-# Autopilot/MotiveForce Configuration
-MOTIVE_FORCE_ENABLED=false                    # Enable autopilot by default
-MOTIVE_FORCE_DELAY_BETWEEN_TURNS=2000         # Milliseconds between autonomous turns
-MOTIVE_FORCE_MAX_CONSECUTIVE_TURNS=10         # Maximum autonomous turns before stopping
-MOTIVE_FORCE_TEMPERATURE=0.8                  # Creativity level for query generation
-MOTIVE_FORCE_HISTORY_DEPTH=5                  # Messages to analyze for context
-MOTIVE_FORCE_USE_RAG=true                     # Include RAG memory in analysis
-MOTIVE_FORCE_USE_CONSCIOUS_MEMORY=true        # Include conscious memory in analysis
+# LLM (pick one)
+GOOGLE_API_KEY=your_key
+DEEPSEEK_API_KEY=your_key
+
+# Services
+CHROMA_URL=http://localhost:8000
+NEO4J_URI=bolt://localhost:7687
+NEO4J_PASSWORD=password123
+
+# Autopilot
+MOTIVE_FORCE_ENABLED=false
+MOTIVE_FORCE_MAX_CONSECUTIVE_TURNS=10
+MOTIVE_FORCE_TEMPERATURE=0.8
 ```
 
-**Autopilot Usage:**
-- Click the "Autopilot" toggle in the chat interface to enable/disable
-- Your next message will kind of be Autopilot's objective. For instance I run this daily: 
-```
-( **User's final message before Motive Force takes over was as follows:** Using querying by timestamp or normal querying, divide the memories of the day into something like 5 to 10 groups and perform gardening by deleting unnecessary things, maybe deleting some items because they are redundant or too generic etc. Maybe consolidating the content of some in a new memory. Maybe summarizing some and deleting the original. maybe adding new memories due to insights you gain during the process. Every now and then talk to autopilot for confirmation that you're on right track. By doing this daily, over time you will culitivate your own self curated memory. Motive Force's latest instructions are going to be above this message)
-```
-- Configure settings via the gear icon when autopilot is enabled
-- Autopilot automatically disables after consecutive errors or hitting turn limits
+### Autopilot Usage
 
-### Development Scripts
+Enable via UI toggle. Your next message becomes the objective:
+
+```
+Using timestamps and normal querying, organize today's memories into 5-10 groups. 
+Delete redundant items, consolidate similar ones, add insights. Check with autopilot 
+periodically. Daily maintenance cultivates curated memory over time.
+```
+
+Configure via gear icon: turn delays, limits, memory integration, aggressiveness modes.
+
+## Development
+
+### Scripts
 
 ```bash
-# Development modes
-npm run dev              # Start Next.js + background KG sync (recommended)
-npm run dev:debug        # Same as above with Node.js debugging enabled
-npm run dev:next         # Start only Next.js (no KG sync)
-npm run dev:kg           # Start only KG sync service in watch mode
+# Development
+npm run dev              # Full stack + KG sync
+npm run dev:debug        # With Node debugging
+npm run dev:next         # Frontend only
+npm run dev:kg           # KG sync only
 
-# Knowledge Graph operations
-npm run kg:sync          # One-time incremental sync
-npm run kg:sync:full     # Full resync from scratch
-npm run kg:sync:queue    # Process error retry queue
-npm run kg:sync:watch    # Continuous sync service
+# Knowledge Graph
+npm run kg:sync          # One-time sync
+npm run kg:sync:full     # Complete resync
+npm run kg:sync:queue    # Process retry queue
 
 # Testing
-npm run test             # Run all test suites
-npm run test:rag         # Test RAG system
-npm run test:integration # Test API endpoints
-npm run test:neo4j       # Test Neo4j integration
-
-# Production
-npm run build            # Build for production
-npm run start            # Start production server
-npm run type-check       # TypeScript validation
+npm run test             # All tests
+npm run test:rag         # RAG system
+npm run test:neo4j       # Neo4j integration
 ```
 
-### Environment Configuration
-
-Required environment variables in `.env.local`:
-
-```env
-# LLM Provider Configuration (choose one)
-GOOGLE_API_KEY=your_google_api_key
-# OR
-ANTHROPIC_API_KEY=your_anthropic_api_key  
-# OR  
-OPENAI_API_KEY=your_openai_api_key
-# OR
-DEEPSEEK_API_KEY=your_deepseek_api_key
-
-# ChromaDB Configuration
-CHROMA_URL=http://localhost:8000
-CHROMA_COLLECTION=mcp_chat_memories
-
-# RAG Configuration
-RAG_ENABLED=true
-RAG_MAX_MEMORIES=5
-RAG_MIN_SIMILARITY=0.15
-RAG_INCLUDE_SESSION_CONTEXT=true
-
-# Memory Storage Path (for backup/metadata)
-MEMORY_DATA_PATH=./data/memories
-
-# Model Configuration
-#LLM_PROVIDER=google
-#LLM_MODEL=gemini-2.5-flash-preview-05-20
-LLM_PROVIDER=deepseek
-LLM_MODEL=deepseek-chat
-
-# LLM Configuration
-MAX_TOKENS=65536
-TEMPERATURE=0.7
-
-# Neo4j Knowledge Graph
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password123
-```
-
-### Docker Services
-
-```bash
-# Start all services
-docker-compose up -d
-
-# Check service status
-docker-compose ps
-
-# View logs
-docker-compose logs -f [service_name]        # chromadb or neo4j
-
-# Stop services
-docker-compose down
-
-# Clean reset (removes all data)
-docker-compose down -v
-```
-
----
-
-##  Usage Examples
-
-###  Natural Memory Operations
-
-The AI automatically handles memory operations through conversation:
+### Project Structure
 
 ```
-User: "Remember that I'm working on a React project with TypeScript and prefer functional components"
-
-AI: " I've saved this to memory: Your React project preferences - TypeScript with functional components"
-
-User: "What were my frontend preferences again?"
-
-AI: " From memory: You're working on a React project with TypeScript and prefer functional components. You also mentioned preferring Tailwind for styling earlier."
+skynet-agent/
+├── src/
+│   ├── app/                    # Next.js routes
+│   ├── components/             # React components
+│   ├── lib/                    # Core libraries
+│   │   ├── motive-force-graph.ts    # LangGraph workflow
+│   │   ├── conscious-memory.ts      # Volitional memory
+│   │   ├── rag.ts                   # Automatic memory
+│   │   └── knowledge-graph-*.ts     # Neo4j integration
+│   └── types/                  # TypeScript definitions
+├── docker-compose.yml          # Services setup
+└── motive-force-prompt.md      # Autopilot personality
 ```
 
-###  Explicit Memory Commands
+## Memory Architecture
 
-```
-User: "Save this debugging approach for React performance issues"
-AI: [Automatically calls save_memory tool]
-
-User: "Search my memories for anything about state management"  
-AI: [Calls search_memories tool and returns relevant findings]
-
-User: "What have I learned about Next.js?"
-AI: [Searches both conscious and RAG memories]
-```
-
-###  Autopilot/Autonomous Conversation
-
-```
-User: [Enables autopilot via toggle]
-AI: "What aspects of your React project would you like to explore further?"
-
-User: "The state management patterns"
-AI: "Are you considering Redux, Zustand, or React's built-in state? What's your current setup?"
-
-[Autopilot continues asking relevant follow-ups]
-AI: "How are you handling complex state updates? Are you using reducers or setState?"
-
-User: "/autopilot focus more on performance optimization"
-AI: [Updates behavior] "What performance bottlenecks have you noticed in your state updates?"
-```
-
-###  Memory Types
-
-| Type | Description | Example |
-|------|-------------|---------|
-| **Preferences** | User settings and choices | "I prefer VS Code over other editors" |
-| **Knowledge** | Technical insights and learnings | "React hooks are better for state logic" |
-| **Context** | Project and work information | "Working on e-commerce platform" |
-| **References** | Important links and resources | "Useful TypeScript patterns guide" |
-| **Autopilot** | Autonomous conversation queries | "[Autopilot] How can we optimize the database queries?" |
-
----
-
-##  Technical Deep Dive
-
-### Memory Architecture Deep Dive
-
-#### Automatic Memory (RAG System)
-The RAG system (`src/lib/rag.ts`) provides non-volitional background memory:
-
+### Automatic Memory (RAG)
 ```typescript
 interface Memory {
   id: string;
-  text: string;                    // Original message content
-  embedding: number[];             // Google text-embedding-004 vector
+  text: string;
+  embedding: number[];  // Google text-embedding-004
   metadata: {
     sender: 'user' | 'assistant';
     timestamp: string;
-    conversationId: string;
-    messageIndex: number;
-    summary?: string;              // Auto-summarized if over token limit
+    summary?: string;  // Auto-summarized if over limit
   };
 }
 ```
 
-**Key Features:**
-- Automatic storage of all conversational turns in ChromaDB
-- Semantic similarity search using vector embeddings
-- Fallback hash-based embeddings when API unavailable
-- Smart context formatting with conversation flow preservation
-- Configurable retrieval limits and similarity thresholds
-
-#### Conscious Memory System
-Volitional memory operations via MCP tools (`src/lib/conscious-memory.ts`):
-
+### Conscious Memory
 ```typescript
 interface ConsciousMemory {
   id: string;
-  content: string;                 // Memory content
-  tags: string[];                  // Categorical organization
-  importance: number;              // 1-10 relevance score
+  content: string;
+  tags: string[];
+  importance: number;  // 1-10
   source: 'explicit' | 'suggested' | 'derived';
-  context?: string;                // Situational context
   metadata: {
-    createdAt: string;
-    updatedAt?: string;
     accessCount: number;
     lastAccessed: string;
   };
 }
 ```
 
-**Available MCP Tools:**
-- `save_memory`: Store important information with tagging
-- `search_memories`: Query with filters (tags, importance, date)
-- `update_memory`: Modify existing memories
-- `delete_memory`: Remove memories
-- `get_memory_stats`: Usage analytics
-- `get_memory_tags`: Available tag categories
-
-### Autopilot/MotiveForce System
-Autonomous conversation continuation (`src/lib/motive-force.ts`):
-
+### LangGraph State
 ```typescript
-interface MotiveForceConfig {
-  enabled: boolean;
-  delayBetweenTurns: number;      // milliseconds between autonomous turns
-  maxConsecutiveTurns: number;    // safety limit for autonomous operation
-  temperature: number;            // creativity level for query generation
-  historyDepth: number;           // conversation messages to analyze
-  useRag: boolean;                // include RAG memory in context
-  useConsciousMemory: boolean;    // include conscious memory in context
-  mode: 'aggressive' | 'balanced' | 'conservative';
-}
-
-interface MotiveForceState {
-  enabled: boolean;
-  isGenerating: boolean;
-  currentTurn: number;
-  errorCount: number;
-  lastGeneratedAt?: Date;
+interface MotiveForceGraphState {
+  messages: BaseMessage[];
+  currentPurpose: string;
+  subgoals: SubGoal[];
+  executionPlan: ExecutionStep[];
+  toolResults: ToolResult[];
+  reflections: Reflection[];
+  overallProgress: number;
+  blockers: string[];
+  needsUserInput: boolean;
 }
 ```
 
-**Key Features:**
-- Context-aware query generation based on conversation history
-- Integration with both memory systems for relevant context
-- Configurable personality modes (aggressive, balanced, conservative)
-- Safety mechanisms: turn limits, error counting, manual override
-- Real-time instruction updates via `/autopilot` commands
+## API Reference
 
-#### Knowledge Graph Integration
-Neo4j-powered relationship mapping (`src/lib/knowledge-graph-service.ts`):
-
-```typescript
-interface KnowledgeNode {
-  id: string;
-  type: 'Person' | 'Concept' | 'Project' | 'Location' | 'Event';
-  properties: Record<string, any>;
-  relationships: KnowledgeRelationship[];
-}
-
-interface KnowledgeRelationship {
-  type: string;                    // KNOWS, WORKS_ON, LOCATED_IN, etc.
-  target: string;                  // Target node ID
-  properties?: Record<string, any>;
-  strength: number;                // Relationship confidence
+### Conscious Memory
+```http
+POST /api/conscious-memory
+{
+  "action": "save|search|update|delete|stats|tags",
+  "content": "string",
+  "tags": ["array"],
+  "importance": 7
 }
 ```
 
-**Synchronization Process:**
+### Autopilot
+```http
+POST /api/motive-force
+{
+  "action": "generate|generateStreaming|saveConfig|getState",
+  "sessionId": "string",
+  "data": {}
+}
+```
+
+## Advanced Features
+
+### Hybrid Search
+1. **Semantic**: Vector similarity via embeddings
+2. **Keyword**: Exact match fallback
+3. **Smart Merge**: Intelligent ranking with deduplication
+
+### Knowledge Graph Sync
 - Automatic extraction from chat history
-- Background sync service (`src/scripts/run-kg-sync.ts`)
-- Retry queue for failed operations
+- Background service with retry queue
 - Metrics collection and error handling
+- Eventually consistent with ChromaDB
 
-### Hybrid Search Algorithm
+### Safety Mechanisms
+- Turn limits and error counting
+- Manual override capabilities  
+- Resource usage monitoring
+- Emergency stop functionality
 
-The system implements a sophisticated multi-stage search:
+## Troubleshooting
 
-#### Stage 1: Semantic Search
-```typescript
-// Uses Google text-embedding-004 for vector similarity
-const semanticResults = await memoryStore.retrieveMemories(query, {
-  minScore: 0.0,  // Low threshold for broad matching
-  limit: 10
-});
-```
+**"Embeddings service unavailable"**: Falls back to hash-based embeddings. Check Google API key.
 
-#### Stage 2: Keyword Fallback
-```typescript
-// Triggered when semantic results are insufficient
-if (semanticResults.length < minThreshold) {
-  const keywordResults = await performKeywordSearch(query);
-  // Scores based on exact matches and word boundaries
-}
-```
+**"ChromaDB connection failed"**: Ensure `docker-compose up -d` and port 8000 available.
 
-#### Stage 3: Smart Merging
-```typescript
-// Combines results with intelligent ranking
-const mergedResults = mergeSearchResults(semanticResults, keywordResults);
-// Prioritizes semantic results for close scores
-// Ensures no duplicates
-// Maintains relevance order
-```
+**"Neo4j sync errors"**: Check credentials, run `npm run kg:sync:queue` for retries.
 
-### MCP Tool Integration
+**"Actually Looks Very Ugly"**: I suck at UI design.
 
-Conscious memory operations are exposed as MCP tools:
+## Development Philosophy
 
-```typescript
-// Available tools for the LLM
-const tools = [
-  'save_memory',
-  'search_memories', 
-  'update_memory',
-  'delete_memory',
-  'get_related_memories',
-  'get_memory_tags',
-  'get_memory_stats'
-];
-```
+Inspired by cognitive science:
+- **Dual-Process Theory**: Automatic vs controlled processes
+- **Memory Consolidation**: Active organization
+- **Working Memory**: Conscious manipulation
 
-Each tool returns structured content that the LLM can use naturally in conversation.
+Technical innovations:
+- **Hybrid Search**: Solves subset query limitations
+- **MCP Architecture**: Natural language memory control
+- **Importance Weighting**: Smart prioritization
+- **LangGraph Integration**: Complex autonomous workflows
 
----
+## Contributing
 
-##  Key Features
+Fork, improve, PR. Areas: memory algorithms, UI/UX, MCP tools, autopilot intelligence, testing, performance.
 
-###  Intelligent Memory Management
-- **Automatic Importance Scoring**: AI determines memory significance
-- **Tag-Based Organization**: Categorize memories for easy retrieval
-- **Relationship Mapping**: Link related memories together
-- **Memory Editing**: Update and refine stored information
+## License
 
-###  Advanced Search Capabilities
-- **Multi-Modal Search**: Semantic understanding + exact keyword matching
-- **Contextual Filtering**: Search by tags, importance, date ranges
-- **Cross-Memory Search**: Find connections across different memory types
-- **Relevance Ranking**: Smart scoring combines multiple signals
+MIT - Lok Tar Ogar!
 
-###  Autonomous Conversation
-- **Context Analysis**: Autopilot analyzes conversation flow and user patterns
-- **Smart Query Generation**: Creates relevant follow-up questions and commands
-- **Memory Integration**: Incorporates both RAG and conscious memory for context
-- **Safety Controls**: Turn limits, error handling, and manual override capabilities
+## Acknowledgments
 
-###  Beautiful User Interface
-- **Real-Time Chat**: Smooth conversation experience
-- **Memory Dashboard**: Visual memory management interface
-- **Smart Suggestions**: AI-powered memory recommendations
-- **Export/Import**: Backup and share memory collections
-- **Actually Looks Very Ugly**: I suck at UI design
-
-###  Performance Optimizations
-- **Efficient Embeddings**: Google's latest text-embedding-004 model
-- **Caching Layer**: Reduces API calls and improves response times
-- **Batch Operations**: Handle multiple memories efficiently
-- **Background Processing**: Non-blocking memory operations
-
----
-
-##  API Reference
-
-### Conscious Memory API
-
-#### Save Memory
-```http
-POST /api/conscious-memory
-Content-Type: application/json
-
-{
-  "action": "save",
-  "content": "User prefers functional components in React",
-  "tags": ["react", "preferences", "frontend"],
-  "importance": 7,
-  "context": "During discussion about React best practices"
-}
-```
-
-#### Search Memories
-```http
-POST /api/conscious-memory
-Content-Type: application/json
-
-{
-  "action": "search",
-  "query": "React components",
-  "tags": ["react"],
-  "limit": 10,
-  "importanceMin": 5
-}
-```
-
-#### Memory Statistics
-```http
-GET /api/conscious-memory?action=stats
-```
-
-#### Available Tags
-```http
-GET /api/conscious-memory?action=tags
-```
-
-### Autopilot/MotiveForce API
-
-#### Generate Autopilot Query
-```http
-POST /api/motive-force
-Content-Type: application/json
-
-{
-  "action": "generate",
-  "sessionId": "session_123"
-}
-```
-
-#### Update Autopilot Configuration
-```http
-POST /api/motive-force
-Content-Type: application/json
-
-{
-  "action": "saveConfig",
-  "data": {
-    "config": {
-      "enabled": true,
-      "delayBetweenTurns": 3000,
-      "maxConsecutiveTurns": 15,
-      "temperature": 0.7,
-      "mode": "balanced"
-    }
-  }
-}
-```
-
-#### Get Autopilot Status
-```http
-GET /api/motive-force?action=status
-```
-
-#### Update System Prompt
-```http
-POST /api/motive-force
-Content-Type: application/json
-
-{
-  "action": "savePrompt",
-  "data": {
-    "text": "Focus on technical implementation details",
-    "mode": "append"
-  }
-}
-```
-
-### MCP Tools
-
-The conscious memory system exposes these tools to the LLM:
-
-#### save_memory
-```json
-{
-  "name": "save_memory",
-  "description": "Save important information to conscious memory",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "content": {"type": "string"},
-      "tags": {"type": "array", "items": {"type": "string"}},
-      "importance": {"type": "number", "minimum": 1, "maximum": 10},
-      "context": {"type": "string"}
-    }
-  }
-}
-```
-
-#### search_memories
-```json
-{
-  "name": "search_memories",
-  "description": "Search conscious memories for relevant information",
-  "inputSchema": {
-    "type": "object", 
-    "properties": {
-      "query": {"type": "string"},
-      "tags": {"type": "array", "items": {"type": "string"}},
-      "limit": {"type": "number"},
-      "importanceMin": {"type": "number"}
-    }
-  }
-}
-```
-
----
-
-##  Project Structure
-
-```
-skynet-agent/
-├── src/
-│   ├── app/                    # Next.js app router
-│   │   ├── api/               # API routes
-│   │   │   ├── chat/          # Chat endpoints
-│   │   │   ├── conscious-memory/ # Memory API
-│   │   │   ├── motive-force/  # Autopilot API
-│   │   │   └── chat-history/  # Chat history API
-│   │   ├── conscious-memory/  # Memory dashboard page
-│   │   └── globals.css        # Global styles
-│   ├── components/            # React components
-│   │   ├── ChatInterface.tsx  # Main chat UI
-│   │   ├── ChatMessage.tsx    # Message components
-│   │   ├── MessageInput.tsx   # Input handling
-│   │   ├── MotiveForceToggle.tsx # Autopilot controls
-│   │   ├── MotiveForceStatus.tsx # Autopilot status
-│   │   ├── MotiveForceSettings.tsx # Autopilot config
-│   │   └── ToolCallDisplay.tsx # Tool visualization
-│   ├── lib/                   # Core libraries
-│   │   ├── mcp-servers/       # MCP server implementations
-│   │   │   └── conscious-memory-server.ts
-│   │   ├── chat-history.ts    # SQLite chat storage
-│   │   ├── conscious-memory.ts # Memory service
-│   │   ├── motive-force.ts    # Autopilot service
-│   │   ├── motive-force-storage.ts # Autopilot storage
-│   │   ├── embeddings.ts      # Google embeddings
-│   │   ├── llm-service.ts     # AI service
-│   │   ├── mcp-manager.ts     # MCP orchestration
-│   │   ├── memory-store.ts    # ChromaDB interface
-│   │   └── rag.ts            # RAG implementation
-│   └── types/                 # TypeScript definitions
-│       ├── chat.ts           # Chat types
-│       ├── memory.ts         # Memory types
-│       ├── motive-force.ts   # Autopilot types
-│       ├── mcp.ts            # MCP types
-│       └── tool.ts           # Tool types
-├── motive-force-prompt.md     # Default autopilot system prompt
-├── config.json               # MCP server configuration
-├── docker-compose.yml        # ChromaDB + Neo4j setup
-├── package.json             # Dependencies
-└── README.md               # This file
-```
-
----
-
-# Neo4j Knowledge Graph Integration
-
-The system now includes improved error handling and retry mechanisms:
-
-## Fixed Issues
--  Retry queue for failed KG sync operations
--  Proper error handling instead of fire-and-forget
--  Automatic retry processing every minute
--  Sync metrics collection for monitoring
-
-## Architecture
-- **ChromaDB**: Primary vector storage for semantic search
-- **Neo4j**: Knowledge graph for structured relationships
-- **Eventual Consistency**: Asynchronous sync with retry mechanism
-
-### Memory Architecture Inspiration
-
-This project draws inspiration from cognitive science research on human memory:
-
-- **Dual-Process Theory**: Automatic vs. controlled cognitive processes
-- **Long-Term Memory**: Declarative vs. procedural memory systems  
-- **Working Memory**: Conscious manipulation of information
-- **Memory Consolidation**: Active rehearsal and organization
-
-### Technical Innovations
-
-#### Hybrid Search Solution
-Solves the fundamental limitation of pure semantic search where subset queries (e.g., "debugging") fail to match longer stored texts containing those terms.
-
-#### MCP Tool Architecture
-Clean separation between AI capabilities and memory operations, enabling natural language memory control without prompt engineering.
-
-#### Importance-Weighted Retrieval
-Combines relevance scores with user-defined importance ratings for smarter memory prioritization.
-
----
-
-##  Development & Testing
-
-### Available Test Scripts
-
-```bash
-# RAG system test  
-npm run test:rag
-
-# Integration tests
-npm run test:integration
-
-# Neo4j tests
-npm run test:neo4j
-npm run test:neo4j-advanced
-
-# Run all tests
-npm run test:all
-
-# Type checking
-npm run type-check
-```
-
-### Development Scripts Reference
-
-```bash
-# Primary development workflows
-npm run dev              # Next.js app + KG sync (recommended for full development)
-npm run dev:debug        # Same as above with Node.js debugging on port 9229
-
-# Individual services
-npm run dev:next         # Start only Next.js application (port 3000)
-npm run dev:kg           # Start only Knowledge Graph sync service
-
-# Knowledge Graph operations
-npm run kg:sync          # One-time incremental synchronization
-npm run kg:sync:full     # Complete resync from scratch (slow)
-npm run kg:sync:watch    # Continuous sync service (used by npm run dev)
-npm run kg:sync:queue    # Process error retry queue
-
-# Testing and validation
-npm run test             # Complete test suite
-npm run test:rag         # RAG system tests
-npm run test:integration # API endpoint tests  
-npm run test:neo4j       # Neo4j integration tests
-npm run test:neo4j-advanced # Advanced Neo4j deletion tests
-npm run type-check       # TypeScript compilation check
-
-# Production builds
-npm run build            # Production build
-npm run start            # Start production server
-npm run lint             # ESLint code analysis
-```
-
-### Service Management
-
-```bash
-# Docker services (ChromaDB + Neo4j)
-docker-compose up -d                    # Start services in background
-docker-compose ps                       # Check running services
-docker-compose logs -f chromadb         # View ChromaDB logs
-docker-compose logs -f neo4j            # View Neo4j logs
-docker-compose down                     # Stop all services
-docker-compose down -v                  # Stop and remove data volumes
-
-# Service health checks
-curl http://localhost:8000/api/v1/heartbeat     # ChromaDB health
-curl http://localhost:7474                      # Neo4j browser
-```
-
-### Debugging and Monitoring
-
-```bash
-# Memory system status
-curl "http://localhost:3000/api/conscious-memory?action=stats"
-
-# Knowledge Graph sync status  
-curl "http://localhost:3000/api/knowledge-graph?action=status"
-
-# Chat history stats
-curl "http://localhost:3000/api/chat-history/stats"
-
-# Enable debug mode
-cross-env DEBUG=* npm run dev           # Full debug logging
-cross-env NODE_OPTIONS='--inspect' npm run dev:next  # Node.js debugging
-```
-
-##  Debugging & Troubleshooting
-
-### Common Development Issues
-
-#### Memory System
-```bash
-# Check ChromaDB connection
-curl http://localhost:8000/api/v1/heartbeat
-
-# Verify memory stats
-curl "http://localhost:3000/api/conscious-memory?action=stats"
-
-# Test embeddings service
-npm run test:rag
-```
-
-#### Knowledge Graph Issues  
-```bash
-# Check Neo4j connectivity
-curl http://localhost:7474
-
-# Verify KG sync status
-curl "http://localhost:3000/api/knowledge-graph?action=status"
-
-# Process retry queue manually
-npm run kg:sync:queue
-```
-
-#### Debug Mode
-```bash
-# Enable Node.js debugging
-npm run dev:debug              # Debugger on port 9229
-# Connect via Chrome DevTools at chrome://inspect
-
-# Full debug logging
-cross-env DEBUG=* npm run dev
-
-# Component-specific debugging
-cross-env DEBUG=mcp:* npm run dev        # MCP-related logs
-cross-env DEBUG=kg:* npm run dev         # Knowledge Graph logs
-cross-env DEBUG=rag:* npm run dev        # RAG system logs
-```
-
-### Environment Variable Reference
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LLM_PROVIDER` | `deepseek` | AI provider (google, anthropic, openai, deepseek, groq, mistral, ollama) |
-| `LLM_MODEL` | `deepseek-chat` | Model name for chosen provider |
-| `RAG_ENABLED` | `true` | Enable automatic RAG system |
-| `RAG_MAX_MEMORIES` | `3` | Maximum memories retrieved per query |
-| `CHROMA_URL` | `http://localhost:8000` | ChromaDB server endpoint |
-| `NEO4J_URI` | `bolt://localhost:7687` | Neo4j connection string |
-| `NEO4J_USER` | `neo4j` | Neo4j authentication username |
-| `NEO4J_PASSWORD` | `password123` | Neo4j authentication password |
-| `MOTIVE_FORCE_ENABLED` | `false` | Enable autopilot by default |
-| `MOTIVE_FORCE_DELAY_BETWEEN_TURNS` | `2000` | Milliseconds between autonomous turns |
-| `MOTIVE_FORCE_MAX_CONSECUTIVE_TURNS` | `10` | Maximum autonomous turns before stopping |
-
-### Error Resolution
-
-#### "Embeddings service unavailable"
-- System automatically falls back to hash-based embeddings
-- Check Google API key configuration
-- Verify network connectivity
-
-#### "ChromaDB connection failed"  
-- Ensure Docker services are running: `docker-compose up -d`
-- Check port 8000 availability
-- Review ChromaDB logs: `docker-compose logs chromadb`
-
-#### "Neo4j sync errors"
-- Verify Neo4j credentials in `.env.local`
-- Check Neo4j logs: `docker-compose logs neo4j`
-- Process retry queue: `npm run kg:sync:queue`
-
-#### "MCP tool registration failed"
-- Verify MCP server configuration in `config.json`
-- Check tool implementations in `src/lib/mcp-servers/`
-- Review MCP manager logs in development console
-
----
-
-##  Deployment
-
-### Production Deployment
-
-1. **Build the application**:
-   ```bash
-   npm run build
-   ```
-
-2. **Set up ChromaDB** with persistent storage:
-   ```yaml
-   # docker-compose.prod.yml
-   version: '3.8'
-   services:
-     chroma:
-       image: chromadb/chroma:latest
-       ports:
-         - "8000:8000"
-       volumes:
-         - ./chroma-data:/chroma/chroma
-       environment:
-         - CHROMA_SERVER_HOST=0.0.0.0
-   ```
-
-3. **Configure environment variables**:
-   ```env
-   NODE_ENV=production
-   GOOGLE_AI_API_KEY=your_gosh_darn_key
-   CHROMA_URL=http://localhost:8000
-   ```
-
-4. **Deploy to your platform** (Vercel, Railway, etc.)
-
-### Docker Deployment
-
-```dockerfile
-# Dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-RUN npm run build
-
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
----
-
-##  Contributing
-
-We welcome contributions! Here's how to get started:
-
-### Development Setup
-
-1. **Fork and clone** the repository
-2. **Install dependencies**: `npm install`
-3. **Start ChromaDB**: `docker-compose up -d`
-4. **Run development server**: `npm run dev`
-5. **Make your changes** and test thoroughly
-6. **Submit a pull request**
-
-### Contribution Guidelines
-
-- **Code Style**: Follow the existing TypeScript/React patterns
-- **Testing**: Add tests for new features
-- **Documentation**: Update README and inline docs
-- **Commits**: Use conventional commit messages
-
-### Areas for Contribution
-
--  **Memory algorithms**: Improve search and relevance scoring
--  **UI/UX**: Enhance the memory management interface  
--  **MCP tools**: Add new memory operations and capabilities
--  **Autopilot intelligence**: Improve query generation and context analysis
--  **Safety mechanisms**: Enhance autopilot error handling and recovery
--  **Documentation**: Improve guides and examples
--  **Testing**: Add comprehensive test coverage
--  **Performance**: Optimize memory operations and search
-
----
-
-##  License
-
-MIT License - Lok Tar Ogar!
-
----
-
-##  Acknowledgments
-
-- **ChromaDB Team** for the excellent vector database
-- **Google AI** for the powerful embedding models
-- **Anthropic** for the Model Context Protocol
-- **Next.js Team** for the amazing React framework
-- **Open Source Community** for the superb MCP servers and the Ollama library for Vercel AI SDK
-
----
-
-## Contribution
-
-- Fork then PR
-- If you open issues I'll try to fix them but you know, maybe not.
+ChromaDB, Google AI, Anthropic MCP, Next.js, Neo4j teams. Open source MCP servers and Ollama Vercel AI SDK library.
