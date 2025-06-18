@@ -76,6 +76,14 @@ npm run dev             # Or npm run dev:next if Neo4j issues
 GOOGLE_API_KEY=your_key
 DEEPSEEK_API_KEY=your_key
 
+# Main LLM Configuration
+LLM_PROVIDER=google
+LLM_MODEL=gemini-2.5-flash-preview-05-20
+
+# Motive Force (Autopilot) LLM Configuration (optional - defaults to main LLM)
+LLM_PROVIDER_MOTIVE_FORCE=deepseek
+LLM_MODEL_MOTIVE_FORCE=deepseek-chat
+
 # Services
 CHROMA_URL=http://localhost:8000
 NEO4J_URI=bolt://localhost:7687

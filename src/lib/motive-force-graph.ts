@@ -105,7 +105,7 @@ export class MotiveForceWorkflow {
    * Get motive force provider from environment, fallback to main provider
    */
   private getMotiveForceProviderFromEnvironment(): LLMProvider {
-    const envProvider = process.env.MOTIVE_FORCE_LLM_PROVIDER?.toLowerCase() || 
+    const envProvider = process.env.LLM_PROVIDER_MOTIVE_FORCE?.toLowerCase() || 
                        process.env.LLM_PROVIDER?.toLowerCase();
     
     if (envProvider === 'deepseek') return 'deepseek';
@@ -141,7 +141,7 @@ export class MotiveForceWorkflow {
    * Get motive force model name, fallback to main model
    */
   private getMotiveForceDefaultModel(provider: LLMProvider): string {
-    const envModel = process.env.MOTIVE_FORCE_LLM_MODEL || process.env.LLM_MODEL;
+    const envModel = process.env.LLM_MODEL_MOTIVE_FORCE || process.env.LLM_MODEL;
     if (envModel) return envModel;
 
     // Default models per provider
@@ -213,8 +213,8 @@ export class MotiveForceWorkflow {
       model: providerInfo.model,
       usingCustomConfig,
       availableEnvVars: [
-        'MOTIVE_FORCE_LLM_PROVIDER',
-        'MOTIVE_FORCE_LLM_MODEL',
+        'LLM_PROVIDER_MOTIVE_FORCE',
+        'LLM_MODEL_MOTIVE_FORCE',
         `MOTIVE_FORCE_${providerInfo.provider.toUpperCase()}_API_KEY`,
         ...(providerInfo.provider === 'openai-compatible' ? ['MOTIVE_FORCE_OPENAI_BASE_URL'] : []),
         ...(providerInfo.provider === 'ollama' ? ['MOTIVE_FORCE_OLLAMA_BASE_URL'] : [])
@@ -610,24 +610,7 @@ export class MotiveForceWorkflow {
       
       // Get additional context if available
       let additionalContext = '';
-      
-      // Add RAG context
-      if (this.ragService && lastUserMessage) {
-        try {
-          const ragResult = await this.ragService.retrieveAndFormatContext(
-            lastUserMessage.content
-          );
-          
-          if (ragResult.memories.length > 0) {
-            additionalContext += '\n\n## Relevant Context from Memory:\n';
-            additionalContext += ragResult.memories
-              .map(r => `- ${r.text}`)
-              .join('\n');
-          }
-        } catch (error) {
-          console.warn('[MotiveForce] RAG service failed:', error);
-        }
-      }
+    
       
       // Add conscious memory context
       if (this.memoryService) {
