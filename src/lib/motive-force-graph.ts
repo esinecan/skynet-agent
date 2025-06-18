@@ -11,7 +11,7 @@ import { LLMService, LLMProvider, LLMProviderConfig } from './llm-service';
 import { getRAGService } from './rag';
 import { getConsciousMemoryService } from './conscious-memory';
 import { MotiveForceStorage } from './motive-force-storage';
-import { streamText } from 'ai';
+import { streamText, generateText } from 'ai';
 
 // For now, we'll create a simplified graph structure
 // that works with the current LangGraph version
@@ -310,9 +310,21 @@ export class MotiveForceWorkflow {
       return '__end__';
     }
 
+    // NEW: Routing to problem handler nodes first
+    // (Order might matter: check for major errors first, then failures, then loops)
+    if (state.lastDetectionReport?.type === 'major_error' && !(state.workingMemory as any).majorErrorAddressed) {
+      return 'handle_major_error';
+    }
+    if (state.lastDetectionReport?.type === 'failure' && !(state.workingMemory as any).failureAddressed) {
+      return 'handle_failure';
+    }
+    if (state.lastDetectionReport?.type === 'loop' && !(state.workingMemory as any).loopAddressed) {
+      return 'handle_loop';
+    }
+
     // Check if we've already generated a motive force query
     // Look for a specific marker in workingMemory to know if query was generated
-    if (state.workingMemory.motiveForceQueryGenerated === true) {
+    if ((state.workingMemory as any).motiveForceQueryGenerated === true) {
       return '__end__';
     }
     
@@ -325,17 +337,15 @@ export class MotiveForceWorkflow {
     if (state.subgoals.length === 0) {
       return 'plan_generator';
     }
-    
-    // Check if context is gathered
-    if (state.contextualMemories.length === 0) {
-      return 'context_gatherer';
+
+    // NEW: Always check for problems before generating a new query,
+    // unless already in a recovery/planning phase.
+    if (state.sessionMetadata.totalSteps > 0 && !(state.workingMemory as any).detectingProblems) {
+      return 'prepare_detection_input';
     }
     
-    // Always go to query generator after context gathering
-    // This ensures motive force generates its own response
+    // Default to query generator after initial setup
     return 'query_generator';
-    
-
   }
 
   private async executeNode(nodeType: string, state: MotiveForceState): Promise<MotiveForceState> {
@@ -344,18 +354,26 @@ export class MotiveForceWorkflow {
         return this.purposeAnalyzerNode(state);
       case 'plan_generator':
         return this.planGeneratorNode(state);
-      case 'context_gatherer':
-        return this.contextGathererNode(state);
-      case 'tool_orchestrator':
-        return this.toolOrchestratorNode(state);
-      case 'progress_monitor':
-        return this.progressMonitorNode(state);
       case 'reflection_engine':
         return this.reflectionEngineNode(state);
       case 'user_checkin':
         return this.userCheckinNode(state);
       case 'query_generator':
         return this.queryGeneratorNode(state);
+      case 'prepare_detection_input':
+        return this.prepareDetectionInputNode(state);
+      case 'detect_failure':
+        return this.detectFailureNode(state);
+      case 'detect_major_error':
+        return this.detectMajorErrorNode(state);
+      case 'detect_loop':
+        return this.detectLoopNode(state);
+      case 'handle_failure':
+        return this.handleFailureNode(state);
+      case 'handle_major_error':
+        return this.handleMajorErrorNode(state);
+      case 'handle_loop':
+        return this.handleLoopNode(state);
       default:
         throw new Error(`Unknown node type: ${nodeType}`);
     }
@@ -429,113 +447,6 @@ export class MotiveForceWorkflow {
     };
   }
 
-  private async contextGathererNode(state: MotiveForceState): Promise<MotiveForceState> {
-    console.log("---CONTEXT GATHERER NODE---");
-    
-    // For now, just mark that context has been gathered
-    return {
-      ...state,
-      contextualMemories: [
-        {
-          id: uuidv4(),
-          content: `Context for: ${state.currentPurpose}`,
-          type: 'conscious',
-          retrievedAt: new Date(),
-          source: 'context_gatherer',
-        }
-      ],
-      sessionMetadata: {
-        ...state.sessionMetadata,
-        totalSteps: state.sessionMetadata.totalSteps + 1,
-        memoryRetrievals: state.sessionMetadata.memoryRetrievals + 1,
-        lastActiveAt: new Date(),
-      },
-    };
-  }
-
-  private async toolOrchestratorNode(state: MotiveForceState): Promise<MotiveForceState> {
-    console.log("---TOOL ORCHESTRATOR NODE---");
-    
-    // Find the next pending step
-    const nextStep = state.executionPlan.find(step => step.status === 'pending');
-    
-    if (nextStep) {
-      // Mark the step as completed
-      const updatedPlan = state.executionPlan.map(step => 
-        step.id === nextStep.id 
-          ? { ...step, status: 'completed' as const, executedAt: new Date() }
-          : step
-      );
-      
-      // Update the related subgoal
-      const updatedSubgoals = state.subgoals.map(subgoal => {
-        if (subgoal.id === nextStep.subgoalId) {
-          const subgoalSteps = updatedPlan.filter(step => step.subgoalId === subgoal.id);
-          const completedSteps = subgoalSteps.filter(step => step.status === 'completed');
-          
-          if (completedSteps.length === subgoalSteps.length) {
-            return { 
-              ...subgoal, 
-              status: 'completed' as const,
-              completedAt: new Date(),
-              actualDuration: subgoal.startedAt 
-                ? Math.round((Date.now() - subgoal.startedAt.getTime()) / (1000 * 60))
-                : subgoal.estimatedDuration
-            };
-          } else if (completedSteps.length > 0) {
-            return { 
-              ...subgoal, 
-              status: 'in_progress' as const,
-              startedAt: subgoal.startedAt || new Date()
-            };
-          }
-        }
-        return subgoal;
-      });
-      
-      return {
-        ...state,
-        executionPlan: updatedPlan,
-        subgoals: updatedSubgoals,
-        sessionMetadata: {
-          ...state.sessionMetadata,
-          totalSteps: state.sessionMetadata.totalSteps + 1,
-          completedSteps: state.sessionMetadata.completedSteps + 1,
-          toolCalls: state.sessionMetadata.toolCalls + 1,
-          lastActiveAt: new Date(),
-        },
-      };
-    }
-    
-    return {
-      ...state,
-      sessionMetadata: {
-        ...state.sessionMetadata,
-        totalSteps: state.sessionMetadata.totalSteps + 1,
-        lastActiveAt: new Date(),
-      },
-    };
-  }
-
-  private async progressMonitorNode(state: MotiveForceState): Promise<MotiveForceState> {
-    console.log("---PROGRESS MONITOR NODE---");
-    
-    const completedSubgoals = state.subgoals.filter(sg => sg.status === 'completed').length;
-    const totalSubgoals = state.subgoals.length;
-    const progress = totalSubgoals > 0 ? Math.round((completedSubgoals / totalSubgoals) * 100) : 0;
-    
-    return {
-      ...state,
-      overallProgress: progress,
-      lastProgressUpdate: new Date(),
-      sessionMetadata: {
-        ...state.sessionMetadata,
-        totalSteps: state.sessionMetadata.totalSteps + 1,
-        lastActiveAt: new Date(),
-      },
-    };
-  }
-
   private async reflectionEngineNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---REFLECTION ENGINE NODE---");
     
@@ -583,6 +494,32 @@ export class MotiveForceWorkflow {
     }
 
     try {
+      // Check for detection reports and handle them first
+      let finalPromptContent = "What should I do next?";
+      let updatedState = { ...state };
+      
+      if (state.lastDetectionReport) {
+        const report = state.lastDetectionReport;
+        finalPromptContent = `A problem was detected: Type: ${report.type}, Details: ${report.details}. Action: ${report.actionSuggestion}. What is the optimal next step to course correct and resume the task?`;
+        
+        // Clear the report after processing
+        updatedState.lastDetectionReport = undefined;
+        
+        // Mark the specific problem as addressed in workingMemory to avoid re-triggering
+        if (report.type === 'failure') (updatedState.workingMemory as any).failureAddressed = true;
+        if (report.type === 'major_error') (updatedState.workingMemory as any).majorErrorAddressed = true;
+        if (report.type === 'loop') (updatedState.workingMemory as any).loopAddressed = true;
+
+        // If there's an investigative tool call suggested, prioritize that
+        if ((updatedState.workingMemory as any).nextActionIsInvestigativeTool) {
+          const investigativeCall = (updatedState.workingMemory as any).nextActionIsInvestigativeTool;
+          finalPromptContent = `A problem was detected. Please execute this investigative tool call to verify: ${JSON.stringify(investigativeCall)}. Then, based on the result, decide the next step.`;
+          delete (updatedState.workingMemory as any).nextActionIsInvestigativeTool; // Consume the action
+        }
+        
+        console.log(`[MotiveForce] Processing detection report: ${report.type} - ${report.details}`);
+      }
+
       // Log model info to confirm motive force is using its own LLM
       const providerInfo = this.llmService.getProviderInfo();
       console.log(`[MotiveForce] Using model: ${providerInfo.provider}/${providerInfo.model}`);
@@ -600,7 +537,7 @@ export class MotiveForceWorkflow {
       }
       
       // Convert BaseMessage back to ChatMessage format for context processing
-      const chatMessages = state.messages.map(msg => ({
+      const chatMessages = updatedState.messages.map(msg => ({
         role: msg instanceof HumanMessage ? 'user' as const : 'assistant' as const,
         content: msg.content.toString()
       }));
@@ -610,38 +547,10 @@ export class MotiveForceWorkflow {
       
       // Get additional context if available
       let additionalContext = '';
-    
-      
-      // Add conscious memory context
-      if (this.memoryService) {
-        try {
-          const recentMessages = chatMessages
-            .slice(-5) // Last 5 messages for context
-            .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
-            .join('\n\n');
-            
-          const memories = await this.memoryService.searchMemories(
-            recentMessages.slice(-200), // Last 200 chars as query
-            {
-              limit: 3,
-              importanceMin: 5
-            }
-          );
-          
-          if (memories.length > 0) {
-            additionalContext += '\n\n## Conscious Memories:\n';
-            additionalContext += memories
-              .map(m => `- ${m.text}`)
-              .join('\n');
-          }
-        } catch (error) {
-          console.warn('[MotiveForce] Conscious memory service failed:', error);
-        }
-      }
 
       // Add workflow context
       if (state.currentPurpose) {
-        additionalContext += `\n\n## Current Purpose: ${state.currentPurpose}`;
+        additionalContext += `\n\n## Current Purpose: ${state.currentPurpose} [REMEMBER THAT YOU ARE NOT THE ASSISTANT BUT THE AUTOPILOT. REACT TO THE CURRENT CONTEXT. PROVIDE GUIDANCE AND AVOID GENERIC RESPONSES]`;
       }
       if (state.subgoals.length > 0) {
         additionalContext += `\n\n## Completed Goals: ${state.subgoals.filter(g => g.status === 'completed').length}/${state.subgoals.length}`;
@@ -659,14 +568,14 @@ You should act as the human user of the system and continue their conversation a
       // Convert to conversation format, excluding the last user message to avoid duplication
       const conversationMessages = chatMessages
         .slice(-5) // Last 5 messages for context
-        .slice(0, -1) // Remove last message since it's now in system prompt
+        //.slice(0, -1) // Remove last message since it's now in system prompt
         .map(msg => ({
           role: msg.role,
           content: msg.content
         }));
 
-      // Get model without tools to avoid naming issues - THIS IS MOTIVE FORCE'S OWN MODEL
-      const { model } = await this.llmService.getModelAndTools(false);
+      // Get model with tools for motive force capabilities - THIS IS MOTIVE FORCE'S OWN MODEL
+      const { model, tools } = await this.llmService.getModelAndTools(true);
       
       // Log to confirm we're using motive force's own LLM
       const configInfo = this.getConfigurationInfo();
@@ -682,18 +591,24 @@ You should act as the human user of the system and continue their conversation a
         streamOptions = {
           model,
           system: enhancedSystemPrompt,
-          prompt: "What should I do next?",
+          prompt: finalPromptContent,
           temperature: 0.7,
           maxTokens: 8000,
+          tools: tools,
+          toolCallStreaming: true,
         };
       } else {
         // Use messages-based approach with history
+        conversationMessages[conversationMessages.length - 1].content = conversationMessages[conversationMessages.length - 1].content 
+        + " [NOW YOU SHOULD ANSWER AS THE EMISSARY OF HUMAN USER]"
         streamOptions = {
           model,
           system: enhancedSystemPrompt,
           messages: conversationMessages,
           temperature: 0.7,
           maxTokens: 8000,
+          tools: tools,
+          toolCallStreaming: true,
         };
       }
       
@@ -723,16 +638,16 @@ You should act as the human user of the system and continue their conversation a
       console.log(`[MotiveForce] Generated query: "${cleanedQuery.substring(0, 100)}${cleanedQuery.length > 100 ? '...' : ''}"`);
       
       return {
-        ...state,
-        messages: [...state.messages, newAIMessage],
+        ...updatedState,
+        messages: [...updatedState.messages, newAIMessage],
         workingMemory: {
-          ...state.workingMemory,
+          ...updatedState.workingMemory,
           motiveForceQueryGenerated: true,
           generatedQuery: cleanedQuery
         },
         sessionMetadata: {
-          ...state.sessionMetadata,
-          totalSteps: state.sessionMetadata.totalSteps + 1,
+          ...updatedState.sessionMetadata,
+          totalSteps: updatedState.sessionMetadata.totalSteps + 1,
           lastActiveAt: new Date(),
         },
       };
@@ -745,23 +660,279 @@ You should act as the human user of the system and continue their conversation a
       
       console.log(`[MotiveForce] Using fallback query: "${fallbackQuery}"`);
       
+      // Create fallback state that still clears any detection reports
+      let fallbackState = { ...state };
+      if (state.lastDetectionReport) {
+        fallbackState.lastDetectionReport = undefined;
+        const report = state.lastDetectionReport;
+        if (report.type === 'failure') (fallbackState.workingMemory as any).failureAddressed = true;
+        if (report.type === 'major_error') (fallbackState.workingMemory as any).majorErrorAddressed = true;
+        if (report.type === 'loop') (fallbackState.workingMemory as any).loopAddressed = true;
+      }
+      
       return {
-        ...state,
-        messages: [...state.messages, fallbackMessage],
+        ...fallbackState,
+        messages: [...fallbackState.messages, fallbackMessage],
         workingMemory: {
-          ...state.workingMemory,
+          ...fallbackState.workingMemory,
           motiveForceQueryGenerated: true,
           generatedQuery: fallbackQuery
         },
-        errorCount: state.errorCount + 1,
+        errorCount: fallbackState.errorCount + 1,
         lastError: error instanceof Error ? error.message : 'Unknown error in query generation',
         sessionMetadata: {
-          ...state.sessionMetadata,
-          totalSteps: state.sessionMetadata.totalSteps + 1,
+          ...fallbackState.sessionMetadata,
+          totalSteps: fallbackState.sessionMetadata.totalSteps + 1,
           lastActiveAt: new Date(),
         },
       };
     }
+  }
+
+  private async prepareDetectionInputNode(state: MotiveForceState): Promise<MotiveForceState> {
+    console.log("---PREPARE DETECTION INPUT NODE---");
+    const messages = state.messages;
+    const lastMessage = messages[messages.length - 1]; // Main model's last response
+
+    let messagesForDetection: BaseMessage[] = [];
+    let detectionContextType: MotiveForceState['detectionContextType'];
+    let nextDetectorNode: MotiveForceRoute;
+
+    // Determine which detection to run next and what context it needs.
+    // This is simplified; in a real scenario, you'd cycle through detectors or use heuristics.
+    if (state.messages.length % 3 === 0) { // Example: Check for failure every 3rd step
+      messagesForDetection = messages.slice(-1); // Last 1 message
+      detectionContextType = 'single';
+      nextDetectorNode = 'detect_failure';
+    } else if (state.messages.length % 3 === 1) { // Example: Check for major errors
+      messagesForDetection = messages.slice(-2); // Last 2 messages
+      detectionContextType = 'last2';
+      nextDetectorNode = 'detect_major_error';
+    } else { // Example: Check for loops
+      messagesForDetection = messages.slice(-3); // Last 3 messages
+      detectionContextType = 'last3';
+      nextDetectorNode = 'detect_loop';
+    }
+
+    return {
+      ...state,
+      messagesForDetection,
+      detectionContextType,
+      workingMemory: { 
+        ...state.workingMemory, 
+        detectingProblems: true, 
+        nextDetector: nextDetectorNode 
+      } as any,
+      sessionMetadata: { 
+        ...state.sessionMetadata, 
+        totalSteps: state.sessionMetadata.totalSteps + 1 
+      },
+    };
+  }
+
+  private async detectFailureNode(state: MotiveForceState): Promise<MotiveForceState> {
+    console.log("---DETECT FAILURE NODE---");
+    const modelWithTools = await this.llmService.getModelAndTools(true); // Motive Force can use tools
+
+    const currentMessage = state.messagesForDetection?.[0]; // Last message from main model
+    if (!currentMessage) {
+      return { 
+        ...state, 
+        workingMemory: { ...state.workingMemory, detectingProblems: false }, 
+        lastDetectionReport: undefined 
+      };
+    }
+
+    // Prompt Motive Force's LLM to detect specific failures, e.g., fake tool calls
+    const promptContent = `Analyze the last message from the assistant:\n\n${currentMessage.content}\n\n`;
+    let analysisPrompt = `Your role is to detect immediate failures or misleading responses from the assistant. Specifically, check if a tool call was implied but not successfully executed, or if results are fabricated.
+If the assistant stated it performed an action (e.g., "saved memory X", "created file Y"), does it sound too vague or fabricated? Does it omit concrete IDs or clear success indicators?
+If you detect a potential failure or fabrication, propose a corrective action, possibly an investigative tool call to verify.
+
+Respond in a JSON format: {"isProblem": boolean, "type": "failure", "details": "string", "actionSuggestion": "string", "investigativeToolCall": {"toolName": "string", "args": {}} }`;
+
+    const result = await generateText({
+      model: modelWithTools.model,
+      prompt: analysisPrompt + promptContent,
+      tools: modelWithTools.tools, // Pass tools here for investigative calls
+      temperature: 0.1,
+      maxTokens: 500,
+    });
+
+    let detectionReport: any;
+    try {
+      detectionReport = JSON.parse(result.text.trim());
+    } catch (e) {
+      console.warn("Failed to parse detection report, treating as no problem:", result.text);
+      detectionReport = { isProblem: false };
+    }
+
+    let newState = { ...state, workingMemory: { ...state.workingMemory, detectingProblems: false } as any };
+    if (detectionReport.isProblem) {
+      newState.lastDetectionReport = {
+        type: 'failure',
+        details: detectionReport.details,
+        actionSuggestion: detectionReport.actionSuggestion,
+        timestamp: new Date(),
+      };
+      if (detectionReport.investigativeToolCall) {
+        // Trigger investigative tool call directly or queue it for queryGeneratorNode
+        // For now, let queryGeneratorNode handle it based on actionSuggestion
+        (newState.workingMemory as any).nextActionIsInvestigativeTool = detectionReport.investigativeToolCall;
+      }
+    } else {
+      newState.lastDetectionReport = undefined; // Clear report if no problem
+    }
+    return newState;
+  }
+
+  private async detectMajorErrorNode(state: MotiveForceState): Promise<MotiveForceState> {
+    console.log("---DETECT MAJOR ERROR NODE---");
+    const modelWithTools = await this.llmService.getModelAndTools(true);
+
+    const lastTwoMessages = state.messagesForDetection;
+    if (!lastTwoMessages || lastTwoMessages.length < 2) {
+      return { 
+        ...state, 
+        workingMemory: { ...state.workingMemory, detectingProblems: false }, 
+        lastDetectionReport: undefined 
+      };
+    }
+
+    const promptContent = `Analyze the last two messages in the conversation for a major error or "fuck up" by the assistant:\n\n` +
+                          `User: ${lastTwoMessages[0].content}\n` +
+                          `Assistant: ${lastTwoMessages[1].content}\n\n`;
+    let analysisPrompt = `Your role is to detect severe errors, critical misunderstandings, or significant deviations from the user's intent. This might require planning rollback actions or major course corrections.
+Respond in a JSON format: {"isProblem": boolean, "type": "major_error", "details": "string", "rollbackPlan": ["string"], "actionSuggestion": "string"}`;
+
+    const result = await generateText({
+      model: modelWithTools.model,
+      prompt: analysisPrompt + promptContent,
+      tools: modelWithTools.tools,
+      temperature: 0.1,
+      maxTokens: 500,
+    });
+    let detectionReport: any;
+    try {
+      detectionReport = JSON.parse(result.text.trim());
+    } catch (e) {
+      console.warn("Failed to parse major error detection report, treating as no problem:", result.text);
+      detectionReport = { isProblem: false };
+    }
+
+    let newState = { ...state, workingMemory: { ...state.workingMemory, detectingProblems: false } as any };
+    if (detectionReport.isProblem) {
+      newState.lastDetectionReport = {
+        type: 'major_error',
+        details: detectionReport.details,
+        actionSuggestion: detectionReport.actionSuggestion || `Execute rollback plan: ${detectionReport.rollbackPlan?.join(', ')}`,
+        timestamp: new Date(),
+      };
+      (newState.workingMemory as any).majorErrorAddressed = false; // Mark for follow-up
+    } else {
+      newState.lastDetectionReport = undefined;
+    }
+    return newState;
+  }
+
+  private async detectLoopNode(state: MotiveForceState): Promise<MotiveForceState> {
+    console.log("---DETECT LOOP NODE---");
+    const modelWithTools = await this.llmService.getModelAndTools(true);
+
+    const lastThreeMessages = state.messagesForDetection;
+    if (!lastThreeMessages || lastThreeMessages.length < 3) {
+      return { 
+        ...state, 
+        workingMemory: { ...state.workingMemory, detectingProblems: false }, 
+        lastDetectionReport: undefined 
+      };
+    }
+
+    const promptContent = `Analyze the last three messages in the conversation:\n\n` +
+                          `1: ${lastThreeMessages[0].content}\n` +
+                          `2: ${lastThreeMessages[1].content}\n` +
+                          `3: ${lastThreeMessages[2].content}\n\n`;
+    let analysisPrompt = `Your role is to detect if the conversation is stuck in a loop or giving very similar answers consecutively.
+Respond in a JSON format: {"isProblem": boolean, "type": "loop", "details": "string", "patternDetected": "string", "actionSuggestion": "string"}`;
+
+    const result = await generateText({
+      model: modelWithTools.model,
+      prompt: analysisPrompt + promptContent,
+      tools: modelWithTools.tools,
+      temperature: 0.1,
+      maxTokens: 500,
+    });
+    let detectionReport: any;
+    try {
+      detectionReport = JSON.parse(result.text.trim());
+    } catch (e) {
+      console.warn("Failed to parse loop detection report, treating as no problem:", result.text);
+      detectionReport = { isProblem: false };
+    }
+
+    let newState = { ...state, workingMemory: { ...state.workingMemory, detectingProblems: false } as any };
+    if (detectionReport.isProblem) {
+      newState.lastDetectionReport = {
+        type: 'loop',
+        details: detectionReport.details,
+        actionSuggestion: detectionReport.actionSuggestion || `Break loop with alternative action: ${detectionReport.patternDetected}`,
+        timestamp: new Date(),
+      };
+      (newState.workingMemory as any).loopAddressed = false; // Mark for follow-up
+    } else {
+      newState.lastDetectionReport = undefined;
+    }
+    return newState;
+  }
+
+  private async handleFailureNode(state: MotiveForceState): Promise<MotiveForceState> {
+    console.log("---HANDLE FAILURE NODE---");
+    
+    // Mark the failure as addressed and clear any investigative tool calls
+    const newState = {
+      ...state,
+      workingMemory: {
+        ...state.workingMemory,
+        failureAddressed: true,
+      } as any
+    };
+    
+    // Clear investigative tool call if it exists
+    if ((newState.workingMemory as any).nextActionIsInvestigativeTool) {
+      delete (newState.workingMemory as any).nextActionIsInvestigativeTool;
+    }
+    
+    return newState;
+  }
+
+  private async handleMajorErrorNode(state: MotiveForceState): Promise<MotiveForceState> {
+    console.log("---HANDLE MAJOR ERROR NODE---");
+    
+    // Mark the major error as addressed
+    const newState = {
+      ...state,
+      workingMemory: {
+        ...state.workingMemory,
+        majorErrorAddressed: true,
+      } as any
+    };
+    
+    return newState;
+  }
+
+  private async handleLoopNode(state: MotiveForceState): Promise<MotiveForceState> {
+    console.log("---HANDLE LOOP NODE---");
+    
+    // Mark the loop as addressed
+    const newState = {
+      ...state,
+      workingMemory: {
+        ...state.workingMemory,
+        loopAddressed: true,
+      } as any
+    };
+    
+    return newState;
   }
 
   private cleanGeneratedQuery(query: string): string {

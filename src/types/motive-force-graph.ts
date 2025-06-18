@@ -130,6 +130,18 @@ export interface MotiveForceGraphState {
   averageStepDuration: number;
   successRate: number;
   toolEfficiency: Record<string, number>; // Tool name -> efficiency score
+  
+  // Problem Detection System (Phase 3)
+  lastDetectionReport?: {
+    type: 'failure' | 'major_error' | 'loop';
+    details: string;
+    actionSuggestion?: string; // What Motive Force thinks should be done
+    timestamp: Date;
+    confidence?: number; // How confident Motive Force is in its detection
+  };
+  // For passing specific message subsets to detection nodes if not using direct slice/context building per node
+  messagesForDetection?: BaseMessage[];
+  detectionContextType?: 'single' | 'last2' | 'last3'; // To control context for detectors
 }
 
 // Node-specific state updates
@@ -201,6 +213,13 @@ export type MotiveForceRoute =
   | 'reflection_engine'
   | 'user_checkin'
   | 'query_generator'
+  | 'prepare_detection_input'
+  | 'detect_failure'
+  | 'detect_major_error'
+  | 'detect_loop'
+  | 'handle_failure'
+  | 'handle_major_error'
+  | 'handle_loop'
   | '__end__';
 
 // Configuration types
