@@ -6,7 +6,7 @@ import {
   MotiveForceRoute,
   MotiveForceGraphConfig,
   SessionMetadata,
-  ProblemResolutionPurpose // NEW: Import ProblemResolutionPurpose
+  ProblemResolutionPurpose
 } from "../types/motive-force-graph";
 import { LLMService, LLMProvider, LLMProviderConfig } from './llm-service';
 import { getRAGService } from './rag';
@@ -262,9 +262,7 @@ export class MotiveForceWorkflow {
     return currentState;
   }
 
-  // --- REVISED shouldContinue METHOD ---
   private shouldContinue(state: MotiveForceState): MotiveForceRoute {
-    // NEW: If Motive Force is set to shut down, ensure it generates the closing message
     if (state.motiveForceOff && !state.workingMemory.motiveForceQueryGenerated) {
       return 'query_generator'; // Route to query generator to produce the shutdown message
     }
@@ -285,7 +283,6 @@ export class MotiveForceWorkflow {
       return '__end__';
     }
 
-    // NEW: Routing to problem handler nodes first (Order might matter: major > failure > loop)
     // We only route to handler if a report exists AND it hasn't been addressed.
     // This allows the orchestrator to run all detections first.
     if (state.lastDetectionReport?.type === 'major_error' && !state.workingMemory.majorErrorAddressed) {
@@ -311,7 +308,7 @@ export class MotiveForceWorkflow {
       return 'plan_generator';
     }
 
-    // CHANGE: Check if we're in detection mode but haven't reached the orchestrator yet
+    // Check if we're in detection mode but haven't reached the orchestrator yet
     if (state.sessionMetadata.totalSteps > 0 && !state.workingMemory.problemDetectionComplete) {
       // If we're in the middle of detector orchestration, continue it
       if (state.workingMemory.orchestrationActive) {
@@ -332,23 +329,19 @@ export class MotiveForceWorkflow {
     return 'query_generator';
   }
 
-  // --- REVISED executeNode METHOD (removed pruned cases) ---
   private async executeNode(nodeType: string, state: MotiveForceState): Promise<MotiveForceState> {
     switch (nodeType) {
       case 'purpose_analyzer':
         return this.purposeAnalyzerNode(state);
       case 'plan_generator':
         return this.planGeneratorNode(state);
-      // Pruned cases removed: context_gatherer, tool_orchestrator, progress_monitor, reflection_engine
       case 'user_checkin':
         return this.userCheckinNode(state);
       case 'query_generator':
         return this.queryGeneratorNode(state);
 
-      // NEW Detection and Handling Nodes
-      case 'prepare_detection_input': // CHANGE: This node's output now directs to orchestrator
+      case 'prepare_detection_input':
         return this.prepareDetectionInputNode(state);
-      // CHANGE: New orchestrator node to manage detection sequence
       case 'detection_orchestrator':
         return this.detectionOrchestratorNode(state);
       case 'detect_failure':
@@ -367,8 +360,6 @@ export class MotiveForceWorkflow {
         throw new Error(`Unknown node type: ${nodeType}`);
     }
   }
-
-  // --- EXISTING / REVISED NODE METHODS ---
 
   private async purposeAnalyzerNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---PURPOSE ANALYZER NODE---");
@@ -435,7 +426,6 @@ export class MotiveForceWorkflow {
     };
   }
 
-  // --- userCheckinNode (REVISED) ---
   private async userCheckinNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---USER CHECKIN NODE---");
 
@@ -457,7 +447,6 @@ export class MotiveForceWorkflow {
     };
   }
 
-  // --- ENHANCED queryGeneratorNode (REVISED) ---
   private async queryGeneratorNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---QUERY GENERATOR NODE (MOTIVE FORCE LLM)---");
 
@@ -469,7 +458,7 @@ export class MotiveForceWorkflow {
       let finalPromptContent = "What should I do next?";
       let updatedState = { ...state };
 
-      // CHANGE: Iterate through all accumulated detection reports
+      // Iterate through all accumulated detection reports
       const allDetectionReports = state.workingMemory.allDetectionReports || [];
       if (allDetectionReports.length > 0) {
         let problemSummaries: string[] = [];
@@ -484,7 +473,7 @@ export class MotiveForceWorkflow {
         finalPromptContent = `Multiple problems were detected:\n\n${problemSummaries.join('\n\n')}\n\nWhat is the optimal next step to course correct and resume the task, considering all detected issues?`;
 
         // Clear the reports after processing
-        updatedState.workingMemory.allDetectionReports = []; // CHANGE: Clear all reports
+        updatedState.workingMemory.allDetectionReports = []; // Clear all reports
       }
       
       // If there's an investigative tool call suggested, prioritize that
@@ -494,7 +483,7 @@ export class MotiveForceWorkflow {
         delete updatedState.workingMemory.nextActionIsInvestigativeTool; // Consume the action
       }
 
-      console.log(`[MotiveForce] Processing detection reports. Final prompt: ${finalPromptContent}`); // CHANGE: More specific log
+      console.log(`[MotiveForce] Processing detection reports. Final prompt: ${finalPromptContent}`); // More specific log
 
       // Log model info to confirm motive force is using its own LLM
       const providerInfo = this.llmService.getProviderInfo();
@@ -619,8 +608,8 @@ You should act as the human user of the system and continue their conversation a
           ...updatedState.workingMemory,
           motiveForceQueryGenerated: true,
           generatedQuery: cleanedQuery,
-          problemDetectionComplete: false, // CHANGE: Reset for next cycle
-          allDetectionReports: [], // CHANGE: Ensure reports are cleared after use
+          problemDetectionComplete: false, // Reset for next cycle
+          allDetectionReports: [], // Ensure reports are cleared after use
         },
         sessionMetadata: {
           ...updatedState.sessionMetadata,
@@ -639,9 +628,9 @@ You should act as the human user of the system and continue their conversation a
 
       // Create fallback state that still clears any detection reports
       let fallbackState = { ...state };
-      // CHANGE: Clear all detection reports on fallback as well
+      // Clear all detection reports on fallback as well
       fallbackState.workingMemory.allDetectionReports = [];
-      fallbackState.workingMemory.problemDetectionComplete = false; // CHANGE: Reset
+      fallbackState.workingMemory.problemDetectionComplete = false; // Reset
       
       // Clear specific problem flags as well, as query generation is happening
       fallbackState.workingMemory.failureAddressed = true;
@@ -667,36 +656,72 @@ You should act as the human user of the system and continue their conversation a
     }
   }
 
-  // CHANGE: Prepare Detection Input - Now prepares for all and directs to orchestrator
   private async prepareDetectionInputNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---PREPARE DETECTION INPUT NODE---");
-    const messages = state.messages;
-
+    
+    // Deduplicate messages before processing
+    const messages = this.deduplicateMessages(state.messages);
+    
     // Use the appropriate message subset based on current detection needs
     // For now, use last 3 messages as a reasonable default for detection context
     const messagesForDetection: BaseMessage[] = messages.slice(-3);
 
     return {
       ...state,
-      messagesForDetection, // This will now hold the message array for detection
+      messages, // Replace state.messages with deduplicated messages
+      messagesForDetection, // This will now hold the deduplicated message array for detection
       detectionContextType: 'last3', // Indicate the context type
       workingMemory: {
         ...state.workingMemory,
         detectingProblems: true,
-        // CHANGE: Initialize all detection reports as empty array
+        // Initialize all detection reports as empty array
         allDetectionReports: state.workingMemory.allDetectionReports || [], 
-        problemDetectionComplete: false, // CHANGE: Set this flag
-        currentDetectorIndex: 0, // CHANGE: Start from the first detector
+        problemDetectionComplete: false, // Set this flag
+        currentDetectorIndex: 0, // Start from the first detector
       },
       sessionMetadata: {
         ...state.sessionMetadata,
         totalSteps: state.sessionMetadata.totalSteps + 1
       },
-      lastDetectionReport: undefined, // CHANGE: Clear this as we're starting a new cycle
+      lastDetectionReport: undefined, // Clear this as we're starting a new cycle
     };
   }
 
-  // CHANGE: New Orchestrator Node for Sequential Detection
+  // Helper method to deduplicate messages
+  private deduplicateMessages(messages: BaseMessage[]): BaseMessage[] {
+    if (!messages || messages.length <= 1) return messages;
+    
+    const result: BaseMessage[] = [messages[0]];
+    
+    for (let i = 1; i < messages.length; i++) {
+      const current = messages[i];
+      const previous = messages[i-1];
+      
+      // Skip if this message is identical to the previous one
+      // (Check both content and message type)
+      if (current instanceof HumanMessage && previous instanceof HumanMessage && 
+          current.content === previous.content) {
+        console.log("Detected duplicate human message, skipping");
+        continue;
+      }
+      
+      if (current instanceof AIMessage && previous instanceof AIMessage && 
+          current.content === previous.content) {
+        console.log("Detected duplicate AI message, skipping");
+        continue;
+      }
+      
+      result.push(current);
+    }
+    
+    if (result.length < messages.length) {
+      console.log(`Removed ${messages.length - result.length} duplicate message(s)`);
+    }
+    
+    return result;
+  }
+
+  // Orchestrator Node for Sequential Detection
   private async detectionOrchestratorNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---DETECTION ORCHESTRATOR NODE---");
     let currentState = { ...state };
@@ -777,7 +802,6 @@ You should act as the human user of the system and continue their conversation a
   }
 
 
-  // --- detectFailureNode (NEW, with revised prompt) ---
   private async detectFailureNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---DETECT FAILURE NODE---");
     const modelWithTools = await this.llmService.getModelAndTools(true); // Motive Force can use tools
@@ -787,7 +811,7 @@ You should act as the human user of the system and continue their conversation a
       return {
         ...state,
         workingMemory: { ...state.workingMemory, detectingProblems: false },
-        lastDetectionReport: undefined // CHANGE: Ensure this is cleared if no message
+        lastDetectionReport: undefined // Ensure this is cleared if no message
       };
     }
 
@@ -834,7 +858,7 @@ If the 'investigativeToolCall' is applicable, provide the \`toolName\` and \`arg
 
     let newState = { ...state, workingMemory: { ...state.workingMemory, detectingProblems: false } };
     if (detectionReport.isProblem) {
-      newState.lastDetectionReport = { // CHANGE: This will temporarily store the report before orchestrator collects it
+      newState.lastDetectionReport = { // This will temporarily store the report before orchestrator collects it
         type: 'failure',
         details: detectionReport.details,
         actionSuggestion: detectionReport.actionSuggestion,
@@ -849,7 +873,6 @@ If the 'investigativeToolCall' is applicable, provide the \`toolName\` and \`arg
     return newState;
   }
 
-  // --- detectMajorErrorNode (NEW, with revised prompt) ---
   private async detectMajorErrorNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---DETECT MAJOR ERROR NODE---");
     const modelWithTools = await this.llmService.getModelAndTools(true);
@@ -859,7 +882,7 @@ If the 'investigativeToolCall' is applicable, provide the \`toolName\` and \`arg
       return {
         ...state,
         workingMemory: { ...state.workingMemory, detectingProblems: false },
-        lastDetectionReport: undefined // CHANGE: Ensure this is cleared if no message
+        lastDetectionReport: undefined // Ensure this is cleared if no message
       };
     }
 
@@ -910,7 +933,7 @@ If \`isProblem\` is true, \`details\` must explain *which specific criteria were
 
     let newState = { ...state, workingMemory: { ...state.workingMemory, detectingProblems: false } };
     if (detectionReport.isProblem) {
-      newState.lastDetectionReport = { // CHANGE: This will temporarily store the report before orchestrator collects it
+      newState.lastDetectionReport = { // This will temporarily store the report before orchestrator collects it
         type: 'major_error',
         details: detectionReport.details,
         actionSuggestion: detectionReport.actionSuggestion || `Execute rollback plan: ${detectionReport.rollbackPlan?.join(', ')}`,
@@ -923,7 +946,6 @@ If \`isProblem\` is true, \`details\` must explain *which specific criteria were
     return newState;
   }
 
-  // --- detectLoopNode (NEW, with revised prompt) ---
   private async detectLoopNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---DETECT LOOP NODE---");
     const modelWithTools = await this.llmService.getModelAndTools(true);
@@ -984,7 +1006,7 @@ If \`isProblem\` is true:
 
     let newState = { ...state, workingMemory: { ...state.workingMemory, detectingProblems: false } };
     if (detectionReport.isProblem) {
-      newState.lastDetectionReport = { // CHANGE: This will temporarily store the report before orchestrator collects it
+      newState.lastDetectionReport = { // This will temporarily store the report before orchestrator collects it
         type: 'loop',
         details: detectionReport.details,
         actionSuggestion: detectionReport.actionSuggestion || `Break loop with alternative action: ${detectionReport.patternDetected}`,
@@ -996,8 +1018,6 @@ If \`isProblem\` is true:
     }
     return newState;
   }
-
-  // --- NEW HANDLER NODES ---
 
   private async handleFailureNode(state: MotiveForceState): Promise<MotiveForceState> {
     console.log("---HANDLE FAILURE NODE---");
@@ -1098,7 +1118,7 @@ export function createInitialState(
     overallProgress: 0,
     lastProgressUpdate: new Date(),
     blockers: [],
-    workingMemory: { // CHANGE: Initialize new working memory flags
+    workingMemory: { 
       problemDetectionComplete: false,
       allDetectionReports: [],
       currentDetectorIndex: 0,
