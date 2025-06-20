@@ -94,8 +94,11 @@ export class LLMService {
     
     // Otherwise default to Google
     return 'google';
-  }
-  private getDefaultModel(provider: LLMProvider): string {
+  }  private getDefaultModel(provider: LLMProvider): string {
+    // Check environment variable first
+    const envModel = process.env.LLM_MODEL;
+    if (envModel) return envModel;
+    
     switch (provider) {
       case 'google':
         return 'gemini-2.5-flash-preview-05-20';
