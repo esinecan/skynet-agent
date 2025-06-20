@@ -515,7 +515,9 @@ export class MotiveForceWorkflow {
 
       // Add workflow context
       if (state.currentPurpose) {
-        additionalContext += `\n\n## Current Purpose: ${state.currentPurpose} \n\n [REMEMBER THAT YOU ARE NOT THE ASSISTANT BUT THE AUTOPILOT. REACT TO THE CURRENT CONTEXT. PROVIDE GUIDANCE AND AVOID GENERIC RESPONSES. BY AND LARGE YOU'LL KNOW WHAT TO SAY I THINK. IDK MAYBE ENCOURAGEMENT IF IT'S DOING WELL OR SMTH.]`;
+        additionalContext += `\n\n## Current Purpose: ${state.currentPurpose} \n\n 
+        [REMEMBER THAT YOU ARE NOT THE ASSISTANT BUT THE AUTOPILOT. REACT TO THE CURRENT CONTEXT. PROVIDE GUIDANCE AND AVOID GENERIC RESPONSES. BY AND LARGE YOU'LL KNOW WHAT TO SAY I THINK. IDK MAYBE ENCOURAGEMENT IF IT'S DOING WELL OR SMTH.]
+        \n [SOMETIMES YOU NEED TO PUT THE BRAKES ON THE ASSISTANT. IS IT ABOUT TO REMOVE SOME KNOWLEDGE IRREVERSIBLY? ERASE TECHNICAL DATA? IS IT ABOUT TO POSSIBLY MESS WITH AN ENVIRONMENT VALUE? YOU'RE THE ONE TO MAKE THE CALL WHEN TO CHEER AND WHEN TO COURSE CORRECT]`;
       }
       if (state.subgoals.length > 0) {
         additionalContext += `\n\n## Completed Goals: ${state.subgoals.filter(g => g.status === 'completed').length}/${state.subgoals.length}`;
@@ -697,8 +699,13 @@ You should act as the human user of the system and continue their conversation a
       const current = messages[i];
       const previous = messages[i-1];
       
-      // Skip if this message is identical to the previous one
-      // (Check both content and message type)
+      // Case 1: Skip if both current and previous are human messages (regardless of content)
+      if (current instanceof HumanMessage && previous instanceof HumanMessage) {
+        console.log("Detected consecutive human messages, removing the latter one");
+        continue;
+      }
+      
+      // Case 2: Skip if this message is identical to the previous one (same type and content)
       if (current instanceof HumanMessage && previous instanceof HumanMessage && 
           current.content === previous.content) {
         console.log("Detected duplicate human message, skipping");
@@ -715,7 +722,7 @@ You should act as the human user of the system and continue their conversation a
     }
     
     if (result.length < messages.length) {
-      console.log(`Removed ${messages.length - result.length} duplicate message(s)`);
+      console.log(`Removed ${messages.length - result.length} duplicate/consecutive message(s)`);
     }
     
     return result;
