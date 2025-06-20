@@ -124,6 +124,21 @@ export async function POST(request: NextRequest) {
     
     const { messages, sessionId: providedSessionId, id: providedId } = body;
     
+    console.log('[Chat API Debug] Received messages count:', messages?.length);
+    if (messages?.length > 0) {
+      console.log('[Chat API Debug] First message:', messages[0].content?.substring(0, 50));
+      console.log('[Chat API Debug] Last message:', messages[messages.length - 1].content?.substring(0, 50));
+      
+      // Check for duplicate messages
+      const messageContents = messages.map((m: any) => m.content);
+      const uniqueContents = new Set(messageContents);
+      if (messageContents.length !== uniqueContents.size) {
+        console.log('[Chat API Debug] DUPLICATE MESSAGES DETECTED!');
+        console.log('[Chat API Debug] Total messages:', messageContents.length);
+        console.log('[Chat API Debug] Unique messages:', uniqueContents.size);
+      }
+    }
+    
     if (!messages || !Array.isArray(messages)) {
       return new Response('Invalid messages format', { status: 400 });
     }
@@ -246,6 +261,7 @@ export async function POST(request: NextRequest) {
         onFinish: async (finishResult) => {
           //console.log(' Chat API: onFinish callback started');
           console.log(' finishResult.text length:', finishResult.text?.length || 0);
+          console.log('[Chat API Debug] onFinish - userMessage extracted earlier:', userMessage?.substring(0, 50));
           
           // Extract tool calls from finishResult - AI SDK provides them in a cleaner format
           const completeToolCalls: any[] = [];

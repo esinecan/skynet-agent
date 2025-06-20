@@ -2,6 +2,13 @@ import { BaseMessage } from "@langchain/core/messages";
 
 // Core types for the LangGraph-powered MotiveForce system
 
+// NEW: Interface for Problem Resolution Details
+export interface ProblemResolutionPurpose {
+  type: 'failure' | 'major_error' | 'loop';
+  details: string;
+  actionSuggestion: string;
+}
+
 export interface SubGoal {
   id: string;
   description: string;
@@ -111,14 +118,28 @@ export interface MotiveForceGraphState {
   needsUserInput: boolean;
   waitingForUser: boolean;
   isPaused: boolean;
+  motiveForceOff?: boolean; // NEW: Flag to indicate Motive Force is shutting down
   
   // Progress tracking
   overallProgress: number; // 0-100
   lastProgressUpdate: Date;
   blockers: string[];
   
-  // Context and state
-  workingMemory: Record<string, any>; // Temporary data for current session
+  // Context and state for current workflow/detection
+  workingMemory: {
+    [key: string]: any; // Allow dynamic properties
+    motiveForceQueryGenerated?: boolean;
+    generatedQuery?: string;
+    detectingProblems?: boolean; // Set to true when entering detection phase
+    nextDetector?: MotiveForceRoute; // Next detection node to hit
+    failureAddressed?: boolean; // Flag to indicate a failure was handled
+    majorErrorAddressed?: boolean; // Flag to indicate a major error was handled
+    loopAddressed?: boolean;     // Flag to indicate a loop was handled
+    motiveForceShutdown?: boolean; // Flag for graceful shutdown message
+    problemResolutionPurpose?: ProblemResolutionPurpose; // NEW: Problem details for query generation
+    triggerImmediateQueryGeneration?: boolean; // NEW: Flag to force immediate problem query
+    nextActionIsInvestigativeTool?: { toolName: string; args: Record<string, any>; }; // For detectFailureNode
+  };
   persistentContext: Record<string, any>; // Data that survives sessions
   
   // Error handling
@@ -131,14 +152,15 @@ export interface MotiveForceGraphState {
   successRate: number;
   toolEfficiency: Record<string, number>; // Tool name -> efficiency score
   
-  // Problem Detection System (Phase 3)
+  // Problem Detection Report (NEW)
   lastDetectionReport?: {
     type: 'failure' | 'major_error' | 'loop';
     details: string;
-    actionSuggestion?: string; // What Motive Force thinks should be done
+    actionSuggestion: string; // Corrective action suggested by detector
     timestamp: Date;
-    confidence?: number; // How confident Motive Force is in its detection
+    confidence?: number;
   };
+  
   // For passing specific message subsets to detection nodes if not using direct slice/context building per node
   messagesForDetection?: BaseMessage[];
   detectionContextType?: 'single' | 'last2' | 'last3'; // To control context for detectors
@@ -214,6 +236,7 @@ export type MotiveForceRoute =
   | 'user_checkin'
   | 'query_generator'
   | 'prepare_detection_input'
+  | 'detection_orchestrator'
   | 'detect_failure'
   | 'detect_major_error'
   | 'detect_loop'
@@ -227,7 +250,6 @@ export interface MotiveForceGraphConfig {
   maxStepsPerSession: number;
   maxDurationMinutes: number;
   userCheckinInterval: number; // in steps
-  reflectionInterval: number; // in steps
   errorThreshold: number;
   retryLimit: number;
   memoryRetrievalLimit: number;
@@ -235,7 +257,6 @@ export interface MotiveForceGraphConfig {
   aggressiveness: 'conservative' | 'balanced' | 'aggressive';
   purposeTypes: string[];
   enableLearning: boolean;
-  enableReflection: boolean;
   enableUserCheckins: boolean;
 }
 

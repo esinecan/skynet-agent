@@ -212,6 +212,11 @@ function ChatComponent({
       
       const { query } = await response.json();
       
+      console.log('[Autopilot Debug] Generated query:', query);
+      console.log('[Autopilot Debug] Current messages count:', messages.length);
+      console.log('[Autopilot Debug] handleInputChange function:', typeof handleInputChange);
+      console.log('[Autopilot Debug] handleSubmit function:', typeof handleSubmit);
+      
       // Add autopilot query as user message
       const autopilotMessage = {
         id: `autopilot-${Date.now()}`,
@@ -230,7 +235,7 @@ function ChatComponent({
       });
       
       // Submit the query
-      handleInputChange({ target: { value: query } } as any);
+      handleInputChange({ target: { value: `[Autopilot] ${query}` } } as any);
       const submitEvent = new Event('submit') as any;
       submitEvent.preventDefault = () => {};
       handleSubmit(submitEvent);
@@ -255,7 +260,7 @@ function ChatComponent({
         handleAutopilotToggle(false);
       }
     }
-  }, [sessionId, autopilotState.isGenerating, autopilotState.errorCount, handleSubmit, setMessages, handleAutopilotToggle]);
+  }, [sessionId, autopilotState.isGenerating, autopilotState.errorCount, handleSubmit, setMessages, handleAutopilotToggle, handleInputChange]);
 
   React.useEffect(() => {
     console.log(' Messages changed:', messages.length)
