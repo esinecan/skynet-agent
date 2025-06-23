@@ -236,10 +236,9 @@ export class ChromaMemoryStore implements MemoryStore {
           const id = results.ids[i];
           const metadata = results.metadatas[i];
           const document = results.documents[i];
-          
-          memories.push({
+            memories.push({
             id,
-            text: document,
+            text: metadata.text as string, // Use metadata.text instead of document
             score: 1.0, // No similarity score for list all
             metadata: {
               sessionId: metadata.sessionId as string,

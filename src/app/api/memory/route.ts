@@ -174,7 +174,11 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case 'search':
         try {
-          const searchResult = await ragService.retrieveAndFormatContext(query || '', sessionId);
+          const searchResult = await ragService.retrieveAndFormatContext(
+            query || '', 
+            sessionId, 
+            { listAll: body.listAll || false }
+          );
           return NextResponse.json({
             success: true,
             data: {
@@ -216,10 +220,58 @@ export async function POST(request: NextRequest) {
           }, { status: 500 });
         }
         
+      case 'delete':
+        if (!body.memoryId) {
+          return NextResponse.json({
+            success: false,
+            error: 'memoryId is required for delete action'
+          }, { status: 400 });
+        }
+        
+        try {
+          const memoryStore = getMemoryStore();
+          const deleteResult = await memoryStore.deleteMemory(body.memoryId);
+          return NextResponse.json({
+            success: true,
+            data: { deleted: deleteResult }
+          });
+        } catch (deleteError) {
+          return NextResponse.json({
+            success: false,
+            error: 'Delete failed',
+            message: deleteError instanceof Error ? deleteError.message : 'Unknown error',
+            chromaStatus: chromaCheck.details
+          }, { status: 500 });
+        }
+        
+      case 'deleteBulk':
+        if (!body.memoryIds || !Array.isArray(body.memoryIds) || body.memoryIds.length === 0) {
+          return NextResponse.json({
+            success: false,
+            error: 'memoryIds array is required for deleteBulk action'
+          }, { status: 400 });
+        }
+        
+        try {
+          const memoryStore = getMemoryStore();
+          const deleteResult = await memoryStore.deleteMemories(body.memoryIds);
+          return NextResponse.json({
+            success: true,
+            data: { deleted: deleteResult, count: body.memoryIds.length }
+          });
+        } catch (deleteBulkError) {
+          return NextResponse.json({
+            success: false,
+            error: 'Bulk delete failed',
+            message: deleteBulkError instanceof Error ? deleteBulkError.message : 'Unknown error',
+            chromaStatus: chromaCheck.details
+          }, { status: 500 });
+        }
+        
       default:
         return NextResponse.json({
           success: false,
-          error: 'Invalid action. Supported actions: search, store'
+          error: 'Invalid action. Supported actions: search, store, delete, deleteBulk'
         }, { status: 400 });
     }
   } catch (error) {

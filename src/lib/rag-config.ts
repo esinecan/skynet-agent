@@ -28,7 +28,7 @@ export function getRAGConfig(): RAGConfig {
     googleApiKey: process.env.GOOGLE_API_KEY,
     summarization: {
       enabled: process.env.RAG_ENABLE_SUMMARIZATION !== 'false',
-      threshold: parseInt(process.env.RAG_SUMMARIZATION_THRESHOLD || '1000'),
+      threshold: parseInt(process.env.RAG_SUMMARIZATION_THRESHOLD || '3000'),
       provider: (process.env.RAG_SUMMARIZATION_PROVIDER as 'google' | 'openai') || 'google'
     }
   };

@@ -84,12 +84,12 @@ export class RAGService {
     const shouldSkip = skipPatterns.some(pattern => pattern.test(query.trim()));
     return !shouldSkip;
   }
-
   /**
    * Retrieve relevant memories for a query and format context
    */  async retrieveAndFormatContext(
     query: string, 
-    sessionId?: string
+    sessionId?: string,
+    options?: { listAll?: boolean }
   ): Promise<RAGResult> {
     const startTime = Date.now();
     
@@ -97,7 +97,7 @@ export class RAGService {
     if (!query || query.trim().length === 0) {
       try {
         const searchOptions: MemorySearchOptions = {
-          limit: this.config.maxMemories,
+          limit: options?.listAll ? 1000 : this.config.maxMemories, // Use higher limit for search page
           minScore: 0, // No minimum score for list all
           sessionId: this.config.includeSessionContext ? sessionId : undefined,
           messageType: 'both'

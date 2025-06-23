@@ -33,12 +33,17 @@ interface SearchResult {
 }
 
 export default function SemanticMemoryDemo() {
+  const [allMemories, setAllMemories] = useState<SemanticMemory[]>([]);
   const [searchResults, setSearchResults] = useState<SemanticMemory[]>([]);
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [memoriesPerPage] = useState(10);
 
   // Form state
   const [searchQuery, setSearchQuery] = useState('');
@@ -195,16 +200,19 @@ export default function SemanticMemoryDemo() {
   const searchMemories = async () => {
     setLoading(true);
     setError(null);
+    setCurrentPage(1); // Reset to first page on new search
     console.log('🔍 Searching semantic memories for:', searchQuery || '(empty - list all)');
     
     try {
+      const isListAll = !searchQuery || searchQuery.trim().length === 0;
       const response = await fetch('/api/memory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'search',
           query: searchQuery,
-          sessionId: conversationForm.sessionId
+          sessionId: conversationForm.sessionId,
+          listAll: isListAll // Tell backend to return all memories for empty queries
         })
       });
       
@@ -213,14 +221,26 @@ export default function SemanticMemoryDemo() {
       
       if (data.success) {
         const result: SearchResult = data.data;
-        setSearchResults(result.memories || []);
-        console.log(`🔍 Found ${result.memories?.length || 0} memories in ${result.retrievalTime}ms`);
+        const memories = result.memories || [];
+        
+        if (isListAll) {
+          // For list all (empty query), store all memories and set search results for pagination
+          setAllMemories(memories);
+          setSearchResults(memories);
+        } else {
+          // For regular search, just set search results
+          setAllMemories([]);
+          setSearchResults(memories);
+        }
+        
+        console.log(`🔍 Found ${memories.length} memories in ${result.retrievalTime}ms`);
         console.log('🔍 Should retrieve:', result.shouldRetrieve);
         console.log('🔍 Context generated:', result.context ? 'Yes' : 'No');
         setError(null);
       } else {
         setError(data.error || 'Failed to search memories');
         setSearchResults([]);
+        setAllMemories([]);
         if (data.diagnostics) {
           setDiagnostics({ chromaDB: { connected: false, details: data.diagnostics } });
           setShowDiagnostics(true);
@@ -231,6 +251,122 @@ export default function SemanticMemoryDemo() {
       setSearchResults([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const deleteMemory = async (memoryId: string) => {
+    if (!confirm('Are you sure you want to delete this memory? This action cannot be undone.')) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    console.log('🗑️ Deleting memory:', memoryId);
+    
+    try {
+      const response = await fetch('/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          memoryId: memoryId
+        })
+      });
+      
+      const data = await response.json();
+      console.log('🗑️ Delete response:', data);
+      
+      if (data.success) {
+        console.log('🗑️ Memory deleted successfully');
+        // Remove the deleted memory from both search results and all memories
+        setSearchResults(prev => prev.filter(memory => memory.id !== memoryId));
+        setAllMemories(prev => prev.filter(memory => memory.id !== memoryId));
+        // Refresh stats to update memory count
+        await fetchStats();
+        setError(null);
+      } else {
+        setError(data.error || 'Failed to delete memory');
+      }
+    } catch (err) {
+      setError('Network error while deleting memory');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteAllCurrentResults = async () => {
+    const memoriesToDelete = currentMemories.map(memory => memory.id);
+    if (memoriesToDelete.length === 0) {
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete all ${memoriesToDelete.length} memories on this page? This action cannot be undone.`)) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    console.log('🗑️ Bulk deleting memories:', memoriesToDelete);
+    
+    try {
+      const response = await fetch('/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deleteBulk',
+          memoryIds: memoriesToDelete
+        })
+      });
+      
+      const data = await response.json();
+      console.log('🗑️ Bulk delete response:', data);
+      
+      if (data.success) {
+        console.log(`🗑️ ${data.data.count} memories deleted successfully`);
+        // Remove the deleted memories from both search results and all memories
+        setSearchResults(prev => prev.filter(memory => !memoriesToDelete.includes(memory.id)));
+        setAllMemories(prev => prev.filter(memory => !memoriesToDelete.includes(memory.id)));
+        // Reset to first page if current page is now empty
+        if (currentMemories.length === memoriesToDelete.length && currentPage > 1) {
+          setCurrentPage(1);
+        }
+        // Refresh stats to update memory count
+        await fetchStats();
+        setError(null);
+      } else {
+        setError(data.error || 'Failed to delete memories');
+      }
+    } catch (err) {
+      setError('Network error while deleting memories');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Pagination logic
+  const totalMemories = allMemories.length > 0 ? allMemories.length : searchResults.length;
+  const totalPages = Math.ceil(totalMemories / memoriesPerPage);
+  const startIndex = (currentPage - 1) * memoriesPerPage;
+  const endIndex = startIndex + memoriesPerPage;
+  
+  // Get current page memories
+  const currentMemories = allMemories.length > 0 
+    ? allMemories.slice(startIndex, endIndex)
+    : searchResults.slice(startIndex, endIndex);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const nextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
     }
   };
 
@@ -486,13 +622,71 @@ export default function SemanticMemoryDemo() {
           </div>
 
           {/* Search Results */}
-          {searchResults.length > 0 && (
+          {(searchResults.length > 0 || allMemories.length > 0) && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-700">
-                Found {searchResults.length} relevant memories:
-              </h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-700">
+                  Found {totalMemories} relevant memories:
+                </h3>
+                <div className="flex items-center gap-3">
+                  {currentMemories.length > 0 && (
+                    <button
+                      onClick={deleteAllCurrentResults}
+                      disabled={loading}
+                      className="text-red-600 hover:text-red-800 disabled:opacity-50 px-3 py-1 border border-red-300 rounded-md hover:bg-red-50 text-sm"
+                      title={`Delete all ${currentMemories.length} memories on this page`}
+                    >
+                      Delete Page ({currentMemories.length})
+                    </button>
+                  )}
+                  {totalPages > 1 && (
+                    <span className="text-sm text-gray-500">
+                      Showing {startIndex + 1}-{Math.min(endIndex, totalMemories)} of {totalMemories}
+                    </span>
+                  )}
+                </div>
+              </div>
               
-              {searchResults.map((memory, index) => (
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex justify-center items-center gap-2 pb-4">
+                  <button
+                    onClick={prevPage}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 hover:bg-gray-50"
+                  >
+                    Previous
+                  </button>
+                  
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    const pageNum = currentPage <= 3 ? i + 1 : currentPage - 2 + i;
+                    if (pageNum > totalPages) return null;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => goToPage(pageNum)}
+                        className={`px-3 py-1 border rounded-md ${
+                          currentPage === pageNum
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  
+                  <button
+                    onClick={nextPage}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 hover:bg-gray-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+              
+              {currentMemories.map((memory, index) => (
                 <div key={memory.id || index} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-4">
@@ -509,9 +703,19 @@ export default function SemanticMemoryDemo() {
                         {memory.metadata.messageType}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-500">
-                      {new Date(memory.metadata.timestamp).toLocaleString()}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">
+                        {new Date(memory.metadata.timestamp).toLocaleString()}
+                      </span>
+                      <button
+                        onClick={() => deleteMemory(memory.id)}
+                        disabled={loading}
+                        className="text-red-600 hover:text-red-800 disabled:opacity-50 p-1"
+                        title="Delete memory"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                   
                   <p className="text-gray-800 mb-2">{memory.text}</p>
@@ -525,7 +729,7 @@ export default function SemanticMemoryDemo() {
             </div>
           )}
 
-          {searchResults.length === 0 && searchQuery && !loading && !error && (
+          {totalMemories === 0 && searchQuery && !loading && !error && (
             <div className="text-center py-8 text-gray-500">
               No memories found for "{searchQuery}"
             </div>
