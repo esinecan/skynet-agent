@@ -38,10 +38,10 @@ export class ChromaMemoryStore implements MemoryStore {
   private readonly defaultMinScore: number;
 
   constructor(config: MemoryStoreConfig = {}) {
-    this.collectionName = config.chromaCollection || process.env.CHROMA_COLLECTION || 'mcp_chat_memories';
-    this.chromaUrl = config.chromaUrl || process.env.CHROMA_URL || 'http://localhost:8000';
-    this.defaultLimit = config.defaultLimit || 3;
-    this.defaultMinScore = config.defaultMinScore || 0.5;
+    this.collectionName = process.env.CHROMA_COLLECTION || 'mcp_chat_memories';
+    this.chromaUrl = process.env.CHROMA_URL || 'http://localhost:8000';
+    this.defaultLimit = Number(process.env.RAG_MAX_MEMORIES) || 10;
+    this.defaultMinScore = Number(process.env.RAG_MIN_SIMILARITY) || 0.15;
     
     this.embeddingService = getEmbeddingService();
   }
@@ -182,6 +182,90 @@ export class ChromaMemoryStore implements MemoryStore {
   }
 
   /**
+   * List all memories without similarity search (for empty queries)
+   */
+  private async listAllMemories(limit: number, options: MemorySearchOptions): Promise<MemoryRetrievalResult[]> {
+    try {
+      // Build where clause for metadata filtering
+      let whereClause: any = undefined;
+      const conditions: any[] = [];
+      
+      // Only filter by sessionId if specifically requested
+      // This allows for showing ALL memories when no sessionId is provided
+      if (options.sessionId && options.sessionId !== 'all') {
+        conditions.push({ sessionId: options.sessionId });
+      }
+      
+      // Add time filtering if provided
+      const startTimestamp = toEpochMs((options as any).startDate);
+      const endTimestamp = toEpochMs((options as any).endDate);
+
+      if (startTimestamp !== undefined || endTimestamp !== undefined) {
+        const timeRange: Record<string, number> = {};
+        if (startTimestamp !== undefined) {
+          timeRange["$gte"] = startTimestamp;
+        }
+        if (endTimestamp !== undefined) {
+          timeRange["$lte"] = endTimestamp;
+        }
+        conditions.push({ timestamp: timeRange });
+      }
+      
+      // Build final where clause
+      if (conditions.length === 1) {
+        whereClause = conditions[0];
+      } else if (conditions.length > 1) {
+        whereClause = { "$and": conditions };
+      }
+      
+      console.log(`Listing all memories with where clause:`, whereClause || 'none');
+      
+      // Get all memories using ChromaDB's get method without limit (get everything)
+      const results = await this.collection.get({
+        // Don't apply any limit for "all memories" request
+        where: whereClause
+      });
+      
+      console.log(`Retrieved ${results.ids?.length || 0} total memories from ChromaDB`);
+      
+      // Rest of the memory processing logic
+      const memories: MemoryRetrievalResult[] = [];
+      
+      if (results.ids && results.ids.length > 0) {
+        for (let i = 0; i < results.ids.length; i++) {
+          const id = results.ids[i];
+          const metadata = results.metadatas[i];
+          const document = results.documents[i];
+          
+          memories.push({
+            id,
+            text: document,
+            score: 1.0, // No similarity score for list all
+            metadata: {
+              sessionId: metadata.sessionId as string,
+              timestamp: metadata.timestamp as number,
+              messageType: metadata.messageType as 'user' | 'assistant',
+              textLength: metadata.textLength as number
+            }
+          });
+        }
+      }
+      
+      // Sort by timestamp (newest first)
+      memories.sort((a, b) => b.metadata.timestamp - a.metadata.timestamp);
+      
+      // Apply limit AFTER sorting to get most recent memories
+      const limitedMemories = memories.slice(0, limit || 100);
+      
+      console.log(`Listed ${memories.length} total memories, returning ${limitedMemories.length}`);
+      return limitedMemories;
+    } catch (error) {
+      console.error('Failed to list all memories:', error);
+      return [];
+    }
+  }
+
+  /**
    * Retrieve similar memories based on query text
    */  async retrieveMemories(query: string, options: MemorySearchOptions = {}): Promise<MemoryRetrievalResult[]> {
     if (!this.initialized) {
@@ -191,9 +275,14 @@ export class ChromaMemoryStore implements MemoryStore {
     const limit = options.limit || this.defaultLimit;
     const minScore = options.minScore || this.defaultMinScore;
     
+    // Handle empty query by listing all memories
+    if (!query || query.trim().length === 0) {
+      return this.listAllMemories(limit, options);
+    }
+    
     try {
       // Preprocess the query to focus on the most relevant part
-      const processedQuery = this.preprocessQuery(query);      // Generate embedding for the processed query
+      const processedQuery = this.preprocessQuery(query);// Generate embedding for the processed query
       const embedding = await this.embeddingService.generateEmbedding(processedQuery);
       
       // Build where clause for metadata filtering

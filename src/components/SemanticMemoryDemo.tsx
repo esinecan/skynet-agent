@@ -37,13 +37,15 @@ export default function SemanticMemoryDemo() {
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<any>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   // Form state
   const [searchQuery, setSearchQuery] = useState('');
   const [conversationForm, setConversationForm] = useState({
     userMessage: '',
     assistantMessage: '',
-    sessionId: 'demo-session'
+    sessionId: ''
   });
 
   const fetchStats = async () => {
@@ -55,9 +57,32 @@ export default function SemanticMemoryDemo() {
           totalMemories: data.data.totalMemories || 0,
           healthStatus: data.data.healthy || false
         });
+        setError(null);
+      } else {
+        setError(data.error || 'Failed to fetch stats');
+        console.error('Stats error:', data);
       }
     } catch (err) {
       console.error('Failed to fetch stats:', err);
+      setError('Network error - is the server running?');
+    }
+  };
+
+  const fetchDiagnostics = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/memory?action=diagnostics');
+      const data = await response.json();
+      if (data.success) {
+        setDiagnostics(data.data);
+        setShowDiagnostics(true);
+      } else {
+        setError(data.error || 'Failed to fetch diagnostics');
+      }
+    } catch (err) {
+      setError('Failed to fetch diagnostics');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -72,9 +97,16 @@ export default function SemanticMemoryDemo() {
           healthStatus: data.data.healthy,
           totalMemories: prev?.totalMemories || 0
         }));
+        setError(null);
+      } else {
+        setError(data.error || 'Health check failed');
+        if (data.diagnostics) {
+          setDiagnostics({ chromaDB: { connected: false, details: data.diagnostics } });
+          setShowDiagnostics(true);
+        }
       }
     } catch (err) {
-      setError('Health check failed');
+      setError('Health check failed - network error');
     } finally {
       setLoading(false);
     }
@@ -83,12 +115,12 @@ export default function SemanticMemoryDemo() {
   const testMemorySystem = async () => {
     setLoading(true);
     setError(null);
-    console.log(' Testing semantic memory system...');
+    console.log('🧪 Testing semantic memory system...');
     
     try {
       const response = await fetch('/api/memory?action=test');
       const data = await response.json();
-      console.log(' Test response:', data);
+      console.log('🧪 Test response:', data);
       
       if (data.success) {
         setStats(prev => ({
@@ -97,9 +129,13 @@ export default function SemanticMemoryDemo() {
           totalMemories: prev?.totalMemories || 0,
           healthStatus: prev?.healthStatus || false
         }));
-        console.log(' Memory system test passed:', data.data.testPassed);
+        console.log('🧪 Memory system test passed:', data.data.testPassed);
       } else {
         setError(data.error || 'Memory system test failed');
+        if (data.diagnostics) {
+          setDiagnostics({ chromaDB: { connected: false, details: data.diagnostics } });
+          setShowDiagnostics(true);
+        }
       }
     } catch (err) {
       setError('Network error during test');
@@ -116,7 +152,7 @@ export default function SemanticMemoryDemo() {
 
     setLoading(true);
     setError(null);
-    console.log(' Storing conversation:', conversationForm);
+    console.log('💾 Storing conversation:', conversationForm);
     
     try {
       const response = await fetch('/api/memory', {
@@ -131,18 +167,23 @@ export default function SemanticMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log(' Store response:', data);
+      console.log('💾 Store response:', data);
       
       if (data.success) {
-        console.log(' Conversation stored successfully');
+        console.log('💾 Conversation stored successfully');
         setConversationForm({
           userMessage: '',
           assistantMessage: '',
           sessionId: conversationForm.sessionId
         });
         await fetchStats();
+        setError(null);
       } else {
         setError(data.error || 'Failed to store conversation');
+        if (data.diagnostics) {
+          setDiagnostics({ chromaDB: { connected: false, details: data.diagnostics } });
+          setShowDiagnostics(true);
+        }
       }
     } catch (err) {
       setError('Network error while storing conversation');
@@ -152,14 +193,9 @@ export default function SemanticMemoryDemo() {
   };
 
   const searchMemories = async () => {
-    if (!searchQuery.trim()) {
-      setError('Search query is required');
-      return;
-    }
-
     setLoading(true);
     setError(null);
-    console.log(' Searching semantic memories for:', searchQuery);
+    console.log('🔍 Searching semantic memories for:', searchQuery || '(empty - list all)');
     
     try {
       const response = await fetch('/api/memory', {
@@ -173,19 +209,26 @@ export default function SemanticMemoryDemo() {
       });
       
       const data = await response.json();
-      console.log(' Search response:', data);
+      console.log('🔍 Search response:', data);
       
       if (data.success) {
         const result: SearchResult = data.data;
         setSearchResults(result.memories || []);
-        console.log(` Found ${result.memories?.length || 0} memories in ${result.retrievalTime}ms`);
-        console.log(' Should retrieve:', result.shouldRetrieve);
-        console.log(' Context generated:', result.context ? 'Yes' : 'No');
+        console.log(`🔍 Found ${result.memories?.length || 0} memories in ${result.retrievalTime}ms`);
+        console.log('🔍 Should retrieve:', result.shouldRetrieve);
+        console.log('🔍 Context generated:', result.context ? 'Yes' : 'No');
+        setError(null);
       } else {
         setError(data.error || 'Failed to search memories');
+        setSearchResults([]);
+        if (data.diagnostics) {
+          setDiagnostics({ chromaDB: { connected: false, details: data.diagnostics } });
+          setShowDiagnostics(true);
+        }
       }
     } catch (err) {
       setError('Network error while searching memories');
+      setSearchResults([]);
     } finally {
       setLoading(false);
     }
@@ -200,7 +243,7 @@ export default function SemanticMemoryDemo() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-4">
-             Semantic Memory System
+            🧠 Semantic Memory System
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
             An intelligent RAG-based memory system that automatically stores conversations
@@ -210,7 +253,100 @@ export default function SemanticMemoryDemo() {
 
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
-            {error}
+            <div className="flex justify-between items-start">
+              <div>
+                <strong>Error:</strong> {error}
+              </div>
+              <button
+                onClick={fetchDiagnostics}
+                className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+              >
+                🔧 Run Diagnostics
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Diagnostics Panel */}
+        {showDiagnostics && diagnostics && (
+          <div className="bg-yellow-50 border border-yellow-400 rounded-lg p-6 mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-yellow-800">🔧 System Diagnostics</h3>
+              <button
+                onClick={() => setShowDiagnostics(false)}
+                className="text-yellow-800 hover:text-yellow-900"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* ChromaDB Status */}
+              <div>
+                <h4 className="font-semibold text-yellow-800 mb-2">ChromaDB Status:</h4>
+                <div className="bg-white rounded p-3 space-y-2">
+                  <div>
+                    <span className="font-medium">Connected:</span>{' '}
+                    <span className={diagnostics.chromaDB?.connected ? 'text-green-600' : 'text-red-600'}>
+                      {diagnostics.chromaDB?.connected ? '✓ Yes' : '✗ No'}
+                    </span>
+                  </div>
+                  {diagnostics.chromaDB?.error && (
+                    <div>
+                      <span className="font-medium">Error:</span>{' '}
+                      <span className="text-red-600">{diagnostics.chromaDB.error}</span>
+                    </div>
+                  )}
+                  {diagnostics.chromaDB?.details && (
+                    <div>
+                      <span className="font-medium">URL:</span>{' '}
+                      {diagnostics.chromaDB.details.url}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Environment */}
+              {diagnostics.environment && (
+                <div>
+                  <h4 className="font-semibold text-yellow-800 mb-2">Environment:</h4>
+                  <div className="bg-white rounded p-3 space-y-1 text-sm">
+                    {Object.entries(diagnostics.environment).map(([key, value]) => (
+                      <div key={key}>
+                        <span className="font-medium">{key}:</span>{' '}
+                        <span className={
+                          value === 'Not set' ? 'text-red-600' : 
+                          value === 'Set' ? 'text-green-600' : ''
+                        }>
+                          {String(value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Instructions */}
+              {diagnostics.instructions && (
+                <div>
+                  <h4 className="font-semibold text-yellow-800 mb-2">Fix Instructions:</h4>
+                  <div className="bg-white rounded p-3 space-y-3">
+                    {Object.entries(diagnostics.instructions).map(([key, steps]) => (
+                      <div key={key}>
+                        <h5 className="font-medium text-gray-700 mb-1">
+                          {key.replace(/([A-Z])/g, ' $1').trim()}:
+                        </h5>
+                        <ol className="list-decimal list-inside space-y-1 text-sm text-gray-600">
+                          {(steps as string[]).map((step, idx) => (
+                            <li key={idx}>{step}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -226,7 +362,7 @@ export default function SemanticMemoryDemo() {
           <div className="bg-white rounded-lg shadow-md p-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-2">Health Status</h3>
             <p className={`text-3xl font-bold ${stats?.healthStatus ? 'text-green-600' : 'text-red-600'}`}>
-              {stats?.healthStatus ? 'Healthy' : 'Offline'}
+              {stats?.healthStatus ? '✓ Healthy' : '✗ Offline'}
             </p>
           </div>
           
@@ -236,15 +372,15 @@ export default function SemanticMemoryDemo() {
               stats?.testStatus === true ? 'text-green-600' :
               stats?.testStatus === false ? 'text-red-600' : 'text-gray-400'
             }`}>
-              {stats?.testStatus === true ? 'Passed' :
-               stats?.testStatus === false ? 'Failed' : 'Not Tested'}
+              {stats?.testStatus === true ? '✓ Passed' :
+               stats?.testStatus === false ? '✗ Failed' : '? Not Tested'}
             </p>
           </div>
         </div>
 
         {/* System Actions */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4"> System Management</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">🛠️ System Management</h2>
           
           <div className="flex gap-4">
             <button
@@ -252,7 +388,7 @@ export default function SemanticMemoryDemo() {
               disabled={loading}
               className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
             >
-              {loading ? 'Checking...' : ' Health Check'}
+              {loading ? 'Checking...' : '🏥 Health Check'}
             </button>
             
             <button
@@ -260,14 +396,22 @@ export default function SemanticMemoryDemo() {
               disabled={loading}
               className="bg-yellow-600 text-white px-6 py-2 rounded-md hover:bg-yellow-700 disabled:opacity-50"
             >
-              {loading ? 'Testing...' : ' Test System'}
+              {loading ? 'Testing...' : '🧪 Test System'}
+            </button>
+            
+            <button
+              onClick={fetchDiagnostics}
+              disabled={loading}
+              className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? 'Loading...' : '🔧 Diagnostics'}
             </button>
           </div>
         </div>
 
         {/* Store Conversation */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4"> Store Conversation</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">💾 Store Conversation</h2>
           
           <div className="space-y-4">
             <div>
@@ -279,7 +423,7 @@ export default function SemanticMemoryDemo() {
                 value={conversationForm.sessionId}
                 onChange={(e) => setConversationForm({ ...conversationForm, sessionId: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="demo-session"
+                placeholder=""
               />
             </div>
             
@@ -321,7 +465,7 @@ export default function SemanticMemoryDemo() {
 
         {/* Search Memories */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4"> Search Semantic Memories</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">🔍 Search Semantic Memories</h2>
           
           <div className="flex gap-4 mb-4">
             <input
@@ -334,7 +478,7 @@ export default function SemanticMemoryDemo() {
             />
             <button
               onClick={searchMemories}
-              disabled={loading || !searchQuery.trim()}
+              disabled={loading}
               className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
             >
               {loading ? 'Searching...' : 'Search'}
@@ -381,7 +525,7 @@ export default function SemanticMemoryDemo() {
             </div>
           )}
 
-          {searchResults.length === 0 && searchQuery && (
+          {searchResults.length === 0 && searchQuery && !loading && !error && (
             <div className="text-center py-8 text-gray-500">
               No memories found for "{searchQuery}"
             </div>

@@ -8,3 +8,4 @@ import SemanticMemoryDemo from '../../components/SemanticMemoryDemo';
 export default function SemanticMemoryPage() {
   return <SemanticMemoryDemo />;
 }
+5

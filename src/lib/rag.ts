@@ -29,8 +29,8 @@ export class RAGService {
   private embeddingService = getEmbeddingService();
   private defaultConfig: RAGConfig = {
     enabled: true,
-    maxMemories: 3,
-    minSimilarity: 0.5,
+    maxMemories: Number(process.env.RAG_MAX_MEMORIES) || 10,
+    minSimilarity: Number(process.env.RAG_MIN_SIMILARITY) || 0.15,
     includeSessionContext: false,
     contextTemplate: `Based on previous conversations:\n\n{memories}\n\nNow respond to the current message.`
   };
@@ -87,14 +87,46 @@ export class RAGService {
 
   /**
    * Retrieve relevant memories for a query and format context
-   */
-  async retrieveAndFormatContext(
+   */  async retrieveAndFormatContext(
     query: string, 
     sessionId?: string
   ): Promise<RAGResult> {
     const startTime = Date.now();
     
-    // Check if we should retrieve memories
+    // Handle empty query by directly retrieving memories (bypass shouldRetrieveMemories check)
+    if (!query || query.trim().length === 0) {
+      try {
+        const searchOptions: MemorySearchOptions = {
+          limit: this.config.maxMemories,
+          minScore: 0, // No minimum score for list all
+          sessionId: this.config.includeSessionContext ? sessionId : undefined,
+          messageType: 'both'
+        };
+
+        const memories = await this.memoryStore.retrieveMemories('', searchOptions);
+        const context = this.formatMemoriesAsContext(memories);
+        const retrievalTime = Date.now() - startTime;
+        
+        console.log(`RAG list all completed: ${memories.length} memories in ${retrievalTime}ms`);
+        
+        return {
+          shouldRetrieve: true,
+          memories,
+          context,
+          retrievalTime
+        };
+      } catch (error) {
+        console.error('Error during RAG list all:', error);
+        return {
+          shouldRetrieve: true,
+          memories: [],
+          context: '',
+          retrievalTime: Date.now() - startTime
+        };
+      }
+    }
+    
+    // Check if we should retrieve memories (for non-empty queries)
     const shouldRetrieve = this.shouldRetrieveMemories(query);
     
     if (!shouldRetrieve) {

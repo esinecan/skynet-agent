@@ -517,7 +517,7 @@ export class MotiveForceWorkflow {
       if (state.currentPurpose) {
         additionalContext += `\n\n## Current Purpose: ${state.currentPurpose} \n\n 
         [REMEMBER THAT YOU ARE NOT THE ASSISTANT BUT THE AUTOPILOT. REACT TO THE CURRENT CONTEXT. PROVIDE GUIDANCE AND AVOID GENERIC RESPONSES. BY AND LARGE YOU'LL KNOW WHAT TO SAY I THINK. IDK MAYBE ENCOURAGEMENT IF IT'S DOING WELL OR SMTH.]
-        \n [SOMETIMES YOU NEED TO PUT THE BRAKES ON THE ASSISTANT. IS IT ABOUT TO REMOVE SOME KNOWLEDGE IRREVERSIBLY? ERASE TECHNICAL DATA? IS IT ABOUT TO POSSIBLY MESS WITH AN ENVIRONMENT VALUE? YOU'RE THE ONE TO MAKE THE CALL WHEN TO CHEER AND WHEN TO COURSE CORRECT]`;
+        \n [SOMETIMES YOU NEED TO PUT THE BRAKES ON THE ASSISTANT. IS IT ABOUT TO REMOVE SOME KNOWLEDGE IRREVERSIBLY? IS IT PRINTING HIGH PROSE OMNISSIAH QUOTES? (A DEFINITE HALLUCINATION SIGN) YOU'RE THE ONE TO MAKE THE CALL WHEN TO CHEER AND WHEN TO COURSE CORRECT]`;
       }
       if (state.subgoals.length > 0) {
         additionalContext += `\n\n## Completed Goals: ${state.subgoals.filter(g => g.status === 'completed').length}/${state.subgoals.length}`;
@@ -838,6 +838,7 @@ You should act as the human user of the system and continue their conversation a
 * Phrases like "Executing Step 1:", "Saving...", "Deleting...", "Updated...", "Created..." when **NOT** immediately followed by a '🔧 Tool:' block.
 * Summaries like "Action Log:" or "Proposed Execution Plan:" are plans or descriptions, not actual tool outputs.
 * Any text that claims an action was performed but **DOES NOT** include the structured '🔧 Tool: [tool_name] View details' UI element or a raw tool output JSON/text that clearly came from a tool.
+* Closing omnissiah quotes are an immediate yellow-orange flag.
 
 **Instructions for your response:**
 You MUST respond in a JSON format. If you detect a problem, provide specific details and suggest a corrective action. This action should almost always involve an **investigative tool call** to verify the claimed action, or explicitly asking the assistant to perform the tool call if it just described it.
