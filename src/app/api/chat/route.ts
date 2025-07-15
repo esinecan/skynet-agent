@@ -7,6 +7,7 @@ import { kgSyncQueue } from '../../../lib/kg-sync-queue';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { createLogger } from '../../../lib/logger';
+import { pruneDOMSnapshots, hasPlaywrightDOMToolCalls } from '../../../lib/context-pruning';
 
 // Create logger for this module
 const logger = createLogger('chat-api');
@@ -179,6 +180,15 @@ export async function POST(request: NextRequest) {
     // Create enhanced system message with RAG context if enabled
     let enhancedSystemPrompt = systemPrompt;
     let enhancedMessages = [...messages];
+    
+    // Check if any recent messages contain Playwright DOM tools
+    const hasPlaywrightTools = hasPlaywrightDOMToolCalls(enhancedMessages);
+    
+    // If Playwright tools are detected, prune DOM snapshots to prevent context overflow
+    if (hasPlaywrightTools) {
+      logger.info('Playwright DOM tools detected, applying context pruning');
+      enhancedMessages = pruneDOMSnapshots(enhancedMessages, 1); // Keep only the most recent DOM snapshot
+    }
     
     // Check if RAG should be used (enabled by default)
     const enableRAG = process.env.RAG_ENABLED !== 'false';
