@@ -16,11 +16,13 @@
     "kg:sync:watch": "tsx src/scripts/run-kg-sync.ts --watch",
     "kg:sync:full": "tsx src/scripts/run-kg-sync.ts --full-resync",
     "kg:sync:queue": "tsx src/scripts/run-kg-sync.ts --process-all",
-    "test": "npm run test:integration && npm run test:rag && npm run test:neo4j",
+    "test": "npm run test:integration && npm run test:rag && npm run test:neo4j && npm run test:context-pruning",
     "test:rag": "tsx src/tests/rag-test.ts",
     "test:integration": "node src/tests/integration-test.js",
     "test:neo4j": "tsx src/tests/neo4j-integration.test.js",
-    "test:neo4j-advanced": "tsx src/tests/neo4j-advanced-deletion.test.js"
+    "test:neo4j-advanced": "tsx src/tests/neo4j-advanced-deletion.test.js",
+    "test:context-pruning": "tsx src/tests/context-pruning.test.ts && tsx src/tests/integration-context-pruning.test.ts",
+    "demo:context-pruning": "tsx src/scripts/demo-context-pruning.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
