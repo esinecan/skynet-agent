@@ -126,10 +126,16 @@ function demonstrateContextPruning() {
   
   // Show example of pruned content
   const firstAssistant = prunedConversation[1];
-  const firstNavResult = firstAssistant.toolInvocations[0].result;
+  const firstNavResult = firstAssistant.toolInvocations?.[0]?.result;
+  const originalFirstResult = demoConversation[1].toolInvocations?.[0]?.result;
+  
   console.log(`\n📝 Example of pruned content:`);
-  console.log(`  Original: ${JSON.stringify(demoConversation[1].toolInvocations[0].result).substring(0, 100)}...`);
-  console.log(`  Pruned: ${JSON.stringify(firstNavResult).substring(0, 100)}...`);
+  if (originalFirstResult) {
+    console.log(`  Original: ${JSON.stringify(originalFirstResult).substring(0, 100)}...`);
+  }
+  if (firstNavResult) {
+    console.log(`  Pruned: ${JSON.stringify(firstNavResult).substring(0, 100)}...`);
+  }
   
   console.log(`\n🎯 Benefits:`);
   console.log(`  • Prevents context window overflow`);

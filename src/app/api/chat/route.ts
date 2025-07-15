@@ -186,8 +186,24 @@ export async function POST(request: NextRequest) {
     
     // If Playwright tools are detected, prune DOM snapshots to prevent context overflow
     if (hasPlaywrightTools) {
+      const originalSize = JSON.stringify(enhancedMessages).length;
       logger.info('Playwright DOM tools detected, applying context pruning');
-      enhancedMessages = pruneDOMSnapshots(enhancedMessages, 1); // Keep only the most recent DOM snapshot
+      
+      try {
+        // Configure how many recent DOM snapshots to preserve (default: 1)
+        const preserveSnapshots = parseInt(process.env.PRESERVE_DOM_SNAPSHOTS || '1');
+        enhancedMessages = pruneDOMSnapshots(enhancedMessages, preserveSnapshots);
+        
+        const prunedSize = JSON.stringify(enhancedMessages).length;
+        const reduction = ((originalSize - prunedSize) / originalSize * 100).toFixed(1);
+        
+        if (prunedSize < originalSize) {
+          logger.info(`Context pruning successful: ${originalSize} → ${prunedSize} chars (${reduction}% reduction)`);
+        }
+      } catch (pruningError) {
+        logger.error('Context pruning failed, continuing with original messages:', pruningError);
+        // Continue with original messages if pruning fails
+      }
     }
     
     // Check if RAG should be used (enabled by default)
