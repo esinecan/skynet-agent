@@ -37,14 +37,16 @@ async function main() {
   }
 
   // === QUERY KNOWLEDGE GRAPH TOOL ===
-  server.tool("query_knowledge_graph",
+  server.registerTool("query_knowledge_graph",
     {
-      query: z.string().describe(
-        "The Cypher query to execute. Ensure the query returns data in a serializable format. For example, RETURN n.name AS name, r.type AS relationship, m.content AS related_content LIMIT 10."
-      ),
-      params: z.record(z.any()).optional().describe(
-        "An optional object of parameters to pass to the Cypher query. E.g., { entityId: 'some-id' }"
-      ),
+      inputSchema: {
+        query: z.string().describe(
+          "The Cypher query to execute. Ensure the query returns data in a serializable format. For example, RETURN n.name AS name, r.type AS relationship, m.content AS related_content LIMIT 10."
+        ),
+        params: z.record(z.any()).optional().describe(
+          "An optional object of parameters to pass to the Cypher query. E.g., { entityId: 'some-id' }"
+        ),
+      },
     },
     async ({ query, params }) => {
       try {
@@ -78,12 +80,14 @@ async function main() {
   );
 
   // === GET RELATED ENTITIES TOOL ===
-  server.tool("get_related_entities",
+  server.registerTool("get_related_entities",
     {
-      entityId: z.string().describe("The ID of the entity to find related entities for."),
-      relationshipType: z.string().optional().describe("Filter by specific relationship type."),
-      direction: z.enum(['incoming', 'outgoing', 'both']).default('both').describe("Direction of relationships to follow."),
-      depth: z.number().min(1).max(3).default(1).describe("Maximum depth to traverse."),
+      inputSchema: {
+        entityId: z.string().describe("The ID of the entity to find related entities for."),
+        relationshipType: z.string().optional().describe("Filter by specific relationship type."),
+        direction: z.enum(['incoming', 'outgoing', 'both']).default('both').describe("Direction of relationships to follow."),
+        depth: z.number().min(1).max(3).default(1).describe("Maximum depth to traverse."),
+      },
     },
     async ({ entityId, relationshipType, direction, depth }) => {
       try {
@@ -147,11 +151,13 @@ async function main() {
   );
 
   // === FIND ENTITIES BY PROPERTY TOOL ===
-  server.tool("find_entities_by_property",
+  server.registerTool("find_entities_by_property",
     {
-      label: z.string().describe("The entity label/type to search for."),
-      property: z.string().describe("The property name to search by."),
-      value: z.any().describe("The property value to match."),
+      inputSchema: {
+        label: z.string().describe("The entity label/type to search for."),
+        property: z.string().describe("The property name to search by."),
+        value: z.any().describe("The property value to match."),
+      },
     },
     async ({ label, property, value }) => {
       try {
@@ -201,9 +207,11 @@ async function main() {
   );
 
   // === GET ENTITY DETAILS TOOL ===
-  server.tool("get_entity_details",
+  server.registerTool("get_entity_details",
     {
-      entityId: z.string().describe("The ID of the entity to retrieve."),
+      inputSchema: {
+        entityId: z.string().describe("The ID of the entity to retrieve."),
+      },
     },
     async ({ entityId }) => {
       try {
@@ -262,14 +270,16 @@ async function main() {
 
 
   // === FIND PURPOSEFUL CONNECTIONS TOOL ===
-  server.tool("find_purposeful_connections",
+  server.registerTool("find_purposeful_connections",
     {
-      relationshipType: z.string().describe("Type of relationship to find (e.g., 'WORKS_ON', 'USES', 'PREFERS', 'LEARNED_ABOUT')"),
-      sourceType: z.string().optional().describe("Entity type/label of the source (e.g., 'Person', 'User', 'Project')"),
-      sourceName: z.string().optional().describe("Name property to match on source entities"),
-      targetType: z.string().optional().describe("Entity type/label of the target (e.g., 'Project', 'Tool')"),
-      targetName: z.string().optional().describe("Name property to match on target entities"),
-      includeProperties: z.boolean().optional().default(true).describe("Include relationship properties in results")
+      inputSchema: {
+        relationshipType: z.string().describe("Type of relationship to find (e.g., 'WORKS_ON', 'USES', 'PREFERS', 'LEARNED_ABOUT')"),
+        sourceType: z.string().optional().describe("Entity type/label of the source (e.g., 'Person', 'User', 'Project')"),
+        sourceName: z.string().optional().describe("Name property to match on source entities"),
+        targetType: z.string().optional().describe("Entity type/label of the target (e.g., 'Project', 'Tool')"),
+        targetName: z.string().optional().describe("Name property to match on target entities"),
+        includeProperties: z.boolean().optional().default(true).describe("Include relationship properties in results")
+      },
     },
     async ({ relationshipType, sourceType, sourceName, targetType, targetName, includeProperties }) => {
       try {
