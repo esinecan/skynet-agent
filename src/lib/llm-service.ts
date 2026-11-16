@@ -813,5 +813,17 @@ ${context}`;
    */
 }
 
-// Export default instance
-export default new LLMService();
+// Export default instance - lazy initialization
+let defaultInstance: LLMService | null = null;
+
+export function getDefaultLLMService(): LLMService {
+  if (!defaultInstance) {
+    defaultInstance = new LLMService();
+  }
+  return defaultInstance;
+}
+
+// For backward compatibility
+export default { 
+  getInstance: getDefaultLLMService 
+};

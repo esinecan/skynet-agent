@@ -9,6 +9,7 @@
     "dev:debug": "npm-run-all --parallel \"dev:next:debug\" dev:kg",
     "dev:next:debug": "cross-env NODE_OPTIONS='--inspect' next dev",
     "build": "next build",
+    "build:cli": "tsc src/cli/ingest.ts --outDir dist",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
@@ -20,7 +21,11 @@
     "test:rag": "tsx src/tests/rag-test.ts",
     "test:integration": "node src/tests/integration-test.js",
     "test:neo4j": "tsx src/tests/neo4j-integration.test.js",
-    "test:neo4j-advanced": "tsx src/tests/neo4j-advanced-deletion.test.js"
+    "test:neo4j-advanced": "tsx src/tests/neo4j-advanced-deletion.test.js",
+    "ingest": "tsx src/cli/ingest.ts"
+  },
+  "bin": {
+    "skynet-ingest": "./dist/cli/ingest.js"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
@@ -36,6 +41,7 @@
     "ai": "^4.0.0",
     "better-sqlite3": "^11.10.0",
     "chromadb": "^2.4.6",
+    "commander": "^11.0.0",
     "dotenv": "^16.5.0",
     "jsonrepair": "^3.12.0",
     "neo4j-driver": "^5.28.1",
